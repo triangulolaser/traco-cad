@@ -1,0 +1,320 @@
+// @ts-check
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { createDocument, addEntities, replaceEntities } from '../src/cad/document.js';
+import { EDIT_COMMANDS } from '../src/cad/edit-commands.js';
+import { dimensionGeometry } from '../src/cad/dimensions.js';
+import { Editor } from '../src/cad/editor.js';
+
+test('cad.js: inputs de tamanho de texto usam inputmode="decimal" e tratam vírgula e ponto', () => {
+    const cadJsPath = resolve(process.cwd(), 'src/cad.js');
+    const content = readFileSync(cadJsPath, 'utf-8');
+
+    // Verifica que data-prop="text-height" é inputmode decimal e type text
+    assert.match(content, /input type="text" inputmode="decimal" data-prop="text-height"/, 'data-prop="text-height" deve ser text com inputmode decimal');
+    // Verifica que data-global-prop="dimTextHeight" é inputmode decimal e type text
+    assert.match(content, /input type="text" inputmode="decimal" data-global-prop="dimTextHeight"/, 'data-global-prop="dimTextHeight" deve ser text com inputmode decimal');
+    // Verifica existência do parser com replace de vírgula para ponto
+    assert.match(content, /parseDecimalInput/, 'Deve possuir função parseDecimalInput');
+    assert.match(content, /\.replace\(',',\s*'\.'\)/, 'parseDecimalInput deve substituir vírgula por ponto');
+    // Verifica isolamento de eventos de teclado do box
+    assert.match(content, /box\._cadKeydownAttached/, 'Deve registrar contenção de eventos keydown no box de propriedades');
+});
+
+test('MATCHPROP: copia layer, cor, linetype, lineweight e tamanho de texto entre cotas', async () => {
+    let doc = createDocument();
+    doc.layers.push({ name: 'COTAS', color: 1, lineType: 'CONTINUOUS', lineWeight: 25, visible: true, locked: false });
+
+    const cotaOrigem = {
+        id: 'dim-src',
+        type: 'dimension',
+        kind: 'horizontal',
+        p1: { x: 0, y: 0 },
+        p2: { x: 100, y: 0 },
+        linePoint: { x: 50, y: 20 },
+        layer: 'COTAS',
+        color: 1, // Vermelho
+        lineType: 'DASHED',
+        lineWeight: 35,
+        textHeight: 4.5,
+        style: {
+            textHeight: 4.5,
+            arrowSize: 3.0,
+        },
+        fontFamily: 'Liberation Mono',
+        bold: true,
+        italic: false,
+    };
+
+    const cotaDestino = {
+        id: 'dim-target',
+        type: 'dimension',
+        kind: 'vertical',
+        p1: { x: 0, y: 0 },
+        p2: { x: 0, y: 50 },
+        linePoint: { x: -15, y: 25 },
+        layer: '0',
+        color: 'bylayer',
+        lineType: 'bylayer',
+        lineWeight: 'bylayer',
+        textHeight: 2.5,
+        style: {
+            textHeight: 2.5,
+            arrowSize: 2.5,
+        },
+    };
+
+    doc = addEntities(doc, [cotaOrigem, cotaDestino]);
+
+    let targetEntity = null;
+    let queryStep = 0;
+
+    const mockEditor = {
+        doc,
+        canvas: { classList: { add() {}, remove() {} } },
+        async getEntity(prompt, opts) {
+            queryStep++;
+            if (queryStep === 1) {
+                // Objeto de referência
+                return { entity: doc.entities.find(e => e.id === 'dim-src') };
+            }
+            if (queryStep === 2) {
+                // Pincel: clique no destino
+                return { entity: doc.entities.find(e => e.id === 'dim-target') };
+            }
+            // Encerra loop
+            return null;
+        },
+        commit(label, newDoc) {
+            targetEntity = newDoc.entities.find(e => e.id === 'dim-target');
+            doc = newDoc;
+        },
+    };
+
+    await EDIT_COMMANDS.MATCHPROP.run(mockEditor);
+
+    assert.ok(targetEntity, 'Cota de destino deve ter sido atualizada');
+    assert.equal(targetEntity.layer, 'COTAS', 'Deve copiar layer');
+    assert.equal(targetEntity.color, 1, 'Deve copiar cor');
+    assert.equal(targetEntity.lineType, 'DASHED', 'Deve copiar tipo de linha');
+    assert.equal(targetEntity.lineWeight, 35, 'Deve copiar espessura');
+    assert.equal(targetEntity.textHeight, 4.5, 'Deve copiar textHeight');
+    assert.equal(targetEntity.style?.textHeight, 4.5, 'Deve copiar style.textHeight');
+    assert.equal(targetEntity.style?.arrowSize, 3.0, 'Deve copiar arrowSize de estilo');
+    assert.equal(targetEntity.fontFamily, 'Liberation Mono', 'Deve copiar fontFamily');
+    assert.equal(targetEntity.bold, true, 'Deve copiar bold');
+
+    // Validar cálculo geométrico com as propriedades copiadas
+    const geo = dimensionGeometry(targetEntity, doc.dimStyle);
+    assert.equal(geo.texts[0].height, 4.5, 'Texto renderizado da cota de destino deve ter altura 4.5');
+});
+
+test('MATCHPROP: copia propriedades e textHeight entre texto e cota de forma bidirecional', async () => {
+    let doc = createDocument();
+    doc.layers.push({ name: 'TEXTOS', color: 2, lineType: 'CONTINUOUS', lineWeight: 15, visible: true, locked: false });
+
+    const textoOrigem = {
+        id: 'txt-src',
+        type: 'text',
+        text: 'NOTA IMPORTANTE',
+        position: { x: 10, y: 10 },
+        height: 6.0,
+        layer: 'TEXTOS',
+        color: 2,
+        lineType: 'CONTINUOUS',
+        lineWeight: 15,
+        fontFamily: 'Arial',
+        bold: true,
+    };
+
+    const cotaDestino = {
+        id: 'dim-target',
+        type: 'dimension',
+        kind: 'horizontal',
+        p1: { x: 0, y: 0 },
+        p2: { x: 50, y: 0 },
+        linePoint: { x: 25, y: 10 },
+        layer: '0',
+        color: 'bylayer',
+        textHeight: 2.5,
+    };
+
+    doc = addEntities(doc, [textoOrigem, cotaDestino]);
+
+    let targetDim = null;
+    let queryStep = 0;
+
+    let mockEditor = {
+        doc,
+        canvas: { classList: { add() {}, remove() {} } },
+        async getEntity() {
+            queryStep++;
+            if (queryStep === 1) return { entity: doc.entities.find(e => e.id === 'txt-src') };
+            if (queryStep === 2) return { entity: doc.entities.find(e => e.id === 'dim-target') };
+            return null;
+        },
+        commit(label, newDoc) {
+            targetDim = newDoc.entities.find(e => e.id === 'dim-target');
+            doc = newDoc;
+        },
+    };
+
+    await EDIT_COMMANDS.MATCHPROP.run(mockEditor);
+
+    assert.ok(targetDim, 'Cota de destino deve ser atualizada');
+    assert.equal(targetDim.layer, 'TEXTOS');
+    assert.equal(targetDim.color, 2);
+    assert.equal(targetDim.textHeight, 6.0, 'Deve transferir height do texto para textHeight da cota');
+    assert.equal(targetDim.style?.textHeight, 6.0);
+    assert.equal(targetDim.fontFamily, 'Arial');
+    assert.equal(targetDim.bold, true);
+
+    // Agora da cota para um novo texto:
+    const textoDestino = {
+        id: 'txt-target',
+        type: 'text',
+        text: 'DETALHE',
+        position: { x: 50, y: 50 },
+        height: 2.0,
+        layer: '0',
+        color: 'bylayer',
+    };
+    doc = addEntities(doc, [textoDestino]);
+
+    let targetTxt = null;
+    queryStep = 0;
+    mockEditor = {
+        doc,
+        canvas: { classList: { add() {}, remove() {} } },
+        async getEntity() {
+            queryStep++;
+            if (queryStep === 1) return { entity: doc.entities.find(e => e.id === 'dim-target') };
+            if (queryStep === 2) return { entity: doc.entities.find(e => e.id === 'txt-target') };
+            return null;
+        },
+        commit(label, newDoc) {
+            targetTxt = newDoc.entities.find(e => e.id === 'txt-target');
+            doc = newDoc;
+        },
+    };
+
+    await EDIT_COMMANDS.MATCHPROP.run(mockEditor);
+
+    assert.ok(targetTxt, 'Texto de destino deve ser atualizado');
+    assert.equal(targetTxt.layer, 'TEXTOS');
+    assert.equal(targetTxt.color, 2);
+    assert.equal(targetTxt.height, 6.0, 'Deve transferir textHeight da cota para height do texto');
+    assert.equal(targetTxt.fontFamily, 'Arial');
+    assert.equal(targetTxt.bold, true);
+});
+
+test('editor.js: onKeyDown não rouba foco nem dispara comandos do CAD quando usuário digita em input dentro de this.root', () => {
+    // Simula ambiente de DOM com input focado dentro do container root
+    let terminalFocused = false;
+    let commandExecuted = null;
+
+    const mockRoot = {
+        contains(element) {
+            return true; // Simula input que está dentro de this.root (painel de propriedades)
+        },
+    };
+
+    const mockInput = {
+        tagName: 'INPUT',
+        isContentEditable: false,
+        value: '4,5',
+        blurred: false,
+        blur() {
+            this.blurred = true;
+        },
+    };
+
+    const mockTerminal = {
+        isFocused() {
+            return false;
+        },
+        focus() {
+            terminalFocused = true;
+        },
+        value() {
+            return '';
+        },
+    };
+
+    // Cria instância com mock de métodos para validar isolamento
+    const editorProto = Editor.prototype;
+
+    const dummyEditor = {
+        terminal: mockTerminal,
+        root: mockRoot,
+        selection: new Set(['dim-1']),
+        pending: null,
+        activeGrip: null,
+        executeCommand(cmd) {
+            commandExecuted = cmd;
+        },
+        runCommand(cmd) {
+            commandExecuted = cmd;
+        },
+        cancel() {},
+    };
+
+    // Configura global document.activeElement para o input mockado
+    const originalDoc = globalThis.document;
+    // @ts-ignore
+    globalThis.document = { activeElement: mockInput };
+
+    try {
+        // 1. Tecla '4' digitada no input
+        editorProto.onKeyDown.call(dummyEditor, {
+            key: '4',
+            ctrlKey: false,
+            metaKey: false,
+            altKey: false,
+            shiftKey: false,
+            isComposing: false,
+            preventDefault() {},
+        });
+
+        assert.equal(terminalFocused, false, 'Não deve roubar foco para o terminal ao digitar caractere no input');
+
+        // 2. Tecla 'Delete' pressionada no input
+        editorProto.onKeyDown.call(dummyEditor, {
+            key: 'Delete',
+            ctrlKey: false,
+            metaKey: false,
+            altKey: false,
+            shiftKey: false,
+            isComposing: false,
+            preventDefault() {},
+        });
+
+        assert.equal(commandExecuted, null, 'Não deve executar ERASE ao pressionar Delete dentro do input');
+
+        // 3. Tecla 'Escape' pressionada no input
+        let stageFocused = false;
+        dummyEditor.stage = {
+            focus() {
+                stageFocused = true;
+            },
+        };
+
+        editorProto.onKeyDown.call(dummyEditor, {
+            key: 'Escape',
+            ctrlKey: false,
+            metaKey: false,
+            altKey: false,
+            shiftKey: false,
+            isComposing: false,
+            preventDefault() {},
+        });
+
+        assert.equal(mockInput.blurred, true, 'Escape deve chamar blur() no input');
+        assert.equal(stageFocused, true, 'Escape deve devolver foco ao stage');
+    } finally {
+        globalThis.document = originalDoc;
+    }
+});

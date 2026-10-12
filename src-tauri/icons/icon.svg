@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0b1220"/>
+    </linearGradient>
+  </defs>
+  <!-- placa no formato de ícone do macOS (824 px com margem de 100) -->
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="184.5" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="3"/>
+  <!-- linha de construção tracejada entre as alças -->
+  <line x1="282" y1="742" x2="742" y2="282" stroke="#5eead4" stroke-opacity="0.35" stroke-width="10" stroke-dasharray="22 22" stroke-linecap="round"/>
+  <!-- o traço -->
+  <path d="M282 742 C 312 466, 466 606, 512 512 S 712 558, 742 282" fill="none" stroke="#ffffff" stroke-width="66" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- alças de edição de CAD -->
+  <rect x="224" y="684" width="116" height="116" rx="14" fill="#14b8a6" stroke="#0b1220" stroke-width="14"/>
+  <rect x="684" y="224" width="116" height="116" rx="14" fill="#14b8a6" stroke="#0b1220" stroke-width="14"/>
+  <rect x="472" y="472" width="80" height="80" rx="10" fill="#0b1220" stroke="#5eead4" stroke-width="12"/>
+</svg>

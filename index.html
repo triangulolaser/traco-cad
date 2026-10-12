@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traço · CAD 2D</title>
+</head>
+<body>
+    <div class="cad-app" data-cad-app>
+                <div class="cad-ribbon" data-cad-ribbon>
+            <div class="cad-ribbon-tabs" role="tablist">
+                <span class="cad-brand" title="Traço · CAD 2D Desktop"><i class="bi bi-vector-pen"></i> Traço</span>
+                <button type="button" class="cad-ribbon-tab is-active" role="tab" data-cad-ribbon-tab="inicio" aria-selected="true">Início</button>
+                <button type="button" class="cad-ribbon-tab" role="tab" data-cad-ribbon-tab="inserir" aria-selected="false">Inserir</button>
+                <button type="button" class="cad-ribbon-tab" role="tab" data-cad-ribbon-tab="anotar" aria-selected="false">Anotar</button>
+                <button type="button" class="cad-ribbon-tab" role="tab" data-cad-ribbon-tab="vista" aria-selected="false">Vista</button>
+                <button type="button" class="cad-ribbon-tab" role="tab" data-cad-ribbon-tab="cam" aria-selected="false">Otimizar</button>
+                <button type="button" class="cad-ribbon-tab" role="tab" data-cad-ribbon-tab="saidas" aria-selected="false">Saídas</button>
+                <span class="cad-ribbon-spacer"></span>
+                <div class="cad-ribbon-quick">
+                    <button type="button" class="cad-btn cad-btn-icon" data-cad-command="UNDO" title="Desfazer (Cmd+Z / Ctrl+Z)"><i class="bi bi-arrow-counterclockwise"></i></button>
+                    <button type="button" class="cad-btn cad-btn-icon" data-cad-command="REDO" title="Refazer (Cmd+Shift+Z / Ctrl+Y)"><i class="bi bi-arrow-clockwise"></i></button>
+                    <span class="cad-ribbon-divider"></span>
+                    <div class="cad-layer-control">
+                        <span class="cad-layer-swatch" data-cad-layer-swatch></span>
+                        <select class="cad-layer-select" data-cad-layer-select aria-label="Layer atual"></select>
+                        <button type="button" class="cad-btn cad-btn-icon" data-cad-layer-visibility title="Ligar/desligar layer atual"><i class="bi bi-lightbulb"></i></button>
+                        <button type="button" class="cad-btn cad-btn-icon" data-cad-layer-new title="Novo layer (LAN)"><i class="bi bi-plus-lg"></i></button>
+                        <button type="button" class="cad-btn cad-btn-icon" data-cad-layer-manager-open title="Gerenciar layers (LA)"><i class="bi bi-list-ul"></i></button>
+                    </div>
+                    <span class="cad-ribbon-divider"></span>
+                    <button type="button" class="cad-btn cad-btn-icon" data-cad-toggle-panel="properties" title="Propriedades"><i class="bi bi-sliders"></i></button>
+                    <span class="cad-ribbon-divider"></span>
+                    <select class="cad-locale-select" data-cad-locale-select data-i18n-skip title="Idioma / Language / Idioma" aria-label="Idioma"></select>
+                    <button type="button" class="cad-btn cad-btn-icon" data-cad-theme-toggle title="Alternar tema claro/escuro"><i class="bi bi-sun"></i></button>
+                    <button type="button" class="cad-btn cad-btn-icon" data-cad-fullscreen title="Tela cheia"><i class="bi bi-arrows-fullscreen"></i></button>
+                    <button type="button" class="cad-btn cad-btn-icon" data-desktop-update-check title="Verificar atualizações"><i class="bi bi-cloud-arrow-down"></i></button>
+                    <button type="button" class="cad-btn cad-btn-icon" data-cad-ribbon-collapse title="Recolher ou expandir o ribbon"><i class="bi bi-chevron-up"></i></button>
+                </div>
+            </div>
+
+            <!-- Aba Início -->
+            <div class="cad-ribbon-panel is-active" data-cad-ribbon-panel="inicio" role="tabpanel">
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="LINE" title="Linha (L)"><i class="bi bi-slash-lg"></i><span>Linha</span></button>
+                        <button type="button" class="cad-ribbon-button" data-cad-command="PLINE" title="Polilinha (PL)"><i class="bi bi-bezier2"></i><span>Polilinha</span></button>
+<div class="cad-ribbon-split" data-cad-split="circle">
+                            <button type="button" class="cad-ribbon-split-main" data-cad-command="CIRCLE" data-cad-args="cr" title="Círculo Centro-Raio (C)">
+                                <span class="cad-dropdown-icon" data-cad-split-icon><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="12" x2="21" y2="12" stroke="#94a3b8" stroke-width="1.2"/><rect x="10.5" y="10.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="19.5" y="10.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span>
+                                <span data-cad-split-label>Círculo</span>
+                            </button>
+                            <button type="button" class="cad-ribbon-split-arrow" data-cad-split-toggle="circle" title="Mais opções de círculo" aria-haspopup="true" aria-expanded="false"><i class="bi bi-caret-down-fill"></i></button>
+                            <div class="cad-ribbon-dropdown-menu" data-cad-dropdown-menu="circle" hidden>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="CIRCLE" data-cad-args="cr" data-cad-label="Circulo Centro-Raio" title="Círculo Centro-Raio (C)"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="12" x2="21" y2="12" stroke="#94a3b8" stroke-width="1.2"/><rect x="10.5" y="10.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="19.5" y="10.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Circulo Centro-Raio</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="CIRCLE" data-cad-args="cd" data-cad-label="Circulo Centro-Diâmetro" title="Círculo Centro-Diâmetro"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="5.6" y1="18.4" x2="18.4" y2="5.6" stroke="#94a3b8" stroke-width="1.2"/><rect x="10.5" y="10.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="17" y="4" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Circulo Centro-Diâmetro</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="CIRCLE" data-cad-args="2p" data-cad-label="Círculo 2-Pontos" title="Círculo por 2 Pontos (2P)"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="3" y1="12" x2="21" y2="12" stroke="#94a3b8" stroke-width="1.2"/><rect x="1.5" y="10.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="19.5" y="10.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Círculo 2-Pontos</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="CIRCLE" data-cad-args="3p" data-cad-label="Circulo 3-Pontos" title="Círculo por 3 Pontos (3P)"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><polygon points="4.5,17 19.5,17 12,3" fill="none" stroke="#94a3b8" stroke-width="1"/><rect x="3" y="15.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="18" y="15.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="10.5" y="1.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Circulo 3-Pontos</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="CIRCLE" data-cad-args="ttr" data-cad-label="Circulo Tangente-Raio" title="Círculo Tangente, Tangente, Raio (TTR)"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><polyline points="3,3 3,21 21,21" fill="none" stroke="#94a3b8" stroke-width="1.2"/><circle cx="13" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="13" y1="11" x2="20" y2="11" stroke="#94a3b8" stroke-width="1.2"/><rect x="11.5" y="9.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="1.5" y="9.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="11.5" y="19.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Circulo Tangente-Raio</span></button>
+                            </div>
+                        </div>
+                        <div class="cad-ribbon-split" data-cad-split="arc">
+                            <button type="button" class="cad-ribbon-split-main" data-cad-command="ARC" data-cad-args="3p" title="Arco 3-Pontos (A)">
+                                <span class="cad-dropdown-icon" data-cad-split-icon><svg viewBox="0 0 24 24"><path d="M 4,16 A 10,10 0 0,1 20,16" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="14.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="10.5" y="4.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="18.5" y="14.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span>
+                                <span data-cad-split-label>Arco</span>
+                            </button>
+                            <button type="button" class="cad-ribbon-split-arrow" data-cad-split-toggle="arc" title="Mais opções de arco" aria-haspopup="true" aria-expanded="false"><i class="bi bi-caret-down-fill"></i></button>
+                            <div class="cad-ribbon-dropdown-menu" data-cad-dropdown-menu="arc" hidden>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="ARC" data-cad-args="3p" data-cad-label="Arco 3-Pontos" title="Arco por 3 Pontos (A)"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><path d="M 4,16 A 10,10 0 0,1 20,16" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="14.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="10.5" y="4.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="18.5" y="14.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Arco 3-Pontos</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="ARC" data-cad-args="sce" data-cad-label="Arco Iniciar-Centro-Fim" title="Arco Início, Centro, Fim"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><path d="M 18,18 A 12,12 0 0,0 6,6" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="6" y1="18" x2="18" y2="18" stroke="#94a3b8" stroke-width="1" stroke-dasharray="2 2"/><line x1="6" y1="18" x2="6" y2="6" stroke="#94a3b8" stroke-width="1" stroke-dasharray="2 2"/><rect x="4.5" y="16.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="16.5" y="16.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="4.5" y="4.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Arco Iniciar-Centro-Fim</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="ARC" data-cad-args="sca" data-cad-label="Arco Inicio-Centro-Angulo" title="Arco Início, Centro, Ângulo"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><path d="M 18,18 A 12,12 0 0,0 9.5,7.6" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="6" y1="18" x2="18" y2="18" stroke="#94a3b8" stroke-width="1"/><line x1="6" y1="18" x2="9.5" y2="7.6" stroke="#94a3b8" stroke-width="1"/><path d="M 12,18 A 6,6 0 0,0 7.8,12.8" fill="none" stroke="#38bdf8" stroke-width="1.2"/><rect x="4.5" y="16.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="16.5" y="16.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Arco Inicio-Centro-Angulo</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="ARC" data-cad-args="scl" data-cad-label="Arco Inicio-Centro-Comprimento" title="Arco Início, Centro, Comprimento da corda"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><path d="M 18,18 A 12,12 0 0,0 7.5,7.5" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="18" y1="18" x2="7.5" y2="7.5" stroke="#94a3b8" stroke-width="1.2"/><rect x="4.5" y="16.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="16.5" y="16.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="6" y="6" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Arco Inicio-Centro-Comprimento</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="ARC" data-cad-args="sea" data-cad-label="Arco Inicio-Fim-Angulo" title="Arco Início, Fim, Ângulo incluído"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><path d="M 4,16 A 10,10 0 0,1 20,16" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="4" y1="16" x2="12" y2="8" stroke="#94a3b8" stroke-width="1"/><line x1="20" y1="16" x2="12" y2="8" stroke="#94a3b8" stroke-width="1"/><rect x="2.5" y="14.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="18.5" y="14.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Arco Inicio-Fim-Angulo</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="ARC" data-cad-args="sed" data-cad-label="Arco Inicio-Fim-Direção" title="Arco Início, Fim, Direção da tangente"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><path d="M 5,18 A 12,12 0 0,1 18,5" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="5" y1="18" x2="5" y2="7" stroke="#38bdf8" stroke-width="1.2"/><polygon points="3.5,8 5,5 6.5,8" fill="#38bdf8"/><rect x="3.5" y="16.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="16.5" y="3.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Arco Inicio-Fim-Direção</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="ARC" data-cad-args="ser" data-cad-label="Arco Inicio-Fim-Raio" title="Arco Início, Fim, Raio"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><path d="M 4,15 A 10,10 0 0,1 20,15" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="15" x2="12" y2="5" stroke="#94a3b8" stroke-width="1.2"/><rect x="2.5" y="13.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="18.5" y="13.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Arco Inicio-Fim-Raio</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="ARC" data-cad-args="cse" data-cad-label="Arco Centro-Inicio-Fim" title="Arco Centro, Início, Fim"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><path d="M 18,18 A 12,12 0 0,0 6,6" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="6" y1="18" x2="18" y2="18" stroke="#94a3b8" stroke-width="1" stroke-dasharray="2 2"/><line x1="6" y1="18" x2="6" y2="6" stroke="#94a3b8" stroke-width="1" stroke-dasharray="2 2"/><rect x="4.5" y="16.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="16.5" y="16.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="4.5" y="4.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Arco Centro-Inicio-Fim</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="ARC" data-cad-args="csa" data-cad-label="Arco Centro-Inicio-Angulo" title="Arco Centro, Início, Ângulo"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><path d="M 18,18 A 12,12 0 0,0 9.5,7.6" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="6" y1="18" x2="18" y2="18" stroke="#94a3b8" stroke-width="1"/><line x1="6" y1="18" x2="9.5" y2="7.6" stroke="#94a3b8" stroke-width="1"/><path d="M 12,18 A 6,6 0 0,0 7.8,12.8" fill="none" stroke="#38bdf8" stroke-width="1.2"/><rect x="4.5" y="16.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="16.5" y="16.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Arco Centro-Inicio-Angulo</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="ARC" data-cad-args="csl" data-cad-label="Arco Centro-Inicio-Comprimento" title="Arco Centro, Início, Comprimento da corda"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><path d="M 18,18 A 12,12 0 0,0 7.5,7.5" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="18" y1="18" x2="7.5" y2="7.5" stroke="#94a3b8" stroke-width="1.2"/><rect x="4.5" y="16.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="16.5" y="16.5" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/><rect x="6" y="6" width="3" height="3" fill="#38bdf8" stroke="#fff" stroke-width="0.75"/></svg></span><span>Arco Centro-Inicio-Comprimento</span></button>
+                            </div>
+                        </div>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="RECTANG" title="Retângulo (REC)"><i class="bi bi-square"></i><span>Retângulo</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="HATCH" title="Hachura/preenchimento (H)"><i class="bi bi-grid-3x3-gap-fill"></i><span>Hachura</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="ELLIPSE" title="Elipse (EL)"><i class="bi bi-egg"></i><span>Elipse</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Desenho</div>
+                </div>
+
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="MOVE" title="Mover (M)"><i class="bi bi-arrows-move"></i><span>Mover</span></button>
+                        <button type="button" class="cad-ribbon-button" data-cad-command="COPY" title="Copiar (CO)"><i class="bi bi-copy"></i><span>Copiar</span></button>
+                        <button type="button" class="cad-ribbon-button" data-cad-command="ROTATE" title="Rotacionar (RO)"><i class="bi bi-arrow-clockwise"></i><span>Rotacionar</span></button>
+                        <div class="cad-ribbon-split" data-cad-split="array">
+                            <button type="button" class="cad-ribbon-split-main" data-cad-command="ARRAY" data-cad-args="r" title="Matriz Retangular (AR)">
+                                <span class="cad-dropdown-icon" data-cad-split-icon><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" fill="none" stroke="#38bdf8" stroke-width="1.5"/></svg></span>
+                                <span data-cad-split-label>Matriz</span>
+                            </button>
+                            <button type="button" class="cad-ribbon-split-arrow" data-cad-split-toggle="array" title="Mais opções de matriz" aria-haspopup="true" aria-expanded="false"><i class="bi bi-caret-down-fill"></i></button>
+                            <div class="cad-ribbon-dropdown-menu" data-cad-dropdown-menu="array" hidden>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="ARRAY" data-cad-args="r" data-cad-label="Matriz Retangular" title="Linhas e colunas com espaçamento"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" fill="none" stroke="#38bdf8" stroke-width="1.5"/></svg></span><span>Matriz Retangular</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="ARRAY" data-cad-args="p" data-cad-label="Matriz Polar" title="Cópias em volta de um centro"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.5" fill="#94a3b8"/><rect x="9.5" y="2" width="5" height="5" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="17" y="9.5" width="5" height="5" fill="none" stroke="#38bdf8" stroke-width="1.5"/><rect x="9.5" y="17" width="5" height="5" fill="none" stroke="#38bdf8" stroke-width="1.5"/><rect x="2" y="9.5" width="5" height="5" fill="none" stroke="#38bdf8" stroke-width="1.5"/></svg></span><span>Matriz Polar</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="ARRAY" data-cad-args="l" data-cad-label="Matriz Linear" title="Cópias em uma direção"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24"><rect x="2" y="9" width="5" height="6" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="9.5" y="9" width="5" height="6" fill="none" stroke="#38bdf8" stroke-width="1.5"/><rect x="17" y="9" width="5" height="6" fill="none" stroke="#38bdf8" stroke-width="1.5"/></svg></span><span>Matriz Linear</span></button>
+                            </div>
+                        </div>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="TRIM" title="Aparar (TR)"><i class="bi bi-scissors"></i><span>Aparar</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="EXTEND" title="Estender (EX)"><i class="bi bi-arrow-bar-right"></i><span>Estender</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="FILLET" title="Fillet (F)"><i class="bi bi-vector-pen"></i><span>Fillet</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="MIRROR" title="Espelhar (MI)"><i class="bi bi-symmetry-vertical"></i><span>Espelhar</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="OFFSET" title="Offset (O)"><i class="bi bi-layers"></i><span>Offset</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="SCALE" title="Escalar (SC)"><i class="bi bi-arrows-angle-expand"></i><span>Escalar</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Modificar</div>
+                </div>
+
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="DIM" title="Cota automática inteligente (DIM)"><i class="bi bi-magic"></i><span>Cota</span></button>
+                        <button type="button" class="cad-ribbon-button" data-cad-command="TEXT" title="Texto (T)"><i class="bi bi-fonts"></i><span>Texto</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="DIMPART" title="Cotar a peça inteira (DIMPART)"><i class="bi bi-rulers"></i><span>Cotar peça</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="DIMLINEAR" title="Cota linear (DLI)"><i class="bi bi-arrows"></i><span>Linear</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="DIMALIGNED" title="Cota alinhada (DAL)"><i class="bi bi-arrows-angle-contract"></i><span>Alinhada</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Anotações</div>
+                </div>
+
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-layer-manager-open title="Gerenciador de layers (LA)"><i class="bi bi-list-ul"></i><span>Camadas</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="LAYNEW" title="Criar nova camada (LAN)"><i class="bi bi-plus-lg"></i><span>Nova</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="CHPROP" title="Mudar objetos de camada (CH)"><i class="bi bi-arrow-right-square"></i><span>Mover</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Camadas</div>
+                </div>
+
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="MATCHPROP" title="Copiar propriedades (MA / COPIARPROP)"><i class="bi bi-brush"></i><span>Copiar prop.</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-toggle-panel="properties" title="Exibir painel lateral de propriedades"><i class="bi bi-sliders"></i><span>Painel</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Propriedades</div>
+                </div>
+
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="DIST" title="Medir distância e ângulo (DI)"><i class="bi bi-rulers"></i><span>Distância</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="AREA" title="Medir área e perímetro (AA)"><i class="bi bi-bounding-box"></i><span>Área</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="LIST" title="Listar propriedades das entidades (LI)"><i class="bi bi-info-circle"></i><span>Listar</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Utilidades</div>
+                </div>
+            </div>
+
+            <!-- Aba Inserir -->
+            <div class="cad-ribbon-panel" data-cad-ribbon-panel="inserir" role="tabpanel">
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="INSERTBLOCK" title="Inserir instância de bloco (IB)"><i class="bi bi-box-arrow-in-down"></i><span>Inserir bloco</span></button>
+                        <button type="button" class="cad-ribbon-button" data-cad-command="BLOCK" title="Criar bloco persistente (B)"><i class="bi bi-box-seam"></i><span>Criar bloco</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="BEDIT" title="Editar definição de bloco"><i class="bi bi-pencil-square"></i><span>Editar bloco</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="WBLOCK" title="Exportar bloco DXF (W)"><i class="bi bi-box-arrow-up-right"></i><span>WBlock</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="BLOCKLOAD" title="Carregar da biblioteca local"><i class="bi bi-collection"></i><span>Biblioteca</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="BLOCKSAVE" title="Salvar bloco na biblioteca"><i class="bi bi-archive"></i><span>Salvar biblioteca</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Blocos</div>
+                </div>
+
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="IMPORT" title="Inserir DXF no desenho atual"><i class="bi bi-box-arrow-in-down"></i><span>Inserir DXF</span></button>
+                        <button type="button" class="cad-ribbon-button" data-cad-command="PDFIMPORT" title="Vetorizar e importar PDF de engenharia"><i class="bi bi-file-earmark-pdf"></i><span>PDF Técnico</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="SVG" title="Importar vetores SVG"><i class="bi bi-file-earmark-code"></i><span>SVG</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="CDR" title="Visualizar arquivo .cdr CorelDRAW"><i class="bi bi-file-earmark-richtext"></i><span>CorelDRAW</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="QET" title="Importar projeto elétrico QElectroTech"><i class="bi bi-diagram-2"></i><span>QET / Chicotes</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="LXDS" title="Importar geometria .lxds de corte laser"><i class="bi bi-file-earmark-binary"></i><span>LXDS</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Importação de Engenharia</div>
+                </div>
+
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="IMAGEATTACH" title="Inserir imagem raster de referência (IM)"><i class="bi bi-image"></i><span>Imagem</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Referência</div>
+                </div>
+            </div>
+
+            <!-- Aba Anotar -->
+            <div class="cad-ribbon-panel" data-cad-ribbon-panel="anotar" role="tabpanel">
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="DIM" title="Cota automática inteligente (DIM)"><i class="bi bi-magic"></i><span>Cota auto</span></button>
+                        <button type="button" class="cad-ribbon-button" data-cad-command="DIMPART" title="Cotar a peça inteira automaticamente (DIMPART)"><i class="bi bi-rulers"></i><span>Cotar peça</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="DIMLINEAR" title="Cota linear (DLI)"><i class="bi bi-arrows"></i><span>Linear</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="DIMALIGNED" title="Cota alinhada (DAL)"><i class="bi bi-arrows-angle-contract"></i><span>Alinhada</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="DIMANGULAR" title="Cota angular (DAN)"><i class="bi bi-triangle"></i><span>Angular</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="DIMRADIUS" title="Cota de raio (DRA)"><i class="bi bi-record-circle"></i><span>Raio</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="DIMDIAMETER" title="Cota de diâmetro (DDI)"><i class="bi bi-circle-half"></i><span>Diâmetro</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="LEADER" title="Linha de chamada com anotação (LE)"><i class="bi bi-arrow-up-right"></i><span>Chamada</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Cotas</div>
+                </div>
+
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="TEXT" title="Texto de linha única ou multilinha (T)"><i class="bi bi-fonts"></i><span>Texto</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="TEXTEDIT" title="Editar propriedades do texto (ED / DDEDIT)"><i class="bi bi-pencil-square"></i><span>Editar texto</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="TEXTSTYLE" title="Configurar fonte padrão dos textos"><i class="bi bi-fonts"></i><span>Estilo texto</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="DIMTEXT" title="Editar texto da cota (<> restaura)"><i class="bi bi-pencil"></i><span>Texto cota</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="DIMSTYLE" title="Configurar estilo e tolerâncias das cotas"><i class="bi bi-card-text"></i><span>Estilo cota</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Texto & Estilo</div>
+                </div>
+
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="DIST" title="Medir distância e ângulo entre dois pontos (DI)"><i class="bi bi-rulers"></i><span>Distância</span></button>
+                        <button type="button" class="cad-ribbon-button" data-cad-command="AREA" title="Medir área e perímetro de contorno (AA)"><i class="bi bi-bounding-box"></i><span>Área</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="LIST" title="Listar propriedades das entidades (LI)"><i class="bi bi-info-circle"></i><span>Listar</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Medição</div>
+                </div>
+            </div>
+
+            <!-- Aba Vista -->
+            <div class="cad-ribbon-panel" data-cad-ribbon-panel="vista" role="tabpanel">
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="ZOOMEXTENTS" title="Ajustar todo o desenho na tela (ZE)"><i class="bi bi-arrows-fullscreen"></i><span>Ajustar tudo</span></button>
+                        <button type="button" class="cad-ribbon-button" data-cad-command="ZOOM" data-cad-args="w" title="Zoom por janela"><i class="bi bi-zoom-in"></i><span>Janela</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="PAN" title="Pan em tempo real (P)"><i class="bi bi-hand-index"></i><span>Pan</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Navegação</div>
+                </div>
+
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="GRID" title="Alternar grade de referência (F7)"><i class="bi bi-grid"></i><span>Grade</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="ORTHO" title="Alternar modo ortogonal (F8)"><i class="bi bi-crosshair2"></i><span>Orto</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="POLAR" title="Alternar rastreamento polar (F10)"><i class="bi bi-compass"></i><span>Polar</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="OSNAP" title="Alternar snap ao objeto (F3)"><i class="bi bi-magnet"></i><span>Snap</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="OTRACK" title="Alternar rastreamento de snap (F11)"><i class="bi bi-cursor"></i><span>Otrack</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Modos de Desenho</div>
+                </div>
+
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-toggle-panel="properties" title="Alternar painel lateral de propriedades"><i class="bi bi-sliders"></i><span>Propriedades</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-layer-manager-open title="Gerenciador de camadas"><i class="bi bi-list-ul"></i><span>Camadas</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Painéis</div>
+                </div>
+            </div>
+
+            <!-- Aba Otimizar -->
+            <div class="cad-ribbon-panel" data-cad-ribbon-panel="cam" role="tabpanel">
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="OVERKILL" title="Eliminar geometrias duplicadas e sobrepostas"><i class="bi bi-shield-check"></i><span>Overkill</span></button>
+                        <button type="button" class="cad-ribbon-button" data-cad-command="PURGE" title="Expurgar camadas e definições não utilizadas"><i class="bi bi-trash3"></i><span>Purge</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="JOIN" title="Unir linhas e arcos em contornos fechados (J)"><i class="bi bi-link-45deg"></i><span>Unir</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="BREAK" title="Quebrar contornos em pontos (BR)"><i class="bi bi-scissors"></i><span>Quebrar</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="VERTEX" title="Inserir/remover vértices de polilinha (PEDIT)"><i class="bi bi-bounding-box-circles"></i><span>Vértices</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Limpeza & Geometria</div>
+                </div>
+            </div>
+
+            <!-- Aba Saídas -->
+            <div class="cad-ribbon-panel" data-cad-ribbon-panel="saidas" role="tabpanel">
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="PRINT" title="Impressão em escala técnica milimétrica e carimbo ABNT"><i class="bi bi-printer"></i><span>Imprimir / PDF</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Plotagem</div>
+                </div>
+
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="SAVE" title="Baixar desenho como arquivo DXF (Ctrl+S)"><i class="bi bi-download"></i><span>Salvar DXF</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="SAVEAS" title="Salvar DXF com outro nome"><i class="bi bi-pencil-square"></i><span>Salvar como</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="DWG" title="Exportar como AutoCAD DWG nativo"><i class="bi bi-file-earmark-code"></i><span>Salvar DWG</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="WBLOCK" title="Exportar seleção como bloco DXF"><i class="bi bi-box-arrow-up-right"></i><span>Exportar Bloco</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Exportação</div>
+                </div>
+
+                <div class="cad-ribbon-group">
+                    <div class="cad-ribbon-group-items">
+                        <button type="button" class="cad-ribbon-button" data-cad-command="NEW" title="Novo desenho em nova aba"><i class="bi bi-file-earmark-plus"></i><span>Novo</span></button>
+                        <button type="button" class="cad-ribbon-button is-small" data-cad-command="OPEN" title="Abrir arquivo de desenho CAD (Ctrl+O)"><i class="bi bi-folder2-open"></i><span>Abrir</span></button>
+                    </div>
+                    <div class="cad-ribbon-group-label">Documento</div>
+                </div>
+            </div>
+        </div>
+
+<!-- Abas de Desenhos -->
+        <div class="cad-tabs" data-cad-tabs role="tablist" aria-label="Desenhos abertos">
+            <div class="cad-tabs-list" data-cad-tabs-list></div>
+            <button type="button" class="cad-btn cad-btn-icon cad-tab-add" data-cad-tab-add title="Novo desenho em nova aba"><i class="bi bi-plus-lg"></i></button>
+            <span class="cad-tabs-status" data-cad-save-status></span>
+        </div>
+
+        <div class="cad-tab-context-menu" data-cad-tab-context-menu hidden>
+            <button type="button" class="cad-tab-context-item" data-action="close"><i class="bi bi-x-lg"></i><span>Fechar aba</span></button>
+            <button type="button" class="cad-tab-context-item" data-action="close-others"><i class="bi bi-x-circle"></i><span>Fechar outras abas</span></button>
+            <button type="button" class="cad-tab-context-item" data-action="close-right"><i class="bi bi-arrow-right"></i><span>Fechar abas à direita</span></button>
+            <button type="button" class="cad-tab-context-item" data-action="close-left"><i class="bi bi-arrow-left"></i><span>Fechar abas à esquerda</span></button>
+            <button type="button" class="cad-tab-context-item" data-action="close-all"><i class="bi bi-trash3"></i><span>Fechar todas as abas</span></button>
+            <div class="cad-tab-context-separator"></div>
+            <button type="button" class="cad-tab-context-item" data-action="duplicate"><i class="bi bi-copy"></i><span>Duplicar aba</span></button>
+            <button type="button" class="cad-tab-context-item" data-action="rename"><i class="bi bi-pencil"></i><span>Renomear...</span></button>
+            <div class="cad-tab-context-separator"></div>
+            <button type="button" class="cad-tab-context-item" data-action="new"><i class="bi bi-plus-lg"></i><span>Nova aba</span></button>
+        </div>
+
+        <!-- Área Central de Desenho e Painéis -->
+        <div class="cad-workspace">
+            <div class="cad-stage" data-cad-stage>
+                <canvas class="cad-canvas" data-cad-canvas aria-label="Área de desenho"></canvas>
+            </div>
+
+            <aside class="cad-panel cad-panel-right" data-cad-panel="properties" aria-label="Propriedades">
+                <header class="cad-panel-header">
+                    <span data-cad-properties-title>Sem seleção</span>
+                    <div class="cad-panel-header-actions">
+                        <button type="button" class="cad-btn cad-btn-icon" data-cad-panel-close="properties" title="Fechar"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                </header>
+                <div class="cad-properties" data-cad-properties></div>
+            </aside>
+        </div>
+
+        <!-- Linha de Comando e Terminal -->
+        <div class="cad-terminal" data-cad-terminal>
+            <div class="cad-terminal-resize" data-cad-terminal-resize title="Arraste para ajustar a altura do terminal"></div>
+            <div class="cad-terminal-history" data-cad-terminal-history aria-live="polite"></div>
+            <div class="cad-terminal-input-row">
+                <span class="cad-terminal-prompt" data-cad-terminal-prompt>Comando:</span>
+                <input type="text" class="cad-terminal-input" data-cad-terminal-input autocomplete="off" spellcheck="false" aria-label="Linha de comando">
+            </div>
+        </div>
+
+        <!-- Barra de Status Inferior -->
+        <div class="cad-statusbar">
+            <span class="cad-status-coords" data-cad-coords></span>
+            <span class="cad-doc-name" data-cad-doc-name></span>
+            <span class="cad-status-spacer"></span>
+            <span class="cad-entity-count" data-cad-entity-count></span>
+            <button type="button" class="cad-status-toggle" data-cad-toggle="grid" title="Grade (F7)">GRADE</button>
+            <button type="button" class="cad-status-toggle" data-cad-toggle="ortho" title="Orto (F8)">ORTO</button>
+            <button type="button" class="cad-status-toggle" data-cad-toggle="polar" title="Polar (F10)">POLAR</button>
+            <button type="button" class="cad-status-toggle" data-cad-toggle="otrack" title="Rastreio por projeção (F11)">OTRACK</button>
+            <span class="cad-snap-wrapper">
+                <button type="button" class="cad-status-toggle" data-cad-toggle="osnap" title="Object snap (F3)">OSNAP</button>
+                <button type="button" class="cad-status-toggle" data-cad-snap-menu-toggle title="Configurar snaps">▾</button>
+                <div class="cad-snap-menu" data-cad-snap-menu hidden></div>
+            </span>
+        </div>
+
+        <!-- Gerenciador de Camadas (Modal) -->
+        <div class="cad-layer-manager" data-cad-layer-manager hidden>
+            <div class="cad-layer-manager-panel" role="dialog" aria-label="Layers">
+                <header>
+                    <strong>Layers</strong>
+                    <div class="cad-layer-manager-actions">
+                        <button type="button" class="cad-btn" data-cad-layer-manager-add><i class="bi bi-plus-lg"></i> Novo</button>
+                        <button type="button" class="cad-btn cad-btn-icon" data-cad-layer-manager-close aria-label="Fechar"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                </header>
+                <table class="cad-layer-table">
+                    <thead>
+                        <tr><th>Atual</th><th>Nome</th><th>Cor</th><th>Tipo de linha</th><th>Espessura</th><th>Visível</th><th>Travado</th><th>Objetos</th><th></th></tr>
+                    </thead>
+                    <tbody data-cad-layer-rows></tbody>
+                </table>
+            </div>
+        </div>
+
+        <input type="file" data-cad-file-input accept=".dwg,.dxf,.lxds,.cdr,.svg,.elmt,.qet" hidden>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Traço CAD",
+  "version": "0.3.0",
+  "identifier": "br.com.trls.traco.cad",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Traço · CAD 2D",
+        "width": 1360,
+        "height": 860,
+        "minWidth": 960,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": false,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["dxf", "DXF"],
+        "name": "AutoCAD DXF Drawing",
+        "description": "AutoCAD DXF Drawing",
+        "role": "Editor",
+        "mimeType": "image/vnd.dxf"
+      },
+      {
+        "ext": ["dwg", "DWG"],
+        "name": "AutoCAD DWG Drawing",
+        "description": "AutoCAD DWG Drawing",
+        "role": "Editor",
+        "mimeType": "image/vnd.dwg"
+      },
+      {
+        "ext": ["lxds", "LXDS"],
+        "name": "Laser Cut Geometry",
+        "description": "Laser Cut Geometry",
+        "role": "Editor"
+      },
+      {
+        "ext": ["cdr", "CDR"],
+        "name": "CorelDRAW Drawing",
+        "description": "CorelDRAW Drawing",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["qet", "QET"],
+        "name": "QElectroTech Project",
+        "description": "QElectroTech Project",
+        "role": "Editor"
+      },
+      {
+        "ext": ["elmt", "ELMT"],
+        "name": "QElectroTech Element",
+        "description": "QElectroTech Element",
+        "role": "Editor"
+      },
+      {
+        "ext": ["svg", "SVG"],
+        "name": "Scalable Vector Graphics",
+        "description": "Scalable Vector Graphics",
+        "role": "Editor",
+        "mimeType": "image/svg+xml"
+      }
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVDQjI0RjIzOEQ1NzQ3QTEKUldTaFIxZU5JMCt5N0FmQWl3eXh0aDdhRDVEOUdxRmtwbkdwTkhCOGptK1BWWE9WRmtQNUZxYngK",
+      "endpoints": [
+        "https://trls.com.br/traco/updates/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}
