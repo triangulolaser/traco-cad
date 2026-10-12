@@ -10,7 +10,7 @@ Built and used in production by **[Triângulo Laser](https://trls.com.br)**, a l
 sheet-metal bending shop in Araguari, Brazil. It is the CAD our team uses every day to prepare
 the drawings that go to the machines.
 
-![Traço CAD, dark theme, with a hole selected](docs/images/traco-escuro.png)
+![Traço CAD, dark theme, with a hole selected](docs/images/traco-dark.png)
 
 ## Features
 
@@ -36,9 +36,9 @@ The interface is available in English, Spanish and Portuguese, following the sys
 or the selector next to the theme button. Commands use their usual English names (`LINE`,
 `CIRCLE`, `TRIM`, `OFFSET`…), and Portuguese aliases also work.
 
-![Traço CAD, light theme](docs/images/traco-claro.png)
+![Traço CAD, light theme](docs/images/traco-light.png)
 
-The drawing in the screenshots is [`examples/suporte-chapa.dxf`](examples/suporte-chapa.dxf).
+The drawing in the screenshots is [`examples/sheet-bracket.dxf`](examples/sheet-bracket.dxf).
 
 ## Download
 
