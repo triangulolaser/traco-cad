@@ -1,6 +1,12 @@
 // Interface do Traço em inglês. Chave = texto original em português (ver i18n.js).
 // Texto novo na interface entra aqui na mesma MR (o teste cad-i18n-coverage cobra).
 export default {
+    "Centro X": "Center X",
+    "Centro Y": "Center Y",
+    "Início X": "Start X",
+    "Início Y": "Start Y",
+    "Posição X": "Position X",
+    "Posição Y": "Position Y",
     "Editar texto no desenho": "Edit text on drawing",
     "Formatação do texto": "Text formatting",
     "Propriedades avançadas": "Advanced properties",

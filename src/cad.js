@@ -315,10 +315,10 @@ function entityRows(editor, e) {
             rows.push(['Início', fmtPoint(e.start)], ['Fim', fmtPoint(e.end)], ['Comprimento', fmt(distance(e.start, e.end))], ['Ângulo', `${fmt(radToDeg(angleOf(e.start, e.end)), 2)}°`], ['ΔX / ΔY', `${fmt(e.end.x - e.start.x)} / ${fmt(e.end.y - e.start.y)}`]);
             break;
         case 'circle':
-            rows.push(['Centro', fmtPoint(e.center)], ['Raio', fmt(e.radius)], ['Diâmetro', fmt(e.radius * 2)], ['Perímetro', fmt(2 * Math.PI * e.radius)], ['Área', fmt(Math.PI * e.radius * e.radius)]);
+            rows.push(['Centro', fmtPoint(e.center)], ['Perímetro', fmt(2 * Math.PI * e.radius)], ['Área', fmt(Math.PI * e.radius * e.radius)]);
             break;
         case 'arc':
-            rows.push(['Centro', fmtPoint(e.center)], ['Raio', fmt(e.radius)], ['Início', `${fmt(radToDeg(e.start), 2)}°`], ['Fim', `${fmt(radToDeg(e.end), 2)}°`], ['Comprimento', fmt(entityLength(e))]);
+            rows.push(['Centro', fmtPoint(e.center)], ['Início', `${fmt(radToDeg(e.start), 2)}°`], ['Fim', `${fmt(radToDeg(e.end), 2)}°`], ['Comprimento', fmt(entityLength(e))]);
             break;
         case 'polyline':
             rows.push(['Vértices', String(e.vertices.length)], ['Fechada', e.closed ? 'Sim' : 'Não'], ['Comprimento', fmt(entityLength(e))]);
@@ -345,6 +345,9 @@ function entityRows(editor, e) {
     }
     return rows;
 }
+
+const GEOMETRY_LABELS = { 'center.x': 'Centro X', 'center.y': 'Centro Y', 'start.x': 'Início X', 'start.y': 'Início Y', 'end.x': 'Fim X', 'end.y': 'Fim Y', 'position.x': 'Posição X', 'position.y': 'Posição Y', radius: 'Raio', diameter: 'Diâmetro', height: 'Altura', rotation: 'Rotação', ratio: 'Razão', length: 'Comprimento' };
+const geometryLabel = (field) => GEOMETRY_LABELS[field.key] ?? (field.key === 'start' || field.key === 'end' ? `${field.key === 'start' ? 'Início' : 'Fim'} (°)` : field.key);
 
 const TYPE_LABELS = { line: 'Linha', circle: 'Círculo', arc: 'Arco', polyline: 'Polilinha', ellipse: 'Elipse', spline: 'Spline', text: 'Texto', dimension: 'Cota', image: 'Imagem' };
 
@@ -457,7 +460,7 @@ function renderProperties(editor, root) {
         html += section('Geometria');
         entityRows(editor, selected[0]).forEach(([k, v]) => { html += row(k, escapeHtml(String(v))); });
         const locked = !isEntityEditable(editor.doc, selected[0]);
-        for (const field of geometryFields(selected[0])) html += `<div class="cad-prop-row"><label class="cad-prop-key">${escapeHtml(field.key)}</label><span class="cad-prop-value"><input type="number" step="any" data-geometry="${escapeHtml(field.key)}" value="${field.value}" ${locked ? 'disabled' : ''}></span></div>`;
+        for (const field of geometryFields(selected[0])) html += `<div class="cad-prop-row"><label class="cad-prop-key">${escapeHtml(geometryLabel(field))}</label><span class="cad-prop-value"><input type="number" step="any" data-geometry="${escapeHtml(field.key)}" value="${field.value}" ${locked ? 'disabled' : ''}></span></div>`;
         if (['text', 'dimension'].includes(selected[0].type)) {
             const entity = selected[0];
             const style = entity.type === 'dimension' ? editor.doc.dimStyle : editor.doc.textStyle;

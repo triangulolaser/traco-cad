@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {stretchDocument,chamferLines,breakAtPoint,moveGrip,setGeometryField} from '../src/cad/edit-tools.js';
+import {stretchDocument,chamferLines,breakAtPoint,moveGrip,setGeometryField,geometryFields} from '../src/cad/edit-tools.js';
 import {createDocument,addEntities,History} from '../src/cad/document.js';
 import {dimensionGeometry} from '../src/cad/dimensions.js';
 import {findSoftAxis} from '../src/cad/snaps.js';
@@ -21,3 +21,4 @@ test('clockwise arc polyline break keeps negative bulge and total geometry',()=>
  const e={type:'polyline',closed:false,vertices:[{x:0,y:0,bulge:-1},{x:20,y:0,bulge:0}]};
  const parts=breakAtPoint(e,p(10,10));assert.equal(parts.length,2);assert.ok(parts[0].vertices[0].bulge<0);assert.ok(parts[1].vertices[0].bulge<0);assert.ok(Math.abs(parts[0].vertices[0].bulge+Math.tan(Math.PI/8))<1e-8);
 });
+test('diameter field edits circle and arc radius',()=>{const c={type:'circle',center:p(0,0),radius:100};const keys=geometryFields(c).map(f=>f.key);assert.equal(keys[keys.indexOf('radius')+1],'diameter');assert.equal(geometryFields(c).find(f=>f.key==='diameter').value,200);assert.equal(setGeometryField(c,'diameter',150).radius,75);assert.equal(c.radius,100);assert.throws(()=>setGeometryField(c,'diameter',0));const a={type:'arc',center:p(0,0),radius:10,start:0,end:Math.PI};assert.equal(setGeometryField(a,'diameter',30).radius,15);assert.equal(geometryFields({type:'line',start:p(0,0),end:p(1,0)}).some(f=>f.key==='diameter'),false);});

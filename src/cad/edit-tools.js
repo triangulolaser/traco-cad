@@ -99,6 +99,7 @@ export function geometryFields(e) {
     const fields = [];
     for (const k of ['start','end','center','position','p1','p2','vertex','linePoint','major']) if (e[k] && typeof e[k] === 'object') for (const axis of ['x','y']) fields.push({ key:`${k}.${axis}`, value:e[k][axis] });
     for (const k of ['radius','height','rotation','ratio','scaleX','scaleY']) if (typeof e[k] === 'number') fields.push({key:k,value:e[k]});
+    if (['circle','arc'].includes(e.type) && typeof e.radius === 'number') fields.splice(fields.findIndex(f=>f.key==='radius')+1, 0, {key:'diameter',value:e.radius*2});
     if (e.type === 'arc') for (const k of ['start','end']) fields.push({key:k,value:e[k]*180/Math.PI,angle:true});
     if (e.type === 'line') fields.push({key:'length',value:distance(e.start,e.end)});
     if (e.type === 'polyline') e.vertices.forEach((p,i) => ['x','y','bulge'].forEach(k => fields.push({key:`vertices.${i}.${k}`,value:p[k]??0})));
@@ -107,7 +108,8 @@ export function geometryFields(e) {
 export function setGeometryField(e, key, raw) {
     const field = geometryFields(e).find(f=>f.key===key); const value=Number(raw);
     if (!field || !Number.isFinite(value)) throw new Error('Propriedade inválida.');
-    if (['radius','height','length','ratio'].includes(key) && value <= 0) throw new Error('Valor deve ser positivo.');
+    if (['radius','diameter','height','length','ratio'].includes(key) && value <= 0) throw new Error('Valor deve ser positivo.');
+    if (key==='diameter') return {...e,radius:value/2};
     if (key==='ratio' && value>1) throw new Error('Razão da elipse deve ser até 1.');
     if (['scaleX','scaleY'].includes(key) && Math.abs(value)<1e-9) throw new Error('Escala não pode ser zero.');
     if (key==='length') return {...e,end:polar(e.start,angleOf(e.start,e.end),value)};

@@ -43,6 +43,8 @@ import {
 const PICK_PIXELS = 6;
 const SNAP_PIXELS = 10;
 const DRAG_PIXELS = 4;
+// Tolerância de um clique "parado": tremor da mão até aqui não vira arrasto da janela de seleção.
+const CLICK_PIXELS = 10;
 
 // Zoom da roda proporcional ao deslocamento: um clique de mouse (100 px) dá 1,15x;
 // o trackpad manda dezenas de eventos pequenos e tem de somar o mesmo tanto, não 1,15x cada.
@@ -826,6 +828,9 @@ export class Editor {
                         this.clearSelection();
                     }
                     this.window = { a: world, b: world, crossing: false, idle: !this.pending, armed: false };
+                } else {
+                    // Sobre um objeto: clique seleciona o objeto, mas arrastar abre a janela (como no AutoCAD).
+                    this.window = { a: world, b: world, crossing: false, idle: !this.pending, armed: false, overEntity: true };
                 }
             }
             this.terminal.focus();
@@ -893,7 +898,17 @@ export class Editor {
             }
             const world = this.viewport.screenToWorld(screen);
             if (this.window) {
-                if (moved || this.window.armed || distance(screen, this.viewport.worldToScreen(this.window.a)) > DRAG_PIXELS) {
+                const dragged = distance(screen, down) > CLICK_PIXELS;
+                if (this.window.overEntity && !this.window.armed) {
+                    if (dragged) {
+                        this.finishWindow(world, event.shiftKey);
+                    } else {
+                        this.window = null;
+                        this.onClick(world, event);
+                    }
+                    return;
+                }
+                if (this.window.armed || dragged) {
                     this.finishWindow(world, event.shiftKey);
                 } else {
                     // Clique sem arrasto: mantém a janela aberta até o segundo clique (modo clique-clique).

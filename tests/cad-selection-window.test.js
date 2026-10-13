@@ -131,3 +131,39 @@ test('botão direito cancela janela de seleção armada sem afetar o estado ocio
 
     assert.equal(editor.window, null);
 });
+
+test('tremor de até 10 px no primeiro clique ainda arma a janela clique-clique', () => {
+    const { editor, listeners } = createMockEditor([
+        { id: 'l1', type: 'line', start: { x: -200, y: -200 }, end: { x: -150, y: -200 } },
+    ]);
+
+    listeners.pointerdown({ button: 0, clientX: 300, clientY: 300, pointerId: 1 });
+    listeners.pointermove({ clientX: 306, clientY: 305 });
+    listeners.pointerup({ button: 0, clientX: 306, clientY: 305, pointerId: 1 });
+
+    assert.ok(editor.window);
+    assert.equal(editor.window.armed, true);
+});
+
+test('arrastar a partir de cima de um objeto abre a janela; clique parado seleciona só o objeto', () => {
+    const { editor, listeners } = createMockEditor([
+        { id: 'l1', type: 'line', start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+        { id: 'l2', type: 'line', start: { x: 10, y: 20 }, end: { x: 100, y: 20 } },
+    ]);
+    const on = editor.viewport.worldToScreen({ x: 50, y: 0 });
+    const far = editor.viewport.worldToScreen({ x: 150, y: 40 });
+
+    listeners.pointerdown({ button: 0, clientX: on.x, clientY: on.y, pointerId: 1 });
+    listeners.pointerup({ button: 0, clientX: on.x + 2, clientY: on.y, pointerId: 1 });
+    assert.equal(editor.window, null);
+    assert.deepEqual([...editor.selection], ['l1']);
+
+    editor.selection.clear();
+    const s2 = editor.viewport.worldToScreen({ x: 1, y: 0 });
+    listeners.pointerdown({ button: 0, clientX: s2.x, clientY: s2.y, pointerId: 1 });
+    assert.ok(editor.window);
+    listeners.pointermove({ clientX: far.x, clientY: far.y });
+    listeners.pointerup({ button: 0, clientX: far.x, clientY: far.y, pointerId: 1 });
+    assert.equal(editor.window, null);
+    assert.equal(editor.selection.has('l2'), true);
+});
