@@ -2307,16 +2307,41 @@ async function wblock(editor) {
     const ids = await editor.getSelection('Selecione objetos para exportar como bloco:');
     if (ids.length === 0) return null;
     const base = (await editor.getPoint('Ponto base de inserção:')).point;
-    const name = await editor.getString('Nome do arquivo', { defaultValue: editor.memory.wblockName ?? 'bloco.dxf' });
-    if (!name) return null;
+    const entities = editor.entitiesById(ids);
+    const used = new Set(entities.map((e) => e.layer));
+    const bridge = typeof window !== 'undefined' ? window.desktopBridge : null;
+    const canPickPath = bridge && typeof bridge.showSaveDialog === 'function' && typeof bridge.saveFile === 'function';
+    let path = null;
+    let name;
+    if (canPickPath) {
+        path = await bridge.showSaveDialog({
+            defaultPath: editor.memory.wblockPath ?? editor.memory.wblockName ?? 'bloco.dxf',
+            filters: [
+                { name: 'Desenho DXF (*.dxf)', extensions: ['dxf'] },
+                { name: 'Todos os arquivos', extensions: ['*'] },
+            ],
+        });
+        if (!path) {
+            editor.log('Salvamento cancelado.', 'info');
+            return null;
+        }
+        if (!/\.dxf$/i.test(path)) path = `${path}.dxf`;
+        editor.memory.wblockPath = path;
+        name = path.split(/[\/\\]/).pop() || path;
+    } else {
+        name = await editor.getString('Nome do arquivo', { defaultValue: editor.memory.wblockName ?? 'bloco.dxf' });
+        if (!name) return null;
+        if (!name.toLowerCase().endsWith('.dxf')) name = `${name}.dxf`;
+    }
     editor.memory.wblockName = name;
     const view = editor.viewport?.getView ? editor.viewport.getView() : editor.doc.view;
-    const doc = { ...newDocument(), name, units: editor.doc.units, dimStyle: editor.doc.dimStyle, insBase: base, view };
+    const doc = { ...createDocument(), name, units: editor.doc.units, dimStyle: editor.doc.dimStyle, insBase: base, view };
     doc.layers = editor.doc.layers.filter((l) => used.has(l.name) || l.name === '0');
     doc.entities = entities.map((e) => ({ ...e }));
-    const file = name.toLowerCase().endsWith('.dxf') ? name : `${name}.dxf`;
-    editor.downloadText(writeDxf(doc, { view }), file);
-    editor.log(`Bloco exportado: ${file} (${entities.length} entidades, base ${fmtPoint(base)}).`);
+    const content = writeDxf(doc, { view });
+    if (path) await bridge.saveFile(path, content);
+    else editor.downloadText(content, name);
+    editor.log(`Bloco exportado: ${path ?? name} (${entities.length} entidades, base ${fmtPoint(base)}).`);
     return null;
 }
 

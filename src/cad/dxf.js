@@ -449,8 +449,8 @@ function parseEntitiesSection(cursor, stopAt, preserveDimensions = false) {
 export const CONSTRUCTION_LINE_LENGTH = 100000;
 
 /**
- * Anotações e entidades de desenho técnico que só o CAD importa (TriNest e BendPilot
- * leem o mesmo DXF para corte e não devem receber setas, textos ou linhas infinitas).
+ * Anotações e entidades de desenho técnico que só o CAD importa (programas de corte
+ * e dobra leem o mesmo DXF para corte e não devem receber setas, textos ou linhas infinitas).
  * Devolve lista de entidades nativas ou null quando o tipo não é anotação.
  */
 function parseAnnotation(type, groups) {

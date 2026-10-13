@@ -99,9 +99,8 @@ body:has([data-cad-app]) .app-content > .container-fluid {
     grid-template-rows: auto auto minmax(0, 1fr) auto auto;
     /* Mesma armadilha na horizontal: o ribbon inteiro não cabe numa janela comum, e com
        `1fr` puro a coluna vira `minmax(auto, 1fr)` e assume a largura mínima do conteúdo.
-       O `min-width: 0` faz o mesmo pelo lado de fora, onde o CAD é item flex do shell do
-       MVP — sem os dois a página do Traço fica mais larga que a janela e vaza por cima do
-       rail. Com a coluna presa, o `overflow-x: auto` do painel do ribbon enfim funciona. */
+       O `min-width: 0` faz o mesmo pelo lado de fora, quando o CAD é item flex de outra
+       página — sem os dois a página do Traço fica mais larga que a janela. Com a coluna presa, o `overflow-x: auto` do painel do ribbon enfim funciona. */
     grid-template-columns: minmax(0, 1fr);
     min-width: 0;
     min-height: 0;
@@ -1546,44 +1545,13 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-dyn-field.is-locked { background: #e7a3a3; border-color: #c46a6a; color: #1b1b1b; }
 .cad-dyn-field.is-locked.is-active { background: #f2b8b8; border-color: #fff; }
 
-/* App instalado (PWA), mesmo padrão do TriNest: sem a barra lateral do sistema web;
-   o botão "Nova versão disponível" e o painel de empresas continuam visíveis. No navegador nada muda. */
+/* App instalado (PWA): controles que só aparecem fora do navegador. */
 .cad-pwa-only { display: none; }
 .cad-pwa-logout { display: contents; }
 .cad-pwa-only [hidden] { display: none !important; }
 
 @media (display-mode: standalone), (display-mode: window-controls-overlay), (display-mode: fullscreen) {
     body:has(.cad-app) { --rail-width: 0px; }
-
-    body:has(.cad-app) > .mvp-rail {
-        width: 0;
-        padding: 0;
-        overflow: visible;
-        background: none;
-        border: 0;
-    }
-
-    body:has(.cad-app) > .mvp-rail > :not(.mvp-company-panel):not(.mvp-rail-footer),
-    body:has(.cad-app) > .mvp-rail > .mvp-rail-footer > :not(.mvp-app-version-refresh) {
-        display: none !important;
-    }
-
-    body:has(.cad-app) > .mvp-rail > .mvp-rail-footer {
-        position: fixed;
-        left: 8px;
-        bottom: 40px;
-        z-index: 9500;
-        width: auto;
-        margin: 0;
-        padding: 0;
-        border: 0;
-        background: none;
-    }
-
-    body:has(.cad-app) > .mvp-rail .mvp-company-panel {
-        position: fixed;
-        left: 8px;
-    }
 
     .cad-pwa-only { display: inline-flex; align-items: center; gap: 4px; }
     .cad-pwa-hidden { display: none !important; }

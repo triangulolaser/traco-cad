@@ -1,4 +1,4 @@
-// Leitura de arquivos .nsp (Raytools), o formato do Laser 04.
+// Leitura de arquivos .nsp (Raytools).
 //
 // O .nsp é um XML (unit="4" = mm). Toda geometria de corte é `PolylineNode` com
 // `pListAndBulges/endNode x y bul`, bulge na convenção do DXF (tan(θ/4), positivo
@@ -15,7 +15,6 @@
 // A ordem de corte é a ordem dos nós (premissa ainda não conferida na máquina) e a entrada
 // fica no primeiro vértice.
 //
-// Formato levantado em 03/10/2026 com as amostras do Laser 04 e os nests do ProNest.
 
 import { parseXml } from './lxds.js';
 

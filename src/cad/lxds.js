@@ -420,7 +420,7 @@ export async function lxdsToEntities(buffer, { name = 'desenho.lxds', withCam = 
 
     const instances = [];
     // Inserts podem aninhar: peça agrupada (bloco "Part") contendo o bloco do flycut. Composição só de
-    // translação e escala, como as inserções que o CypCut e o TriNest gravam.
+    // translação e escala, como as inserções que o CypCut grava.
     const emit = (nodes, parent, depth) => {
         nodes.forEach((s) => {
             if (s.attrs.Class === 'Insert') {

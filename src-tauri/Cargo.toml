@@ -1,6 +1,6 @@
 [package]
 name = "traco-cad"
-version = "0.3.1"
+version = "0.3.2"
 description = "Traço CAD 2D Desktop"
 authors = ["Triângulo Laser Corte e Dobra Ltda."]
 edition = "2021"

@@ -231,3 +231,52 @@ test('ARRAY vindo da ribbon com tipo escolhido não pergunta o tipo de novo', as
     assert.equal(editor.memory.arrayMode, 'l');
     assert.ok(committed);
 });
+
+function wblockEditor(logs) {
+    const line = { id: 'a', type: 'line', layer: 'CORTE', start: { x: 0, y: 0 }, end: { x: 10, y: 0 } };
+    return {
+        memory: {},
+        doc: { units: 4, layers: [{ name: '0' }, { name: 'CORTE' }, { name: 'OUTRA' }], entities: [line] },
+        getSelection: async () => ['a'],
+        entitiesById: () => [line],
+        getPoint: async () => ({ point: { x: 5, y: 0 } }),
+        log: (msg, level) => logs.push([msg, level]),
+    };
+}
+
+test('WBLOCK no desktop abre a janela de salvar e grava o DXF no caminho escolhido', async () => {
+    const logs = [];
+    const saved = [];
+    let dialog = null;
+    globalThis.window = {
+        desktopBridge: {
+            showSaveDialog: async (opts) => { dialog = opts; return 'C:\\Blocos\\flange'; },
+            saveFile: async (path, content) => saved.push({ path, content }),
+        },
+    };
+    try {
+        const editor = wblockEditor(logs);
+        editor.getString = async () => { throw new Error('não deveria pedir nome no terminal'); };
+        await COMMANDS.WBLOCK.run(editor);
+        assert.equal(dialog.filters[0].extensions[0], 'dxf');
+        assert.equal(saved.length, 1);
+        assert.equal(saved[0].path, 'C:\\Blocos\\flange.dxf');
+        assert.match(saved[0].content, /CORTE/);
+        assert.doesNotMatch(saved[0].content, /OUTRA/);
+        assert.equal(editor.memory.wblockName, 'flange.dxf');
+        assert.ok(logs.every(([, level]) => level !== 'error'));
+    } finally {
+        delete globalThis.window;
+    }
+});
+
+test('WBLOCK no navegador pede o nome e baixa o DXF', async () => {
+    const logs = [];
+    const editor = wblockEditor(logs);
+    let downloaded = null;
+    editor.getString = async () => 'peca';
+    editor.downloadText = (content, name) => { downloaded = { content, name }; };
+    await COMMANDS.WBLOCK.run(editor);
+    assert.equal(downloaded.name, 'peca.dxf');
+    assert.match(downloaded.content, /EOF/);
+});

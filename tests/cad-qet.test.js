@@ -272,9 +272,9 @@ test('carimbo da folha usa o autor do projeto, sem nome de empresa fixo', () => 
 
     const [comAutor] = qetToDocuments(xml('<inset title="Força" author="Oficina Elétrica"/>'), { name: 'painel.qet' });
     assert.ok(texts(comAutor).includes('Oficina Elétrica'), 'autor do inset no carimbo');
-    assert.ok(!texts(comAutor).some((t) => /TDI/.test(t)), 'sem empresa fixa no carimbo');
+    assert.ok(!texts(comAutor).some((t) => /Exemplo Engenharia/.test(t)), 'sem empresa fixa no carimbo');
 
     const [semAutor] = qetToDocuments(xml(''), { name: 'painel.qet' });
-    assert.ok(!texts(semAutor).some((t) => /TDI/.test(t)), 'sem empresa fixa sem autor');
+    assert.ok(!texts(semAutor).some((t) => /Exemplo Engenharia/.test(t)), 'sem empresa fixa sem autor');
     assert.ok(!semAutor.entities.some((e) => e.id?.startsWith('tb_t3')), 'sem linha de autor quando o projeto não tem');
 });
