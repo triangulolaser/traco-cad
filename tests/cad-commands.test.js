@@ -244,39 +244,77 @@ function wblockEditor(logs) {
     };
 }
 
-test('WBLOCK no desktop abre a janela de salvar e grava o DXF no caminho escolhido', async () => {
+function wblockUi(answers, overwrite = []) {
+    const shown = [];
+    const confirms = [];
+    return {
+        shown, confirms,
+        openWblockDialog: async (opts) => { shown.push(opts); return answers.shift(); },
+        confirmOverwrite: async (path) => { confirms.push(path); return overwrite.shift(); },
+    };
+}
+
+test('WBLOCK no desktop: caminho anterior e base 0,0 já preenchidos, OK grava direto', async () => {
     const logs = [];
     const saved = [];
-    let dialog = null;
-    globalThis.window = {
-        desktopBridge: {
-            showSaveDialog: async (opts) => { dialog = opts; return 'C:\\Blocos\\flange'; },
-            saveFile: async (path, content) => saved.push({ path, content }),
-        },
-    };
+    globalThis.window = { desktopBridge: { saveFile: async (path, content) => saved.push({ path, content }), showSaveDialog: async () => null } };
     try {
         const editor = wblockEditor(logs);
-        editor.getString = async () => { throw new Error('não deveria pedir nome no terminal'); };
+        editor.memory.wblockPath = 'C:\\Blocos\\flange.dxf';
+        editor.getPoint = async () => { throw new Error('não deveria pedir ponto base'); };
+        editor.wblockUi = wblockUi([{ action: 'ok', path: 'C:\\Blocos\\flange.dxf', base: { x: 0, y: 0, z: 0 } }]);
         await COMMANDS.WBLOCK.run(editor);
-        assert.equal(dialog.filters[0].extensions[0], 'dxf');
+        assert.equal(editor.wblockUi.shown[0].path, 'C:\\Blocos\\flange.dxf');
+        assert.deepEqual(editor.wblockUi.shown[0].base, { x: 0, y: 0, z: 0 });
+        assert.equal(typeof editor.wblockUi.shown[0].browse, 'function');
         assert.equal(saved.length, 1);
         assert.equal(saved[0].path, 'C:\\Blocos\\flange.dxf');
         assert.match(saved[0].content, /CORTE/);
         assert.doesNotMatch(saved[0].content, /OUTRA/);
-        assert.equal(editor.memory.wblockName, 'flange.dxf');
         assert.ok(logs.every(([, level]) => level !== 'error'));
     } finally {
         delete globalThis.window;
     }
 });
 
-test('WBLOCK no navegador pede o nome e baixa o DXF', async () => {
-    const logs = [];
-    const editor = wblockEditor(logs);
+test('WBLOCK no desktop: arquivo existente pede confirmação; Não volta para a janela', async () => {
+    const saved = [];
+    globalThis.window = { desktopBridge: { saveFile: async (path, content) => saved.push({ path, content }), readFileBinary: async () => [1] } };
+    try {
+        const editor = wblockEditor([]);
+        editor.wblockUi = wblockUi(
+            [{ action: 'ok', path: 'C:\\B\\a', base: { x: 0, y: 0, z: 0 } }, { action: 'ok', path: 'C:\\B\\a', base: { x: 0, y: 0, z: 0 } }],
+            [false, true],
+        );
+        await COMMANDS.WBLOCK.run(editor);
+        assert.deepEqual(editor.wblockUi.confirms, ['C:\\B\\a.dxf', 'C:\\B\\a.dxf']);
+        assert.equal(editor.wblockUi.shown.length, 2);
+        assert.equal(saved.length, 1);
+        assert.equal(saved[0].path, 'C:\\B\\a.dxf');
+    } finally {
+        delete globalThis.window;
+    }
+});
+
+test('WBLOCK: escolher ponto base no desenho volta para a janela com o ponto', async () => {
+    const editor = wblockEditor([]);
     let downloaded = null;
-    editor.getString = async () => 'peca';
     editor.downloadText = (content, name) => { downloaded = { content, name }; };
+    editor.wblockUi = wblockUi([
+        { action: 'pick', path: 'peca', base: { x: 0, y: 0, z: 0 } },
+        { action: 'ok', path: 'peca', base: { x: 5, y: 0, z: 0 } },
+    ]);
     await COMMANDS.WBLOCK.run(editor);
+    assert.deepEqual(editor.wblockUi.shown[1].base, { x: 5, y: 0, z: 0 });
+    assert.equal(editor.wblockUi.shown[1].browse, null);
     assert.equal(downloaded.name, 'peca.dxf');
     assert.match(downloaded.content, /EOF/);
+    assert.deepEqual(editor.memory.wblockBase, { x: 5, y: 0, z: 0 });
+});
+
+test('WBLOCK: cancelar não grava', async () => {
+    const editor = wblockEditor([]);
+    editor.downloadText = () => { throw new Error('não deveria baixar'); };
+    editor.wblockUi = wblockUi([{ action: 'cancel' }]);
+    await COMMANDS.WBLOCK.run(editor);
 });

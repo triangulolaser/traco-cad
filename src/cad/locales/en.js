@@ -1229,5 +1229,12 @@ export default {
     "⚠️ Visualização de arquivo .lxds é experimental (engenharia reversa). Confira todas as medidas antes de enviar para corte.": "⚠️ Viewing .lxds files is experimental (reverse engineered). Check every measurement before sending to cutting.",
     "⚡ PROJETO ELÉTRICO .QET (QELECTROTECH) — ESQUEMA & CHICOTE INDUSTRIAL": "⚡ .QET ELECTRICAL PROJECT (QELECTROTECH) — INDUSTRIAL SCHEMATIC & HARNESS",
     "⚡ SÍMBOLO ELÉTRICO .ELMT (QELECTROTECH) — MODO EDIÇÃO DE COMPONENTE E TERMINAIS": "⚡ .ELMT ELECTRICAL SYMBOL (QELECTROTECH) — COMPONENT AND TERMINAL EDIT MODE",
-    "🎨 ARQUIVO .CDR (COREL) — MODO VISUALIZAÇÃO E MEDIÇÃO • USE COTAS OU DESENHE VETORES": "🎨 .CDR FILE (COREL) — VIEW AND MEASURE MODE • USE DIMENSIONS OR DRAW VECTORS"
+    "🎨 ARQUIVO .CDR (COREL) — MODO VISUALIZAÇÃO E MEDIÇÃO • USE COTAS OU DESENHE VETORES": "🎨 .CDR FILE (COREL) — VIEW AND MEASURE MODE • USE DIMENSIONS OR DRAW VECTORS",
+    "Gravar seleção como bloco em arquivo DXF": "Write selection as a block to a DXF file",
+    "Gravar bloco em arquivo": "Write block to file",
+    "Arquivo de destino": "Destination file",
+    "Nome e caminho": "File name and path",
+    "Escolher no desenho": "Pick in drawing",
+    "Entidades selecionadas:": "Selected entities:",
+    "O arquivo já existe:": "The file already exists:"
 };

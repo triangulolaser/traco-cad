@@ -1,5 +1,6 @@
 import { usage } from '../usage-telemetry.js';
 import {openPrintDialog} from './print.js';
+import { openWblockDialog, confirmOverwrite } from './wblock-dialog.js';
 import {BLOCK_COMMANDS} from './block-commands.js';
 import {expandInsert} from './blocks.js';
 import { EDIT_COMMANDS } from './edit-commands.js';
@@ -2306,43 +2307,71 @@ function alignTransform(pairs, scaleIt) {
 async function wblock(editor) {
     const ids = await editor.getSelection('Selecione objetos para exportar como bloco:');
     if (ids.length === 0) return null;
-    const base = (await editor.getPoint('Ponto base de inserção:')).point;
     const entities = editor.entitiesById(ids);
     const used = new Set(entities.map((e) => e.layer));
     const bridge = typeof window !== 'undefined' ? window.desktopBridge : null;
-    const canPickPath = bridge && typeof bridge.showSaveDialog === 'function' && typeof bridge.saveFile === 'function';
-    let path = null;
-    let name;
-    if (canPickPath) {
-        path = await bridge.showSaveDialog({
-            defaultPath: editor.memory.wblockPath ?? editor.memory.wblockName ?? 'bloco.dxf',
+    const desktop = !!(bridge && typeof bridge.saveFile === 'function');
+    const ui = editor.wblockUi ?? { openWblockDialog, confirmOverwrite };
+    const browse = desktop && typeof bridge.showSaveDialog === 'function'
+        ? (current) => bridge.showSaveDialog({
+            defaultPath: current || 'bloco.dxf',
             filters: [
                 { name: 'Desenho DXF (*.dxf)', extensions: ['dxf'] },
                 { name: 'Todos os arquivos', extensions: ['*'] },
             ],
-        });
-        if (!path) {
+        })
+        : null;
+    // Como no BricsCAD: último caminho já preenchido e ponto base 0,0,0; W, Enter grava.
+    let state = {
+        path: (desktop ? editor.memory.wblockPath : null) ?? editor.memory.wblockName ?? 'bloco.dxf',
+        base: editor.memory.wblockBase ?? { x: 0, y: 0, z: 0 },
+    };
+    let path;
+    for (;;) {
+        const answer = await ui.openWblockDialog({ ...state, count: entities.length, browse });
+        if (!answer || answer.action === 'cancel') {
             editor.log('Salvamento cancelado.', 'info');
             return null;
         }
+        state = { path: answer.path, base: answer.base };
+        if (answer.action === 'pick') {
+            const picked = (await editor.getPoint('Ponto base de inserção:')).point;
+            state.base = { x: picked.x, y: picked.y, z: 0 };
+            continue;
+        }
+        path = state.path;
         if (!/\.dxf$/i.test(path)) path = `${path}.dxf`;
-        editor.memory.wblockPath = path;
-        name = path.split(/[\/\\]/).pop() || path;
-    } else {
-        name = await editor.getString('Nome do arquivo', { defaultValue: editor.memory.wblockName ?? 'bloco.dxf' });
-        if (!name) return null;
-        if (!name.toLowerCase().endsWith('.dxf')) name = `${name}.dxf`;
+        if (desktop && await fileExists(bridge, path) && !(await ui.confirmOverwrite(path))) {
+            state.path = path;
+            continue;
+        }
+        break;
     }
+    const base = { x: state.base.x, y: state.base.y };
+    const name = path.split(/[\/\\]/).pop() || path;
+    if (desktop) editor.memory.wblockPath = path;
     editor.memory.wblockName = name;
+    editor.memory.wblockBase = state.base;
     const view = editor.viewport?.getView ? editor.viewport.getView() : editor.doc.view;
     const doc = { ...createDocument(), name, units: editor.doc.units, dimStyle: editor.doc.dimStyle, insBase: base, view };
     doc.layers = editor.doc.layers.filter((l) => used.has(l.name) || l.name === '0');
     doc.entities = entities.map((e) => ({ ...e }));
     const content = writeDxf(doc, { view });
-    if (path) await bridge.saveFile(path, content);
+    if (desktop) await bridge.saveFile(path, content);
     else editor.downloadText(content, name);
-    editor.log(`Bloco exportado: ${path ?? name} (${entities.length} entidades, base ${fmtPoint(base)}).`);
+    editor.log(`Bloco exportado: ${desktop ? path : name} (${entities.length} entidades, base ${fmtPoint(base)}).`);
     return null;
+}
+
+async function fileExists(bridge, path) {
+    try {
+        if (typeof bridge.fileExists === 'function') return !!(await bridge.fileExists(path));
+        if (typeof bridge.readFileBinary !== 'function') return false;
+        await bridge.readFileBinary(path);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 
@@ -3879,7 +3908,7 @@ export const COMMANDS = {
     SPLINE: { aliases: ['SPL'], run: spline, description: 'Spline por pontos de ajuste (B-spline cúbica)' },
     ARRAY: { aliases: ['AR', 'PADRAO'], run: arrayCommand, description: 'Padrão retangular, polar ou linear' },
     ALIGN: { aliases: ['AL', 'ALINHAR'], run: align, description: 'Alinhar por pares de pontos (mover, rotacionar, escalar opcional)' },
-    WBLOCK: { aliases: ['W'], run: wblock, description: 'Exportar seleção como novo DXF (bloco) com ponto base' },
+    WBLOCK: { aliases: ['W'], run: wblock, description: 'Gravar seleção como bloco em arquivo DXF' },
     ERASE: { aliases: ['E', 'DEL', 'DELETE'], run: erase, description: 'Apagar objetos' },
     MOVE: { aliases: ['M'], run: move, description: 'Mover objetos' },
     COPY: { aliases: ['CO', 'CP', 'COPIAR'], run: copy, description: 'Copiar objetos' },
