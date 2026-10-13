@@ -1,6 +1,13 @@
 // Interface do Traço em espanhol. Chave = texto original em português (ver i18n.js).
 // Texto novo na interface entra aqui na mesma MR (o teste cad-i18n-coverage cobra).
 export default {
+    "Editar texto no desenho": "Editar texto en el dibujo",
+    "Formatação do texto": "Formato del texto",
+    "Propriedades avançadas": "Propiedades avanzadas",
+    "Confirmar texto": "Confirmar texto",
+    "Cancelar (Esc)": "Cancelar (Esc)",
+    "Cancelar edição": "Cancelar edición",
+    "Texto no desenho": "Texto en el dibujo",
     "\"{1}\" em {2} altura {3} rotação {4}°": "\"{1}\" en {2}, altura {3}, rotación {4}°",
     "** ALÇA ** Ponto de destino [Cancelar]:": "** PINZAMIENTO ** Punto de destino [Cancelar]:",
     "*Alça cancelada*": "*Pinzamiento cancelado*",

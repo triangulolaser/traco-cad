@@ -1,4 +1,4 @@
-import { FONT_FAMILIES } from './fonts.js';
+import { FONT_FAMILIES, canvasFont } from './fonts.js';
 import { replaceEntities, isEntityEditable } from './document.js';
 
 function escapeHtml(text) {
@@ -11,8 +11,10 @@ function escapeHtml(text) {
 }
 
 let activeOverlay = null;
+let activeInline = null;
 
 export function closeTextEditorModal() {
+    activeInline?.close();
     if (activeOverlay) {
         activeOverlay.remove();
         activeOverlay = null;
@@ -240,4 +242,133 @@ export function openTextEditorModal(editor, entity) {
     }
 
     return overlay;
+}
+
+/** Screen geometry follows the same anchor, baseline and rotation as the canvas. */
+export function inlineTextGeometry(entity, viewport, width, lineCount) {
+    const anchor = viewport.worldToScreen(entity.position);
+    const px = (entity.height || 2.5) * viewport.scale;
+    const height = px + (lineCount - 1) * px * 1.35;
+    const valign = entity.valign ?? (entity.attachmentPoint ? 'top' : 'baseline');
+    const y = valign === 'top' ? 0 : valign === 'middle' ? -height / 2 : valign === 'bottom' ? -height : -px * .8;
+    let x = entity.halign === 'center' ? -width / 2 : entity.halign === 'right' ? -width : 0;
+    if (entity.boxWidth > 0) {
+        const box = entity.boxWidth * viewport.scale;
+        const col = ((entity.attachmentPoint || 1) - 1) % 3;
+        x = col === 0 ? 0 : -col * box / 2;
+    }
+    return { ...anchor, offsetX: x, offsetY: y, px, height, rotation: -(entity.rotation || 0) };
+}
+
+export function updateInlineTextEditor(editor) {
+    if (activeInline?.editor === editor) activeInline.update();
+}
+
+export function inlineTextEntityId(editor) {
+    return activeInline?.editor === editor ? activeInline.entity.id : null;
+}
+
+/** Edits a private draft; the document/history change only on explicit confirmation. */
+export function openInlineTextEditor(editor, entity) {
+    if (!editor?.stage || entity?.type !== 'text') return null;
+    if (!isEntityEditable(editor.doc, entity)) {
+        editor.log('A camada deste texto está bloqueada para edição.', 'warn');
+        return null;
+    }
+    closeTextEditorModal();
+    const originalDoc = editor.doc;
+    const root = document.createElement('div');
+    root.className = 'cad-inline-text-editor';
+    root.setAttribute('role', 'group');
+    root.setAttribute('aria-label', 'Editar texto no desenho');
+    root.innerHTML = `<div class="cad-inline-text-toolbar" role="toolbar" aria-label="Formatação do texto">
+        <select aria-label="Fonte">${FONT_FAMILIES.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('')}</select>
+        <input aria-label="Altura do texto" type="number" min="0.001" step="any" required>
+        <button type="button" data-action="bold" aria-label="Negrito" title="Negrito"><b>B</b></button>
+        <button type="button" data-action="italic" aria-label="Itálico" title="Itálico"><i>I</i></button>
+        <button type="button" data-action="advanced" title="Propriedades avançadas" aria-label="Propriedades avançadas">⚙</button>
+        <button type="button" data-action="save" title="Confirmar (Ctrl+Enter)" aria-label="Confirmar texto">✓</button>
+        <button type="button" data-action="cancel" title="Cancelar (Esc)" aria-label="Cancelar edição">✕</button>
+        </div><div class="cad-inline-text-anchor"><textarea aria-label="Texto no desenho" spellcheck="false"></textarea></div>`;
+    const textarea = root.querySelector('textarea');
+    const font = root.querySelector('select');
+    const size = root.querySelector('input');
+    let bold = !!entity.bold, italic = !!entity.italic;
+    textarea.value = entity.text ?? '';
+    const currentFont = entity.fontFamily || 'Liberation Sans';
+    if (!FONT_FAMILIES.includes(currentFont)) {
+        const option = document.createElement('option'); option.value = currentFont; option.textContent = currentFont; font.appendChild(option);
+    }
+    font.value = currentFont;
+    size.value = entity.height || 2.5;
+    const draft = () => ({ ...entity, text: textarea.value, fontFamily: font.value,
+        height: Number.isFinite(Number(size.value)) && Number(size.value) > 0 ? Number(size.value) : (entity.height || 2.5), bold, italic,
+        isMText: entity.isMText || textarea.value.includes('\n') || !!entity.boxWidth });
+    const close = () => {
+        root.remove();
+        activeInline = null;
+        editor.invalidate();
+        editor.terminal?.focus?.();
+    };
+    const update = () => {
+        if (editor.doc !== originalDoc || !editor.doc.entities.some(e => e.id === entity.id)) { close(); return; }
+        const next = draft();
+        const px = next.height * editor.viewport.scale;
+        const context = editor.canvas.getContext('2d');
+        context.save();
+        context.font = canvasFont(next, px);
+        const width = next.boxWidth > 0 ? next.boxWidth * editor.viewport.scale : Math.max(px, ...next.text.split('\n').map(line => context.measureText(line || ' ').width));
+        context.restore();
+        // CSS textarea scrollHeight includes word wrapping for MText.
+        Object.assign(textarea.style, { fontFamily: next.fontFamily, fontSize: `${px}px`, fontWeight: bold ? 'bold' : 'normal', fontStyle: italic ? 'italic' : 'normal', textAlign: next.halign || 'left', width: `${width + 2}px`, height: '0px', whiteSpace: next.boxWidth ? 'pre-wrap' : 'pre' });
+        const lineCount = Math.max(next.text.split('\n').length, Math.round(textarea.scrollHeight / (px * 1.35)));
+        const g = inlineTextGeometry(next, editor.viewport, width, lineCount);
+        const canvasRect = editor.canvas.getBoundingClientRect();
+        const stageRect = editor.stage.getBoundingClientRect();
+        const x = g.x + canvasRect.left - stageRect.left, y = g.y + canvasRect.top - stageRect.top;
+        Object.assign(root.querySelector('.cad-inline-text-anchor').style, { left: `${x}px`, top: `${y}px`, transform: `rotate(${g.rotation}deg)${entity.mirrored ? ' scaleX(-1)' : ''}` });
+        Object.assign(textarea.style, { transform: `translate(${g.offsetX}px, ${g.offsetY}px)`, height: `${Math.max(g.height, textarea.scrollHeight)}px` });
+        const toolbar = root.querySelector('.cad-inline-text-toolbar');
+        toolbar.style.left = `${Math.max(4, Math.min(x, editor.stage.clientWidth - toolbar.offsetWidth - 4))}px`;
+        const angle = g.rotation * Math.PI / 180;
+        const mirror = entity.mirrored ? -1 : 1;
+        const top = Math.min(...[g.offsetX, g.offsetX + width].flatMap(localX =>
+            [g.offsetY, g.offsetY + g.height].map(localY => Math.sin(angle) * localX * mirror + Math.cos(angle) * localY)));
+        toolbar.style.top = `${Math.max(4, Math.min(y + top - toolbar.offsetHeight - 8, editor.stage.clientHeight - toolbar.offsetHeight - 4))}px`;
+        root.querySelector('[data-action="bold"]').setAttribute('aria-pressed', String(bold));
+        root.querySelector('[data-action="italic"]').setAttribute('aria-pressed', String(italic));
+    };
+    const save = () => {
+        if (!size.reportValidity()) return;
+        if (!isEntityEditable(editor.doc, entity)) { close(); return; }
+        const current = editor.doc.entities.find(e => e.id === entity.id);
+        if (!current) { close(); return; }
+        const next = { ...current, text: textarea.value, height: draft().height, fontFamily: font.value, bold, italic, isMText: draft().isMText };
+        editor.commit('Editar Texto', replaceEntities(editor.doc, new Map([[entity.id, next]])));
+        editor.selection = new Set([entity.id]);
+        close();
+    };
+    root.addEventListener('keydown', event => {
+        event.stopPropagation();
+        if (event.isComposing) return;
+        if (event.key === 'Escape') { event.preventDefault(); close(); }
+        else if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); save(); }
+    });
+    for (const type of ['pointerdown', 'click', 'dblclick', 'wheel']) root.addEventListener(type, e => e.stopPropagation());
+    root.addEventListener('input', update);
+    root.addEventListener('change', update);
+    root.querySelectorAll('button').forEach(button => button.addEventListener('click', () => {
+        const action = button.dataset.action;
+        if (action === 'save') save();
+        else if (action === 'cancel') close();
+        else if (action === 'advanced') { const next = draft(); close(); openTextEditorModal(editor, next); }
+        else { if (action === 'bold') bold = !bold; else italic = !italic; update(); textarea.focus(); }
+    }));
+    editor.stage.appendChild(root);
+    activeInline = { editor, entity, update, close };
+    update();
+    editor.invalidate();
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    return root;
 }

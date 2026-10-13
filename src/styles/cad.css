@@ -1588,3 +1588,18 @@ body:has([data-cad-app]) .app-content > .container-fluid {
     .cad-pwa-only { display: inline-flex; align-items: center; gap: 4px; }
     .cad-pwa-hidden { display: none !important; }
 }
+
+/* Inline text editing stays on the drawing; only its controls receive pointers. */
+.cad-inline-text-editor { position: absolute; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
+.cad-inline-text-anchor { position: absolute; transform-origin: 0 0; }
+.cad-inline-text-anchor textarea { display: block; box-sizing: content-box; padding: 0; margin: 0; border: 1px solid #38bdf8; border-radius: 0; resize: none; overflow: hidden; line-height: 1.35; color: var(--cad-text, #f8fafc); background: var(--cad-bg, #111827); pointer-events: auto; outline: none; }
+.cad-inline-text-toolbar { position: absolute; display: flex; align-items: center; gap: 3px; padding: 4px; border: 1px solid #64748b; border-radius: 6px; background: #182334; color: #fff; pointer-events: auto; max-width: calc(100% - 8px); }
+.cad-inline-text-toolbar select { width: 140px; min-width: 60px; }
+.cad-inline-text-toolbar input { width: 66px; }
+.cad-inline-text-toolbar button { min-width: 28px; height: 28px; border: 1px solid #64748b; border-radius: 3px; color: inherit; background: transparent; cursor: pointer; }
+.cad-inline-text-toolbar button[aria-pressed="true"] { background: #0369a1; }
+.cad-app[data-cad-theme="light"] .cad-inline-text-anchor textarea { color: #182334; background: #fff; }
+
+.cad-inline-text-toolbar { color-scheme: dark; }
+.cad-inline-text-toolbar select, .cad-inline-text-toolbar input { color: #f8fafc; background: #182334; border: 1px solid #64748b; }
+.cad-inline-text-editor :focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }

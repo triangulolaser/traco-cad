@@ -14,7 +14,7 @@ import { COMMANDS, resolveCommand, suggestCommands, CancelError } from './comman
 import { parseDxf } from './dxf.js';
 import { kindOf } from './file-types.js';
 import { showCadErrorModal, hideCadErrorModal } from './error-modal.js';
-import { openTextEditorModal } from './text-editor.js';
+import { openInlineTextEditor, updateInlineTextEditor, inlineTextEntityId } from './text-editor.js';
 import { lxdsToEntities, looksLikeLxds } from './lxds.js';
 import { dimensionGeometry } from './dimensions.js';
 import { getEntityGrips, applyGripMove, findGripAt } from './grips.js';
@@ -387,9 +387,10 @@ export class Editor {
             hover: this.hover,
             hoverGrip: this.hoverGrip,
             activeGrip: this.activeGrip,
-            hiddenIds: this.pending?.hide ? new Set(this.pending.hide) : (this.activeGrip ? new Set([this.activeGrip.entityId]) : null),
+            hiddenIds: inlineTextEntityId(this) ? new Set([inlineTextEntityId(this)]) : this.pending?.hide ? new Set(this.pending.hide) : (this.activeGrip ? new Set([this.activeGrip.entityId]) : null),
             collaborators: this.collaborators,
         });
+        updateInlineTextEditor(this);
         this.updateDynInput?.();
         this.updateCoordinates();
     }
@@ -1917,7 +1918,7 @@ export class Editor {
     }
 
     openTextEditor(entity) {
-        return openTextEditorModal(this, entity);
+        return openInlineTextEditor(this, entity);
     }
 }
 
