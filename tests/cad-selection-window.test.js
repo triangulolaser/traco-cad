@@ -54,7 +54,7 @@ function createMockEditor(initialEntities = [], initialSelectedIds = []) {
     return { editor, listeners };
 }
 
-test('clique fora no vazio com seleção ativa desmarca a seleção anterior e arma imediatamente a nova seleção por área', () => {
+test('clique fora no vazio com seleção ativa mantém a seleção e arma a caixa clique-clique', () => {
     const { editor, listeners } = createMockEditor([
         { id: 'l1', type: 'line', start: { x: 10, y: 10 }, end: { x: 50, y: 10 } },
         { id: 'l2', type: 'line', start: { x: 100, y: 100 }, end: { x: 150, y: 100 } },
@@ -70,9 +70,9 @@ test('clique fora no vazio com seleção ativa desmarca a seleção anterior e a
     assert.ok(editor.window);
     assert.equal(editor.window.armed, false);
 
-    // 2. Soltar o clique sem arrasto desmarca e arma a janela para modo clique-clique (como no AutoCAD)
+    // 2. Soltar o clique sem arrasto arma a janela clique-clique sem perder a seleção
     listeners.pointerup({ button: 0, clientX: 300, clientY: 300, pointerId: 1 });
-    assert.equal(editor.selection.size, 0);
+    assert.equal(editor.selection.has('l1'), true);
     assert.ok(editor.window);
     assert.equal(editor.window.armed, true);
 
@@ -84,8 +84,9 @@ test('clique fora no vazio com seleção ativa desmarca a seleção anterior e a
     listeners.pointerdown({ button: 0, clientX: 500, clientY: 500, pointerId: 1 });
     listeners.pointerup({ button: 0, clientX: 500, clientY: 500, pointerId: 1 });
 
-    // Janela é finalizada e limpa
+    // Janela é finalizada sem perder a seleção
     assert.equal(editor.window, null);
+    assert.equal(editor.selection.has('l1'), true);
 });
 
 test('clique e arrasto no vazio com seleção ativa soma os objetos da área à seleção anterior', () => {
@@ -184,6 +185,28 @@ test('clique em objeto seguido de janela arrastada mantém o objeto e soma os da
 
     listeners.pointerdown({ button: 0, clientX: 100, clientY: 100, pointerId: 1 });
     listeners.pointermove({ clientX: 200, clientY: 200 });
+    listeners.pointerup({ button: 0, clientX: 200, clientY: 200, pointerId: 1 });
+
+    assert.equal(editor.window, null);
+    assert.deepEqual([...editor.selection].sort(), ['l1', 'l2']);
+});
+
+test('caixa clique-clique soma à seleção anterior', () => {
+    const { editor, listeners } = createMockEditor([
+        { id: 'l1', type: 'line', start: { x: 0, y: 0 }, end: { x: 1, y: 0 } },
+        { id: 'l2', type: 'line', start: { x: 0, y: 0 }, end: { x: 1, y: 0 } },
+    ], ['l1']);
+    const a = editor.viewport.screenToWorld({ x: 100, y: 100 });
+    const b = editor.viewport.screenToWorld({ x: 200, y: 200 });
+    const l2 = editor.doc.entities.find((e) => e.id === 'l2');
+    l2.start = { x: a.x + (b.x - a.x) * 0.25, y: (a.y + b.y) / 2 };
+    l2.end = { x: a.x + (b.x - a.x) * 0.75, y: (a.y + b.y) / 2 };
+
+    listeners.pointerdown({ button: 0, clientX: 100, clientY: 100, pointerId: 1 });
+    listeners.pointerup({ button: 0, clientX: 100, clientY: 100, pointerId: 1 });
+    assert.equal(editor.selection.has('l1'), true);
+    listeners.pointermove({ clientX: 200, clientY: 200 });
+    listeners.pointerdown({ button: 0, clientX: 200, clientY: 200, pointerId: 1 });
     listeners.pointerup({ button: 0, clientX: 200, clientY: 200, pointerId: 1 });
 
     assert.equal(editor.window, null);

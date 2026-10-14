@@ -158,7 +158,32 @@ fn read_and_dispatch_file(app_handle: &tauri::AppHandle, path: PathBuf) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // Instância única: abrir outro arquivo pelo Explorer/Finder com o Traço
+    // já aberto entrega o arquivo à janela existente (vira uma aba nova) em
+    // vez de subir outro processo com outra janela.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            for arg in argv.iter().skip(1) {
+                let mut p = PathBuf::from(arg);
+                if p.is_relative() {
+                    p = PathBuf::from(&cwd).join(p);
+                }
+                if p.is_file() {
+                    read_and_dispatch_file(app, p);
+                }
+            }
+            if let Some(window) = app.webview_windows().values().next() {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }));
+    }
+
+    let app = builder
         .manage(PendingFilesState::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![get_pending_open_files, write_file, write_file_binary, read_file_text, read_file_binary, convert_dwg_to_dxf])

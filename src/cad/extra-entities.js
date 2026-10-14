@@ -119,17 +119,28 @@ registerEntityProvider('spline', {
 });
 
 // ---------------------------------------------------------------------------
-// Imagem: { position (canto inferior esquerdo), width, height, rotation (graus), src (dataURL), opacity }
+// Imagem: { position (canto inferior esquerdo), width, height, rotation (graus), src (dataURL), opacity,
+//   clip? { u0, v0, u1, v1 } (frações do quadro, origem no canto inferior esquerdo) }
+
+function imageFramePoint(entity, u, v) {
+    return rotatePoint(add(entity.position, { x: u * entity.width, y: v * entity.height }), entity.position, degToRad(entity.rotation ?? 0));
+}
 
 export function imageCorners(entity) {
-    const rot = degToRad(entity.rotation ?? 0);
-    const corners = [
-        { x: 0, y: 0 },
-        { x: entity.width, y: 0 },
-        { x: entity.width, y: entity.height },
-        { x: 0, y: entity.height },
-    ];
-    return corners.map((c) => rotatePoint(add(entity.position, c), entity.position, rot));
+    return [[0, 0], [1, 0], [1, 1], [0, 1]].map(([u, v]) => imageFramePoint(entity, u, v));
+}
+
+// Cantos da parte visível (recortada), na mesma ordem de imageCorners.
+export function imageVisibleCorners(entity) {
+    const c = entity.clip;
+    if (!c) return imageCorners(entity);
+    return [[c.u0, c.v0], [c.u1, c.v0], [c.u1, c.v1], [c.u0, c.v1]].map(([u, v]) => imageFramePoint(entity, u, v));
+}
+
+// Ponto do mundo em frações do quadro da imagem.
+export function imageLocalPoint(entity, point) {
+    const local = rotatePoint(point, entity.position, -degToRad(entity.rotation ?? 0));
+    return { u: (local.x - entity.position.x) / entity.width, v: (local.y - entity.position.y) / entity.height };
 }
 
 function imageTransform(entity, fn, mirror) {
@@ -142,11 +153,11 @@ function imageTransform(entity, fn, mirror) {
 }
 
 registerEntityProvider('image', {
-    curves: (entity) => polylineFromSamples(imageCorners(entity), true, false),
+    curves: (entity) => polylineFromSamples(imageVisibleCorners(entity), true, false),
     extraPoints: () => [],
     transform: imageTransform,
     snapPoints: (entity) => {
-        const c = imageCorners(entity);
+        const c = imageVisibleCorners(entity);
         return [...c.map((p) => ({ mode: 'end', point: p })), { mode: 'cen', point: { x: (c[0].x + c[2].x) / 2, y: (c[0].y + c[2].y) / 2 } }];
     },
 });

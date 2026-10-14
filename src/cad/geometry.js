@@ -287,6 +287,41 @@ export function joinCurves(entities, tol = 1e-6) {
     return { type: 'polyline', vertices, closed };
 }
 
+// Como o JOIN do AutoCAD/BricsCAD: separa a seleção em cadeias conectadas pelas pontas
+// e une cada uma. Devolve [{ entities, result }] só das cadeias com 2+ objetos que fecharam
+// a união; o que sobra (solto ou ramificado) fica intacto.
+export function joinCurveGroups(entities, tol = 1e-6) {
+    const ends = (e) => {
+        if (e.type === 'line') return [e.start, e.end];
+        if (e.type === 'arc') return [polar(e.center, e.start, e.radius), polar(e.center, e.end, e.radius)];
+        if ((e.type === 'polyline' || e.type === 'lwpolyline') && !e.closed && e.vertices?.length) {
+            return [e.vertices[0], e.vertices[e.vertices.length - 1]];
+        }
+        return [];
+    };
+    const parent = entities.map((_, i) => i);
+    const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+    const points = entities.map(ends);
+    for (let i = 0; i < entities.length; i += 1) {
+        for (let j = i + 1; j < entities.length; j += 1) {
+            if (points[i].some((p) => points[j].some((q) => distance(p, q) < tol))) parent[find(i)] = find(j);
+        }
+    }
+    const groups = new Map();
+    entities.forEach((e, i) => {
+        const root = find(i);
+        if (!groups.has(root)) groups.set(root, []);
+        groups.get(root).push(e);
+    });
+    const out = [];
+    groups.forEach((group) => {
+        if (group.length < 2) return;
+        const result = joinCurves(group, tol);
+        if (result) out.push({ entities: group, result });
+    });
+    return out;
+}
+
 export function textBox(entity) {
     const rawLines = String(entity.text ?? '').split('\n');
     let lines = rawLines;

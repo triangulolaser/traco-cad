@@ -910,9 +910,6 @@ export class Editor {
                     this.finishWindow(world, event.shiftKey);
                 } else {
                     // Clique sem arrasto: mantém a janela aberta até o segundo clique (modo clique-clique).
-                    if (this.window.idle && !this.pending && !event.shiftKey && this.selection.size > 0) {
-                        this.clearSelection();
-                    }
                     this.window.armed = true;
                 }
                 return;
@@ -1020,6 +1017,13 @@ export class Editor {
             this.log('Formato não suportado pelo CAD.', 'warn');
             return;
         }
+        // Imagem raster entra no desenho atual como referência (IMAGEATTACH), como no BricsCAD,
+        // e não abre aba nova.
+        if (kindOf(file.name) === 'image' || (/^image\/(?:png|jpeg|jpg|gif|bmp|webp)/i.test(file.type) && !/\.(?:dwg|dxf|svg)$/i.test(file.name))) {
+            this.pendingDropFile = file;
+            await this.runCommand('IMAGEATTACH');
+            return;
+        }
         if (this.tabs && typeof this.tabs.findExistingTab === 'function') {
             const existing = this.tabs.findExistingTab({ name: file.name, filePath: resolvedPath });
             if (existing) {
@@ -1078,11 +1082,6 @@ export class Editor {
         if (kind === 'lxds' || /\.lxds$/i.test(file.name)) {
             await this.importLxdsBuffer(await file.arrayBuffer(), file.name);
             if (resolvedPath && this.doc) this.doc.filePath = resolvedPath;
-            return;
-        }
-        if (kind === 'image' || (/^image\/(?:png|jpeg|jpg|gif|bmp|webp)/i.test(file.type) && !/\.(?:dwg|dxf|svg)$/i.test(file.name))) {
-            this.pendingDropFile = file;
-            await this.runCommand('IMAGEATTACH');
             return;
         }
         const buffer = await file.arrayBuffer();
@@ -1354,6 +1353,7 @@ export class Editor {
         const found = this.entitiesInWindow(a, world, crossing);
         this.window = null;
         if (idle || !this.pending) {
+            // A caixa sempre soma à seleção (Shift tira); desmarcar tudo é com Esc, como no AutoCAD.
             found.forEach((e) => (shift ? this.selection.delete(e.id) : this.selection.add(e.id)));
             this.invalidate();
             this.onChange(this);

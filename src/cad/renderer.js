@@ -5,7 +5,7 @@ import { tr } from './i18n.js';
 
 import { entityColor, visibleEntities, LINETYPES, layerOf, getDocumentSpatialIndex } from './document.js';
 import { dimensionGeometry } from './dimensions.js';
-import { ellipseSamples, ellipseIsFull, imageCorners } from './extra-entities.js';
+import { ellipseSamples, ellipseIsFull, imageCorners, imageVisibleCorners } from './extra-entities.js';
 import { sampleSpline } from './splines.js';
 import { hatchPath, HATCH_PATTERNS, hatchBox, hatchLineRange } from './hatch.js';
 import { ensureSplineGeometry } from './extra-entities.js';
@@ -506,14 +506,23 @@ export class Renderer {
                 ctx.translate(w, 0);
                 ctx.scale(-1, 1);
             }
-            ctx.drawImage(img, 0, 0, w, h);
+            const c = entity.clip;
+            if (c) {
+                // Espelhada, a faixa visível [u0,u1] vem das colunas [1-u1, 1-u0] da imagem.
+                const su = entity.mirrored ? 1 - c.u1 : c.u0;
+                const nw = img.naturalWidth;
+                const nh = img.naturalHeight;
+                ctx.drawImage(img, su * nw, (1 - c.v1) * nh, (c.u1 - c.u0) * nw, (c.v1 - c.v0) * nh, su * w, (1 - c.v1) * h, (c.u1 - c.u0) * w, (c.v1 - c.v0) * h);
+            } else {
+                ctx.drawImage(img, 0, 0, w, h);
+            }
         } else {
             ctx.strokeRect(0, 0, w, h);
         }
         ctx.restore();
         if (style.dashed) {
             ctx.beginPath();
-            corners.forEach((c, i) => {
+            imageVisibleCorners(entity).forEach((c, i) => {
                 const s = viewport.worldToScreen(c);
                 if (i === 0) ctx.moveTo(s.x, s.y);
                 else ctx.lineTo(s.x, s.y);

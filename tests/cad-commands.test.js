@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { joinCurveGroups } from '../src/cad/geometry.js';
 import { filletLines, extendEntity, joinCurves, polylineArea, tangentBulge, trimPolyline, resolveCommand, COMMANDS } from '../src/cad/commands.js';
 import { entityCurves, bulgeToArc, angleInArc, distance } from '../src/cad/geometry.js';
 
@@ -317,4 +318,15 @@ test('WBLOCK: cancelar não grava', async () => {
     editor.downloadText = () => { throw new Error('não deveria baixar'); };
     editor.wblockUi = wblockUi([{ action: 'cancel' }]);
     await COMMANDS.WBLOCK.run(editor);
+});
+
+test('join une cada cadeia separada, como AutoCAD/BricsCAD', () => {
+    const rect = (id, x0, y0, s) => [
+        [x0, y0, x0 + s, y0], [x0 + s, y0, x0 + s, y0 + s], [x0 + s, y0 + s, x0, y0 + s], [x0, y0 + s, x0, y0],
+    ].map(([ax, ay, bx, by], i) => ({ id: `${id}${i}`, type: 'line', layer: '0', start: { x: ax, y: ay }, end: { x: bx, y: by } }));
+    const solta = { id: 's', type: 'line', layer: '0', start: { x: 100, y: 100 }, end: { x: 110, y: 100 } };
+    const groups = joinCurveGroups([...rect('a', 0, 0, 10), ...rect('b', 1, 1, 8), solta]);
+    assert.equal(groups.length, 2);
+    groups.forEach((g) => { assert.equal(g.entities.length, 4); assert.equal(g.result.closed, true); });
+    assert.ok(!groups.some((g) => g.entities.includes(solta)));
 });

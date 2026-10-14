@@ -381,7 +381,7 @@ function parseEntity(type, groups) {
     }
 }
 
-function parseEntitiesSection(cursor, stopAt, preserveDimensions = false) {
+function parseEntitiesSection(cursor, stopAt, preserveDimensions = false, dimensionGraphics = true) {
     const entities = [];
     let pendingPolyline = null;
     while (!cursor.done()) {
@@ -431,7 +431,8 @@ function parseEntitiesSection(cursor, stopAt, preserveDimensions = false) {
             }
 
             // Cota associativa importada pela geometria do bloco anônimo (não associativa no Traço).
-            const blockName = first(groups, 2, '');
+            // Importação para corte pede dimensionGraphics=false: setas e linhas de chamada não são contorno.
+            const blockName = dimensionGraphics ? first(groups, 2, '') : '';
             if (blockName) entities.push({ type: '__insert', name: blockName, position: { x: 0, y: 0 }, scaleX: 1, scaleY: 1, rotation: 0, layer: first(groups, 8, DEFAULT_LAYER) });
             continue;
         }
@@ -590,7 +591,7 @@ function parseMultiLeader(base, groups) {
     return out;
 }
 
-function parseBlocks(cursor, preserveDimensions = false) {
+function parseBlocks(cursor, preserveDimensions = false, dimensionGraphics = true) {
     const blocks = new Map();
     while (!cursor.done()) {
         const p = cursor.next();
@@ -600,7 +601,7 @@ function parseBlocks(cursor, preserveDimensions = false) {
         const groups = collectGroup(cursor);
         const name = first(groups, 2, '');
         const basePoint = { x: num(first(groups, 10)), y: num(first(groups, 20)) };
-        const entities = parseEntitiesSection(cursor, 'ENDBLK', preserveDimensions);
+        const entities = parseEntitiesSection(cursor, 'ENDBLK', preserveDimensions, dimensionGraphics);
         collectGroup(cursor);
         if (!name || /^\*(?:Model_Space|Paper_Space)/i.test(name)) continue;
         blocks.set(name, { basePoint, entities });
@@ -783,7 +784,7 @@ function resolveLeader(entity, dimStyles = {}) {
     return out;
 }
 
-export function parseDxf(text, { preserveBlocks = false, preserveDimensions = false } = {}) {
+export function parseDxf(text, { preserveBlocks = false, preserveDimensions = false, dimensionGraphics = true } = {}) {
     const cursor = new Cursor(readPairs(text));
     let layers = [];
     let blocks = new Map();
@@ -814,8 +815,8 @@ export function parseDxf(text, { preserveBlocks = false, preserveDimensions = fa
                 };
             }
         } else if (section === 'TABLES') layers = parseTables(cursor);
-        else if (section === 'BLOCKS') blocks = parseBlocks(cursor, preserveDimensions);
-        else if (section === 'ENTITIES') entities = parseEntitiesSection(cursor, 'ENDSEC', preserveDimensions);
+        else if (section === 'BLOCKS') blocks = parseBlocks(cursor, preserveDimensions, dimensionGraphics);
+        else if (section === 'ENTITIES') entities = parseEntitiesSection(cursor, 'ENDSEC', preserveDimensions, dimensionGraphics);
     }
     const styles=layers.textStyles??{};
     const applyStyles=items=>items.map(e=>{

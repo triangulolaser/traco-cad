@@ -48,3 +48,9 @@ export const DRAWING_ACCEPT = Object.entries(FILE_TYPES)
     .filter(([, t]) => DRAWING_KINDS.includes(t.kind))
     .map(([ext]) => `.${ext}`)
     .join(',');
+
+// Imagens raster que o Abrir aceita; entram no desenho atual como referência (IMAGEATTACH).
+export const IMAGE_ACCEPT = Object.entries(FILE_TYPES)
+    .filter(([, t]) => t.kind === 'image')
+    .map(([ext]) => `.${ext}`)
+    .join(',');

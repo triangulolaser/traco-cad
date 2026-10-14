@@ -59,15 +59,16 @@ import {
     pointInBox,
     curveIntersectsBox,
     joinCurves,
+    joinCurveGroups,
 } from './geometry.js';
 import { addEntities, removeEntities, replaceEntities, updateEntities, editableEntities, setCurrentLayer, updateLayer, layerOf, createDocument, documentStats, hexToAci, aciToHex, BYLAYER } from './document.js';
 import { parseDxf, writeDxf } from './dxf.js';
 import { chooseLinearKind, autoDimensionFor, dimensionGeometry, DIMENSION_LAYER, ensureDimensionSetup, computeAutoDimScale, getDrawingContentBox } from './dimensions.js';
 import { interpolateSpline } from './splines.js';
-import { ellipsePoint } from './extra-entities.js';
+import { ellipsePoint, imageLocalPoint } from './extra-entities.js';
 import { autoDimensionPart } from './autodim.js';
 import { loopsFromEntities, HATCH_PATTERNS } from './hatch.js';
-import { DRAWING_ACCEPT, DRAWING_KINDS, kindOf } from './file-types.js';
+import { DRAWING_ACCEPT, DRAWING_KINDS, IMAGE_ACCEPT, kindOf } from './file-types.js';
 import { createRectangleEntity, polylineFillet, createRevcloudFromEntity, distanceToEntity, polygonAreaAndPerimeter, polylineArea, getEntityAreaAndPerimeter, pointInPolygon } from './edit-tools.js';
 
 export class CancelError extends Error {
@@ -2045,12 +2046,15 @@ async function join(editor) {
     const ids = await editor.getSelection('Selecione linhas e arcos para unir em polilinha:');
     const entities = editor.entitiesById(ids).filter((e) => ['line', 'arc', 'polyline'].includes(e.type));
     if (entities.length < 2) return editor.log('Selecione ao menos dois objetos conectados.', 'warn');
-    const result = joinCurves(entities);
-    if (!result) return editor.log('Os objetos não formam uma cadeia contínua.', 'error');
-    let doc = removeEntities(editor.doc, entities.map((e) => e.id));
-    doc = addEntities(doc, [{ ...result, layer: entities[0].layer, color: entities[0].color }]);
+    const groups = joinCurveGroups(entities);
+    if (!groups.length) return editor.log('Os objetos não formam uma cadeia contínua.', 'error');
+    const joined = groups.flatMap((g) => g.entities);
+    let doc = removeEntities(editor.doc, joined.map((e) => e.id));
+    doc = addEntities(doc, groups.map((g) => ({ ...g.result, layer: g.entities[0].layer, color: g.entities[0].color })));
     editor.commit('Unir', doc);
     editor.clearSelection();
+    const skipped = entities.length - joined.length;
+    editor.log(`${joined.length} objeto(s) unido(s) em ${groups.length} polilinha(s)${skipped ? `; ${skipped} ficaram de fora` : ''}.`);
 }
 
 
@@ -3355,6 +3359,13 @@ async function newDrawing(editor) {
     editor.zoomExtents();
 }
 
+const IMAGE_MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', bmp: 'image/bmp' };
+
+function extensionOfName(name) {
+    const m = /\.([A-Za-z0-9]+)$/.exec(String(name ?? ''));
+    return m ? m[1].toLowerCase() : '';
+}
+
 async function open(editor) {
     const bridge = typeof window !== 'undefined' ? window.desktopBridge : null;
     let files = [];
@@ -3363,7 +3374,8 @@ async function open(editor) {
         const selected = await bridge.showOpenDialog({
             multiple: true,
             filters: [
-                { name: 'Desenhos e Projetos CAD', extensions: ['dxf', 'dwg', 'lxds', 'svg', 'cdr', 'elmt', 'qet'] },
+                { name: 'Desenhos, projetos CAD e imagens', extensions: ['dxf', 'dwg', 'lxds', 'svg', 'cdr', 'elmt', 'qet', 'jpg', 'jpeg', 'png', 'bmp'] },
+                { name: 'Imagens (JPG, PNG, BMP)', extensions: ['jpg', 'jpeg', 'png', 'bmp'] },
                 { name: 'Todos os arquivos', extensions: ['*'] },
             ],
         });
@@ -3377,20 +3389,20 @@ async function open(editor) {
                 const text = await bridge.readFileText(filePath);
                 bytes = new TextEncoder().encode(text);
             }
-            const mime = name.toLowerCase().endsWith('.dwg') ? 'image/vnd.dwg' : 'application/octet-stream';
+            const mime = name.toLowerCase().endsWith('.dwg') ? 'image/vnd.dwg' : (IMAGE_MIME[extensionOfName(name)] ?? 'application/octet-stream');
             const file = new File([new Uint8Array(bytes)], name, { type: mime });
             file.filePath = filePath;
             files.push(file);
         }
     } else if (typeof editor.pickFiles === 'function') {
-        files = await editor.pickFiles(DRAWING_ACCEPT);
+        files = await editor.pickFiles(`${DRAWING_ACCEPT},${IMAGE_ACCEPT}`);
     } else {
-        const file = await editor.pickFile(DRAWING_ACCEPT);
+        const file = await editor.pickFile(`${DRAWING_ACCEPT},${IMAGE_ACCEPT}`);
         if (file) files = [file];
     }
     if (!files.length) return null;
 
-    const supported = files.filter((f) => DRAWING_KINDS.includes(kindOf(f.name)));
+    const supported = files.filter((f) => DRAWING_KINDS.includes(kindOf(f.name)) || kindOf(f.name) === 'image');
     for (const f of files) {
         if (!supported.includes(f)) editor.log(`Formato não suportado pelo CAD: ${f.name}`, 'warn');
     }
@@ -3720,18 +3732,114 @@ async function exportDwg(editor) {
     return null;
 }
 
+const PAPER_SIZES_MM = [[210, 297], [297, 420], [148, 210], [420, 594], [216, 279]];
+
+// Largura padrão em mm: folha escaneada (A4, A3, A5, A2, Carta) entra no tamanho real do papel,
+// como o BricsCAD faz pela resolução gravada; senão usa o DPI do arquivo (96 se não houver).
+export function imageDefaultWidthMm(pxWidth, pxHeight, dpi = null) {
+    const ratio = Math.max(pxWidth, pxHeight) / Math.min(pxWidth, pxHeight);
+    const portrait = pxHeight >= pxWidth;
+    if (dpi > 0) {
+        const mmW = (pxWidth / dpi) * 25.4;
+        const mmH = (pxHeight / dpi) * 25.4;
+        const paper = PAPER_SIZES_MM.find(([a, b]) => Math.abs(Math.min(mmW, mmH) - a) / a < 0.03 && Math.abs(Math.max(mmW, mmH) - b) / b < 0.03);
+        if (paper) return portrait ? paper[0] : paper[1];
+        if (dpi !== 72 && dpi !== 96) return mmW;
+    }
+    const paper = PAPER_SIZES_MM.find(([a, b]) => Math.abs(ratio - b / a) < 0.015);
+    if (paper && (paper[0] === 210 || !dpi)) return portrait ? 210 : 297;
+    return (pxWidth / (dpi > 0 ? dpi : 96)) * 25.4;
+}
+
+// DPI gravado no JPG (JFIF) ou PNG (pHYs); null se não houver.
+export async function imageDpi(file) {
+    try {
+        const b = new Uint8Array(await file.slice(0, 65536).arrayBuffer());
+        if (b[0] === 0xff && b[1] === 0xd8 && b[6] === 0x4a && b[7] === 0x46 && b[8] === 0x49 && b[9] === 0x46) {
+            const unit = b[13];
+            const x = (b[14] << 8) | b[15];
+            if (x > 1 && unit === 1) return x;
+            if (x > 1 && unit === 2) return x * 2.54;
+        }
+        if (b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) {
+            for (let i = 8; i + 21 < b.length; i += 1) {
+                if (b[i] === 0x70 && b[i + 1] === 0x48 && b[i + 2] === 0x59 && b[i + 3] === 0x73 && b[i + 12] === 1) {
+                    const ppm = ((b[i + 4] << 24) | (b[i + 5] << 16) | (b[i + 6] << 8) | b[i + 7]) >>> 0;
+                    if (ppm > 0) return ppm * 0.0254;
+                }
+            }
+        }
+    } catch {}
+    return null;
+}
+
 async function imageAttach(editor) {
-    const file = await editor.pickFile('image/*');
+    const file = await editor.pickFile(`${IMAGE_ACCEPT},image/*`);
     if (!file) return null;
-    const src = await fileToDataUrl(file);
-    const natural = await imageSize(src);
-    const position = (await editor.getPoint('Ponto de inserção (canto inferior esquerdo):')).point;
-    const defaultWidth = natural.width * (25.4 / 96);
+    let src;
+    let natural;
+    try {
+        src = await fileToDataUrl(file);
+        natural = await imageSize(src);
+    } catch {
+        return editor.log(`Não consegui ler a imagem ${file.name}.`, 'error');
+    }
+    const insert = await editor.getPoint('Ponto de inserção (canto inferior esquerdo):');
+    if (!insert?.point) return null;
+    const position = insert.point;
+    const defaultWidth = imageDefaultWidthMm(natural.width, natural.height, await imageDpi(file));
     const width = await editor.getNumber('Largura em mm', { defaultValue: Number(defaultWidth.toFixed(2)) });
     if (!(width > 0)) return editor.log('Largura inválida.', 'error');
     const height = width * (natural.height / natural.width);
-    editor.commit('Imagem', addEntities(editor.doc, [{ type: 'image', position, width, height, rotation: 0, src, opacity: 1, name: file.name }]));
-    editor.log(`Imagem ${file.name} inserida (${width.toFixed(1)} × ${height.toFixed(1)} mm). Imagens não saem no DXF.`);
+    const rotation = await editor.getNumber('Rotação em graus', { defaultValue: 0 });
+    const entity = { type: 'image', position, width, height, rotation: Number.isFinite(rotation) ? rotation : 0, src, opacity: 1, name: file.name };
+    editor.commit('Imagem', addEntities(editor.doc, [entity]));
+    editor.log(`Imagem ${file.name} inserida (${width.toFixed(1)} × ${height.toFixed(1)} mm). É só referência: não vai para o corte nem para o DXF. Transparência: IMAGEADJUST; recorte: IMAGECLIP.`);
+    return null;
+}
+
+async function imageAdjust(editor) {
+    const ids = await editor.getSelection('Selecione as imagens:');
+    const images = editor.entitiesById(ids).filter((e) => e.type === 'image');
+    if (images.length === 0) return editor.log('Nenhuma imagem selecionada.', 'warn');
+    const current = Math.round((images[0].opacity ?? 1) * 100);
+    const percent = await editor.getNumber('Opacidade em % (10 a 100)', { defaultValue: current });
+    if (!Number.isFinite(percent)) return null;
+    const opacity = Math.min(100, Math.max(10, percent)) / 100;
+    editor.commit('Opacidade da imagem', updateEntities(editor.doc, images.map((e) => e.id), (e) => ({ ...e, opacity })));
+    editor.log(`Opacidade ${Math.round(opacity * 100)}% em ${images.length} imagem(ns).`);
+    return null;
+}
+
+// Recorte retangular em frações do quadro da imagem (0 a 1), no sistema local dela:
+// continua certo depois de mover, girar ou escalar.
+export function imageClipFromCorners(entity, a, b) {
+    const p = imageLocalPoint(entity, a);
+    const q = imageLocalPoint(entity, b);
+    const clamp = (v) => Math.min(1, Math.max(0, v));
+    const clip = { u0: clamp(Math.min(p.u, q.u)), v0: clamp(Math.min(p.v, q.v)), u1: clamp(Math.max(p.u, q.u)), v1: clamp(Math.max(p.v, q.v)) };
+    if (clip.u1 - clip.u0 < 1e-6 || clip.v1 - clip.v0 < 1e-6) return null;
+    return clip;
+}
+
+async function imageClip(editor) {
+    const pick = await editor.getEntity('Selecione a imagem para recortar:', { filter: (e) => e.type === 'image' });
+    const image = pick?.entity;
+    if (!image || image.type !== 'image') return editor.log('Selecione uma imagem.', 'warn');
+    const option = await editor.getKeyword('Recorte', [{ key: 'n', label: 'Novo' }, { key: 'r', label: 'Remover' }], 'n');
+    if (option?.key === 'r') {
+        const { clip, ...rest } = image;
+        editor.commit('Remover recorte', updateEntities(editor.doc, [image.id], () => rest));
+        return editor.log('Recorte removido.');
+    }
+    const first = await editor.getPoint('Primeiro canto do recorte:');
+    if (!first?.point) return null;
+    const second = await editor.getPoint('Canto oposto:', { reference: first.point, window: first.point });
+    if (!second?.point) return null;
+    const clip = imageClipFromCorners(image, first.point, second.point);
+    if (!clip) return editor.log('O retângulo não cobre a imagem.', 'error');
+    editor.commit('Recortar imagem', updateEntities(editor.doc, [image.id], (e) => ({ ...e, clip })));
+    editor.log('Imagem recortada. IMAGECLIP › Remover volta a imagem inteira.');
     return null;
 }
 
@@ -3985,6 +4093,8 @@ export const COMMANDS = {
     SVG: { aliases: ['SVGIMPORT'], run: openSvg, description: 'Importar vetor SVG para o editor' },
     CDR: { aliases: ['COREL'], run: openCdr, description: 'Abrir arquivo CorelDRAW (.cdr) para visualização e medição' },
     IMAGEATTACH: { aliases: ['IMAGE', 'IM', 'IMAGEM'], run: imageAttach, description: 'Inserir imagem (PNG/JPG) como referência' },
+    IMAGEADJUST: { aliases: ['IAD', 'TRANSPARENCIA', 'OPACIDADE'], run: imageAdjust, description: 'Ajustar a opacidade de imagens' },
+    IMAGECLIP: { aliases: ['ICL', 'RECORTARIMAGEM'], run: imageClip, description: 'Recortar imagem com retângulo' },
     PDFIMPORT: { aliases: ['PDF'], run: pdfImport, description: 'Importar página de PDF como vetor (linhas/polilinhas) ou imagem' },
     SAVE: { aliases: ['QSAVE', 'EXPORT', 'DXFOUT'], run: save, description: 'Baixar DXF' },
     SAVEAS: { aliases: [], run: saveAs, description: 'Baixar DXF com outro nome' },
