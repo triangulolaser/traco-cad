@@ -662,6 +662,19 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 /* ---------------------------------------------------------------- layer control */
 .cad-layer-control { display: inline-flex; align-items: center; gap: 4px; }
 .cad-layer-swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--cad-border-strong); }
+.cad-layer-control { position: relative; }
+.cad-layer-dropdown-toggle { display: inline-flex; align-items: center; gap: 6px; height: 26px; width: 200px; padding: 0 6px; background: var(--cad-panel-3); color: var(--cad-text); border: 1px solid var(--cad-border); border-radius: 6px; font: inherit; font-size: 12px; cursor: pointer; }
+.cad-layer-dropdown-toggle .cad-layer-dropdown-name { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cad-layer-dropdown-swatch { flex: none; width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--cad-border-strong); }
+.cad-layer-dropdown-list { position: absolute; top: calc(100% + 2px); left: 0; z-index: 60; min-width: 240px; max-height: 60vh; overflow-y: auto; padding: 3px 0; background: var(--cad-panel-2, var(--cad-panel-3)); border: 1px solid var(--cad-border-strong); border-radius: 6px; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+.cad-layer-dropdown-list[hidden] { display: none; }
+.cad-layer-dropdown-row { display: flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px 0 4px; font-size: 12px; color: var(--cad-text); cursor: pointer; }
+.cad-layer-dropdown-row:hover { background: var(--cad-panel-3); }
+.cad-layer-dropdown-row.is-current { background: color-mix(in srgb, var(--cad-accent, #3b82f6) 25%, transparent); }
+.cad-layer-dropdown-row .cad-layer-dropdown-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 4px; }
+.cad-layer-dropdown-icon { flex: none; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: none; border: 0; color: var(--cad-text-muted, var(--cad-text)); cursor: pointer; font-size: 12px; }
+.cad-layer-dropdown-icon.is-on { color: #f5c400; }
+.cad-layer-dropdown-icon:hover { background: var(--cad-panel-3); border-radius: 4px; }
 .cad-layer-select { height: 26px; max-width: 180px; background: var(--cad-panel-3); color: var(--cad-text); border: 1px solid var(--cad-border); border-radius: 6px; font: inherit; font-size: 12px; padding: 0 6px; }
 
 /* ---------------------------------------------------------------- gerenciador de layers */

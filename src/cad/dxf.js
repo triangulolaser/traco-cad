@@ -883,7 +883,11 @@ function fmt(n) {
 }
 
 function encodeText(text) {
-    return String(text ?? '').replace(/Ø/g, '%%c').replace(/°/g, '%%d').replace(/±/g, '%%p');
+    // AC1015 text is read in the drawing codepage (ANSI_1252 by default), so raw
+    // UTF-8 turned "PLANIFICAÇÃO" into "PLANIFICAÃÃO" in QCAD and nesting software. \U+XXXX
+    // is codepage-independent.
+    return String(text ?? '').replace(/Ø/g, '%%c').replace(/°/g, '%%d').replace(/±/g, '%%p')
+        .replace(/[^\x00-\x7f]/g, (ch) => '\\U+' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0'));
 }
 
 function encodeSingleLineText(text) {

@@ -3357,40 +3357,54 @@ async function newDrawing(editor) {
 
 async function open(editor) {
     const bridge = typeof window !== 'undefined' ? window.desktopBridge : null;
-    let file = null;
-    let filePath = null;
+    let files = [];
 
     if (bridge && typeof bridge.showOpenDialog === 'function') {
         const selected = await bridge.showOpenDialog({
-            multiple: false,
+            multiple: true,
             filters: [
                 { name: 'Desenhos e Projetos CAD', extensions: ['dxf', 'dwg', 'lxds', 'svg', 'cdr', 'elmt', 'qet'] },
                 { name: 'Todos os arquivos', extensions: ['*'] },
             ],
         });
-        if (!selected) return null;
-        filePath = Array.isArray(selected) ? selected[0] : selected;
-        if (!filePath) return null;
-        const name = filePath.split(/[\/\\]/).pop() || 'desenho.dxf';
-        let bytes;
-        if (typeof bridge.readFileBinary === 'function') {
-            bytes = await bridge.readFileBinary(filePath);
-        } else {
-            const text = await bridge.readFileText(filePath);
-            bytes = new TextEncoder().encode(text);
+        const paths = (Array.isArray(selected) ? selected : [selected]).filter(Boolean);
+        for (const filePath of paths) {
+            const name = filePath.split(/[\/\\]/).pop() || 'desenho.dxf';
+            let bytes;
+            if (typeof bridge.readFileBinary === 'function') {
+                bytes = await bridge.readFileBinary(filePath);
+            } else {
+                const text = await bridge.readFileText(filePath);
+                bytes = new TextEncoder().encode(text);
+            }
+            const mime = name.toLowerCase().endsWith('.dwg') ? 'image/vnd.dwg' : 'application/octet-stream';
+            const file = new File([new Uint8Array(bytes)], name, { type: mime });
+            file.filePath = filePath;
+            files.push(file);
         }
-        const mime = name.toLowerCase().endsWith('.dwg') ? 'image/vnd.dwg' : 'application/octet-stream';
-        file = new File([new Uint8Array(bytes)], name, { type: mime });
-        file.filePath = filePath;
+    } else if (typeof editor.pickFiles === 'function') {
+        files = await editor.pickFiles(DRAWING_ACCEPT);
     } else {
-        file = await editor.pickFile(DRAWING_ACCEPT);
-        if (!file) return null;
-        filePath = file.filePath || file.path || null;
+        const file = await editor.pickFile(DRAWING_ACCEPT);
+        if (file) files = [file];
     }
+    if (!files.length) return null;
 
+    const supported = files.filter((f) => DRAWING_KINDS.includes(kindOf(f.name)));
+    for (const f of files) {
+        if (!supported.includes(f)) editor.log(`Formato não suportado pelo CAD: ${f.name}`, 'warn');
+    }
+    if (!supported.length) return null;
+
+    if (typeof editor.openFiles === 'function') {
+        return editor.openFiles(supported);
+    }
+    for (const file of supported) await openSingle(editor, file, file.filePath || file.path || null);
+    return null;
+}
+
+async function openSingle(editor, file, filePath) {
     const kind = kindOf(file.name);
-    if (!DRAWING_KINDS.includes(kind)) return editor.log('Formato não suportado pelo CAD.', 'warn');
-
     if (typeof editor.openFile === 'function') {
         return editor.openFile(file, { filePath });
     }

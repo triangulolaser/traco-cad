@@ -2,6 +2,8 @@ import './styles/desktop.css';
 import './cad.js';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { save as tauriSaveDialog, open as tauriOpenDialog } from '@tauri-apps/plugin-dialog';
 import { initDesktopUpdates } from './updater.js';
 
@@ -36,6 +38,9 @@ window.desktopBridge = {
         const u8Array = bytes ? Array.from(new Uint8Array(bytes)) : null;
         return invoke('convert_dwg_to_dxf', { path: path || null, bytes: u8Array });
     },
+    async closeWindow() {
+        return getCurrentWindow().destroy();
+    },
 };
 
 function openOpenedFile(payload) {
@@ -49,7 +54,8 @@ function openOpenedFile(payload) {
 
     const tryOpen = () => {
         if (window.tracoCad && typeof window.tracoCad.openFile === 'function' && window.tracoCad.tabs) {
-            window.tracoCad.openFile(file, { filePath: payload.path });
+            if (typeof window.tracoCad.openFiles === 'function') window.tracoCad.openFiles([file], { filePath: payload.path });
+            else window.tracoCad.openFile(file, { filePath: payload.path });
             return true;
         }
         return false;
@@ -90,5 +96,33 @@ if (document.readyState === 'loading') {
     drainPendingFiles();
 }
 
-// 3. Atualização automática: checa ao abrir e pelo botão da barra superior.
+// 3. Arraste de arquivos do Explorer/Finder: o webview do Tauri intercepta o drop e entrega
+// só os caminhos, então lemos cada arquivo e abrimos na fila do editor, um por aba.
+getCurrentWebview()
+    .onDragDropEvent(async (event) => {
+        if (event.payload?.type !== 'drop') return;
+        for (const path of event.payload.paths || []) {
+            try {
+                const bytes = await invoke('read_file_binary', { path });
+                const name = path.split(/[\\/]/).pop() || 'desenho.dxf';
+                openOpenedFile({ path, name, bytes });
+            } catch (err) {
+                console.warn('[Tauri] Falha ao ler arquivo arrastado:', path, err);
+            }
+        }
+    })
+    .catch((err) => console.warn('[Tauri] Arraste de arquivos indisponível:', err));
+
+// 4. X da janela e Alt+F4 passam pela mesma pergunta do Ctrl+F4: desenho com
+// alteração pergunta se salva, e Cancelar mantém o Traço aberto.
+getCurrentWindow()
+    .onCloseRequested(async (event) => {
+        const tabs = window.tracoCad?.tabs;
+        if (!tabs?.requestQuit) return;
+        event.preventDefault();
+        await tabs.requestQuit();
+    })
+    .catch((err) => console.warn('[Tauri] Interceptação do fechamento indisponível:', err));
+
+// 5. Atualização automática: checa ao abrir e pelo botão da barra superior.
 initDesktopUpdates();

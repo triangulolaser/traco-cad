@@ -169,7 +169,7 @@ test('DXF Roundtrip: writeDxf preserva MTEXT com boxWidth e justificação \\pxq
     const dxf = writeDxf(doc);
     assert.match(dxf, /MTEXT/);
     assert.match(dxf, /\n41\n642\.65/);
-    assert.match(dxf, /\\pxqc;Reservatório Basculante/);
+    assert.match(dxf, /\\pxqc;Reservat\\U\+00F3rio Basculante/);
 
     const reimported = parseDxf(dxf);
     assert.equal(reimported.entities.length, 1);

@@ -683,10 +683,104 @@ export function setupSnapMenu(editor, root) {
     });
 }
 
+// Troca de camada pela barra: com objetos selecionados, move-os para a camada
+// e volta cor, tipo e espessura de linha para "ByLayer", como no BricsCAD;
+// sem seleção, define a camada atual.
+export function applyLayerFromToolbar(editor, name) {
+    if (!editor.doc.layers.some((l) => l.name === name)) return;
+    const ids = [...editor.selection].filter((id) => {
+        const entity = editor.doc.entities.find((x) => x.id === id);
+        return entity && isEntityEditable(editor.doc, entity);
+    });
+    if (!ids.length) {
+        editor.setCurrentLayer(name);
+        return;
+    }
+    editor.commit('Layer dos objetos', updateEntities(editor.doc, ids, ({ color, lineType, lineWeight, ...e }) => ({
+        ...e, layer: name, color: 'bylayer',
+    })));
+}
+
+// Camada mostrada na barra: a dos objetos selecionados quando todos estão na
+// mesma; '' quando divergem; a atual quando não há seleção.
+export function toolbarLayerName(editor) {
+    if (!editor.selection.size) return editor.doc.currentLayer;
+    const names = new Set(editor.doc.entities.filter((e) => editor.selection.has(e.id)).map((e) => e.layer));
+    return names.size === 1 ? [...names][0] : '';
+}
+
+function setupLayerDropdown(editor, select) {
+    const control = select.closest('.cad-layer-control') ?? select.parentElement;
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'cad-layer-dropdown-toggle';
+    toggle.dataset.cadLayerDropdown = '';
+    toggle.setAttribute('aria-haspopup', 'listbox');
+    toggle.innerHTML = '<span class="cad-layer-dropdown-swatch"></span><span class="cad-layer-dropdown-name" data-i18n-skip></span><i class="bi bi-chevron-down"></i>';
+    const list = document.createElement('div');
+    list.className = 'cad-layer-dropdown-list';
+    list.dataset.cadLayerDropdownList = '';
+    list.setAttribute('role', 'listbox');
+    list.hidden = true;
+    select.hidden = true;
+    select.after(toggle, list);
+    control.querySelector('[data-cad-layer-swatch]')?.setAttribute('hidden', '');
+
+    const close = () => { list.hidden = true; toggle.setAttribute('aria-expanded', 'false'); };
+    toggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        list.hidden = !list.hidden;
+        toggle.setAttribute('aria-expanded', list.hidden ? 'false' : 'true');
+        if (!list.hidden) renderLayerDropdown(editor, list.parentElement);
+    });
+    list.addEventListener('mousedown', (event) => event.preventDefault());
+    list.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const row = event.target.closest('[data-layer]');
+        if (!row) return;
+        const layer = editor.doc.layers.find((l) => l.name === row.dataset.layer);
+        if (!layer) return;
+        const action = event.target.closest('[data-layer-action]')?.dataset.layerAction;
+        if (action === 'visible') editor.layerUpdate(layer.name, { visible: !layer.visible });
+        else if (action === 'locked') editor.layerUpdate(layer.name, { locked: !layer.locked });
+        else {
+            applyLayerFromToolbar(editor, layer.name);
+            close();
+        }
+        if (!list.hidden) renderLayerDropdown(editor, list.parentElement);
+    });
+    document.addEventListener('click', (event) => {
+        if (!list.contains(event.target) && event.target !== toggle) close();
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !list.hidden) close();
+    });
+}
+
+function renderLayerDropdown(editor, root) {
+    const toggle = root.querySelector('[data-cad-layer-dropdown]');
+    const list = root.querySelector('[data-cad-layer-dropdown-list]');
+    if (!toggle || !list) return;
+    const shown = toolbarLayerName(editor);
+    const layer = editor.doc.layers.find((l) => l.name === shown);
+    toggle.querySelector('.cad-layer-dropdown-swatch').style.background = layer ? editor.layerColor(layer) : 'transparent';
+    toggle.querySelector('.cad-layer-dropdown-name').textContent = shown || t('*VÁRIOS*');
+    toggle.title = t(editor.selection.size ? 'Camada dos objetos selecionados' : 'Camada atual');
+    if (list.hidden) return;
+    list.innerHTML = editor.doc.layers.map((l) => `
+        <div class="cad-layer-dropdown-row${l.name === shown ? ' is-current' : ''}" role="option" data-layer="${escapeHtml(l.name)}" aria-selected="${l.name === shown}">
+            <button type="button" class="cad-layer-dropdown-icon${l.visible ? ' is-on' : ''}" data-layer-action="visible" title="${l.visible ? 'Desligar' : 'Ligar'}"><i class="bi bi-lightbulb${l.visible ? '-fill' : ''}"></i></button>
+            <button type="button" class="cad-layer-dropdown-icon" data-layer-action="locked" title="${l.locked ? 'Destravar' : 'Travar'}"><i class="bi bi-${l.locked ? 'lock-fill' : 'unlock'}"></i></button>
+            <span class="cad-layer-dropdown-swatch" style="background:${editor.layerColor(l)}"></span>
+            <span class="cad-layer-dropdown-name" data-i18n-skip>${escapeHtml(l.name)}</span>
+        </div>`).join('');
+}
+
 function setupLayerSelect(editor, root) {
     const select = root.querySelector('[data-cad-layer-select]');
     if (!select) return;
-    select.addEventListener('change', () => editor.setCurrentLayer(select.value));
+    select.addEventListener('change', () => applyLayerFromToolbar(editor, select.value));
+    setupLayerDropdown(editor, select);
     const button = root.querySelector('[data-cad-layer-new]');
     button?.addEventListener('click', () => editor.runCommand('LAYNEW'));
     const visibility = root.querySelector('[data-cad-layer-visibility]');
@@ -1061,6 +1155,49 @@ class TabManager {
         }
     }
 
+    // Fechamento pelos atalhos (Ctrl+W, Ctrl+F4) e pelo X da janela do desktop: cada aba suja
+    // pergunta Salvar / Não salvar / Cancelar. Cancelar, ou um SAVE que não limpou a aba,
+    // interrompe tudo e devolve false sem fechar nada além do que já foi decidido.
+    async requestClose(tabsToClose, targetActiveId = null) {
+        this.closeContextMenu();
+        this.syncCurrent();
+        const decided = [];
+        for (const tab of tabsToClose) {
+            if (!this.tabs.includes(tab)) continue;
+            if (this.isTabDirty(tab)) {
+                this.activate(tab.id);
+                const choice = await askSaveBeforeClose(this.root, this.getTabDoc(tab)?.name || 'Sem título.dxf');
+                if (choice === 'cancel') return false;
+                if (choice === 'save') {
+                    await this.editor.runCommand('SAVE');
+                    this.syncCurrent();
+                    if (this.isTabDirty(tab)) return false;
+                }
+            }
+            decided.push(tab);
+        }
+        if (decided.length) this.closeTabs(decided, targetActiveId, { force: true });
+        return true;
+    }
+
+    async closeCurrent() {
+        const tab = this.current();
+        if (!tab) return false;
+        const index = this.tabs.indexOf(tab);
+        const neighbor = this.tabs[index + 1] || this.tabs[index - 1] || null;
+        return this.requestClose([tab], neighbor?.id ?? null);
+    }
+
+    // Ctrl+F4: fecha o Traço inteiro. No desktop fecha a janela; no navegador só dá para
+    // fechar as abas do desenho (o navegador não deixa a página fechar a si mesma).
+    async requestQuit() {
+        if (!(await this.requestClose([...this.tabs]))) return false;
+        this.save.flush?.();
+        const bridge = typeof window !== 'undefined' ? window.desktopBridge : null;
+        if (bridge?.closeWindow) await bridge.closeWindow();
+        return true;
+    }
+
     closeTabs(tabsToClose, targetActiveId = null, { force = false } = {}) {
         if (!tabsToClose || tabsToClose.length === 0) return;
         this.closeContextMenu();
@@ -1341,6 +1478,56 @@ function closeBlankLaunchTab(tabs) {
     tabs.closeTabs([tab], null, { force: true });
 }
 
+function askSaveBeforeClose(root, docName) {
+    const name = String(docName ?? 'desenho');
+    if (!root || typeof document === 'undefined') {
+        if (typeof window === 'undefined' || typeof window.confirm !== 'function') return Promise.resolve('discard');
+        if (window.confirm(t('Salvar as alterações em "{name}"?', { name }))) return Promise.resolve('save');
+        return Promise.resolve(window.confirm(t('Fechar "{name}" sem salvar?', { name })) ? 'discard' : 'cancel');
+    }
+    root.querySelectorAll('[data-cad-confirm-modal]').forEach((el) => el.remove());
+    const cleanName = name.replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+    const overlay = document.createElement('div');
+    overlay.className = 'cad-error-overlay';
+    overlay.setAttribute('data-cad-confirm-modal', '');
+    overlay.setAttribute('role', 'alertdialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.innerHTML = `
+        <div class="cad-error-modal cad-confirm-modal" role="document">
+            <div class="cad-error-header">
+                <div class="cad-error-badge cad-error-badge-warning">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span>${tr('Alterações não salvas')}</span>
+                </div>
+                <h2 class="cad-error-title" style="margin-top: 8px; font-size: 16px;">${t('Salvar as alterações em "{name}"?', { name: cleanName })}</h2>
+            </div>
+            <div class="cad-error-footer" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px;">
+                <button type="button" class="cad-btn cad-btn-secondary" data-cad-confirm-action="cancel">${tr('Cancelar')}</button>
+                <button type="button" class="cad-btn cad-btn-secondary" data-cad-confirm-action="discard">${tr('Não salvar')}</button>
+                <button type="button" class="cad-btn cad-btn-primary" data-cad-confirm-action="save">${tr('Salvar')}</button>
+            </div>
+        </div>
+    `;
+    return new Promise((resolve) => {
+        const finish = (choice) => {
+            overlay.remove();
+            document.removeEventListener('keydown', onKey, true);
+            resolve(choice);
+        };
+        const onKey = (event) => {
+            if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish('cancel'); }
+        };
+        overlay.querySelectorAll('[data-cad-confirm-action]').forEach((button) => {
+            button.addEventListener('click', () => finish(button.dataset.cadConfirmAction));
+        });
+        document.addEventListener('keydown', onKey, true);
+        root.appendChild(overlay);
+        overlay.querySelector('[data-cad-confirm-action="save"]')?.focus?.();
+    });
+}
+
 function showTabCloseConfirmModal(root, docName, onConfirm) {
     if (!root) {
         if (typeof onConfirm === 'function') onConfirm();
@@ -1425,6 +1612,7 @@ function refreshUi(editor, root) {
         const layer = editor.doc.layers.find((l) => l.name === current);
         const swatch = root.querySelector('[data-cad-layer-swatch]');
         if (swatch && layer) swatch.style.background = editor.layerColor(layer);
+        renderLayerDropdown(editor, select.parentElement);
     }
     root.querySelectorAll('[data-cad-toggle]').forEach((button) => {
         const key = button.dataset.cadToggle;

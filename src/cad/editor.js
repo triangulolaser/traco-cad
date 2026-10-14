@@ -824,9 +824,7 @@ export class Editor {
                 // Sem objeto sob o cursor: arma a janela de seleção já no pressionar, para permitir arrasto.
                 const world = this.viewport.screenToWorld(screen);
                 if (!this.hitTest(world, { filter: this.pending?.filter })) {
-                    if (!this.pending && !event.shiftKey && this.selection.size > 0) {
-                        this.clearSelection();
-                    }
+                    // Não desmarca aqui: a janela arrastada soma à seleção. Só um clique sem arrasto no vazio desmarca.
                     this.window = { a: world, b: world, crossing: false, idle: !this.pending, armed: false };
                 } else {
                     // Sobre um objeto: clique seleciona o objeto, mas arrastar abre a janela (como no AutoCAD).
@@ -912,6 +910,9 @@ export class Editor {
                     this.finishWindow(world, event.shiftKey);
                 } else {
                     // Clique sem arrasto: mantém a janela aberta até o segundo clique (modo clique-clique).
+                    if (this.window.idle && !this.pending && !event.shiftKey && this.selection.size > 0) {
+                        this.clearSelection();
+                    }
                     this.window.armed = true;
                 }
                 return;
@@ -990,9 +991,26 @@ export class Editor {
         });
         canvas.addEventListener('drop', async (event) => {
             event.preventDefault();
-            const file = event.dataTransfer?.files?.[0];
-            if (file) await this.openFile(file);
+            const files = Array.from(event.dataTransfer?.files || []);
+            if (files.length) await this.openFiles(files);
         });
+    }
+
+    // Abre vários arquivos em sequência, cada um na sua aba. As chamadas entram numa fila
+    // para que dois lotes (arraste + Ctrl+O, ou eventos do desktop) não disputem a mesma aba.
+    openFiles(files, options = {}) {
+        const list = Array.from(files || []).filter(Boolean);
+        const run = async () => {
+            for (const file of list) {
+                try {
+                    await this.openFile(file, options);
+                } catch (err) {
+                    this.log(`Falha ao abrir "${file.name}": ${err?.message || err}`, 'error');
+                }
+            }
+        };
+        this.openQueue = (this.openQueue || Promise.resolve()).then(run, run);
+        return this.openQueue;
     }
 
     async openFile(file, { openInNewTab = false, filePath = null } = {}) {
@@ -1088,6 +1106,14 @@ export class Editor {
         const inInputField = !inTerminal && Boolean(
             active && (active.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName))
         );
+        // Ctrl+W fecha a aba e Ctrl+F4 fecha o Traço, também com o foco num campo.
+        if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && this.tabs
+            && (event.key?.toLowerCase() === 'w' || event.key === 'F4')) {
+            event.preventDefault();
+            if (event.key === 'F4') this.tabs.requestQuit?.();
+            else this.tabs.closeCurrent?.();
+            return;
+        }
         if (inInputField) {
             if (event.key === 'Escape') {
                 active.blur?.();
@@ -1621,6 +1647,24 @@ export class Editor {
     }
 
     // ------------------------------------------------------------------ arquivos
+
+    pickFiles(accept) {
+        return new Promise((resolve) => {
+            const input = this.fileInput;
+            if (!input) return resolve([]);
+            input.accept = accept;
+            input.multiple = true;
+            input.value = '';
+            const onChange = () => {
+                input.removeEventListener('change', onChange);
+                input.multiple = false;
+                resolve(Array.from(input.files || []));
+            };
+            input.addEventListener('change', onChange);
+            input.click();
+            return null;
+        });
+    }
 
     pickFile(accept) {
         if (this.pendingDropFile) {

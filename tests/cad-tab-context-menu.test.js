@@ -429,3 +429,67 @@ test('Aba carregada de arquivo DXF/DWG sem edições fecha imediatamente sem ped
     }
 });
 
+
+// ---------------------------------------------------------------------------
+// Ctrl+W / Ctrl+F4: perguntam Salvar / Não salvar / Cancelar antes de fechar.
+
+function withConfirms(answers, fn) {
+    const old = globalThis.window.confirm;
+    const queue = [...answers];
+    globalThis.window.confirm = () => queue.shift();
+    return Promise.resolve(fn()).finally(() => { globalThis.window.confirm = old; });
+}
+
+function dirtyFixture() {
+    const fixture = createTabManagerFixture();
+    fixture.manager.root = null; // sem DOM: a pergunta cai no window.confirm
+    fixture.manager.tabs[0].session.history.present.entities = [{ type: 'LINE', id: 'l1', x1: 0, y1: 0, x2: 50, y2: 50 }];
+    return fixture;
+}
+
+test('Ctrl+W com alteração: Cancelar mantém a aba aberta', async () => {
+    const { manager } = dirtyFixture();
+    const clean = manager.add({ ...createDocument(), name: 'Limpa.dxf' });
+    manager.activate(manager.tabs[0].id);
+    const closed = await withConfirms([false, false], () => manager.closeCurrent());
+    assert.equal(closed, false);
+    assert.equal(manager.tabs.length, 2);
+    assert.ok(manager.tabs.some((t) => t.id === clean.id));
+});
+
+test('Ctrl+W com alteração: Não salvar fecha a aba', async () => {
+    const { manager } = dirtyFixture();
+    manager.add({ ...createDocument(), name: 'Limpa.dxf' });
+    const dirtyId = manager.tabs[0].id;
+    manager.activate(dirtyId);
+    const closed = await withConfirms([false, true], () => manager.closeCurrent());
+    assert.equal(closed, true);
+    assert.equal(manager.tabs.some((t) => t.id === dirtyId), false);
+});
+
+test('Ctrl+W com alteração: Salvar roda o SAVE e não fecha se a aba continuar suja', async () => {
+    const { manager, editor } = dirtyFixture();
+    const commands = [];
+    editor.runCommand = async (name) => { commands.push(name); };
+    const closed = await withConfirms([true], () => manager.closeCurrent());
+    assert.deepEqual(commands, ['SAVE']);
+    assert.equal(closed, false);
+    assert.equal(manager.tabs.length, 1);
+});
+
+test('Ctrl+F4 fecha todas as abas e a janela; Cancelar não fecha nada', async () => {
+    const { manager } = dirtyFixture();
+    manager.add({ ...createDocument(), name: 'Limpa.dxf' });
+    let windowClosed = 0;
+    globalThis.window.desktopBridge = { closeWindow: async () => { windowClosed += 1; } };
+    try {
+        assert.equal(await withConfirms([false, false], () => manager.requestQuit()), false);
+        assert.equal(manager.tabs.length, 2);
+        assert.equal(windowClosed, 0);
+        assert.equal(await withConfirms([false, true], () => manager.requestQuit()), true);
+        assert.equal(manager.tabs.length, 0);
+        assert.equal(windowClosed, 1);
+    } finally {
+        delete globalThis.window.desktopBridge;
+    }
+});
