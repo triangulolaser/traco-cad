@@ -9,9 +9,10 @@ import { entityLength, distance, radToDeg, angleOf } from './cad/geometry.js';
 import { dimensionGeometry } from './cad/dimensions.js';
 import { OPENABLE_EXTENSIONS, iconOf, kindOf, extensionOf } from './cad/file-types.js';
 import { saveWorkspace, loadWorkspace, serializeDocument, debounce, popPendingImport } from './cad/storage.js';
+import { StartScreen, recordRecent, readRecentFile, forgetRecent, showOnStart } from './cad/start-screen.js';
 import { showCadErrorModal, hideCadErrorModal } from './cad/error-modal.js';
 import { snapIconSvg } from './cad/snaps.js';
-import { LOCALES, detectLocale, getLocale, saveLocale, setLocale, tr, translateDom } from './cad/i18n.js';
+import { LOCALES, detectLocale, getLocale, saveLocale, setLocale, t, tr, translateDom } from './cad/i18n.js';
 
 
 function setupToolbar(editor, root) {
@@ -446,6 +447,11 @@ function renderProperties(editor, root) {
         sameTextHeight = textLike.every((e) => Math.abs(getTextHeight(e) - firstH) < 1e-4) ? firstH : '';
     }
 
+    // 6. Precisão das cotas (casas decimais, como "Precisão dim" do BricsCAD)
+    const dims = selected.filter((e) => e.type === 'dimension');
+    const getPrecision = (e) => e.style?.precision ?? editor.doc.dimStyle?.precision ?? 2;
+    const samePrecision = dims.length && dims.every((e) => getPrecision(e) === getPrecision(dims[0])) ? getPrecision(dims[0]) : '';
+
     let html = section('Geral')
         + `<div class="cad-prop-row"><span class="cad-prop-key">Layer</span><span class="cad-prop-value"><select data-prop="layer"><option value="">${sameLayer ? '' : '(varia)'}</option>${layerOptions}</select></span></div>`
         + `<div class="cad-prop-row"><span class="cad-prop-key">Cor</span><span class="cad-prop-value"><span class="cad-prop-swatch" style="background:${swatchHex}" title="Escolher cor"><input type="color" data-prop="color-picker" value="${pickerHex}" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;"></span><input data-prop="color" value="${escapeHtml(colorLabel)}" title="ByLayer, índice ACI 1-255 ou #hex"></span></div>`
@@ -454,6 +460,11 @@ function renderProperties(editor, root) {
 
     if (hasTextLike) {
         html += `<div class="cad-prop-row"><span class="cad-prop-key">Tam. texto</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-prop="text-height" value="${sameTextHeight !== '' ? fmt(sameTextHeight) : ''}" placeholder="${sameTextHeight !== '' ? '' : '(varia)'}" title="Altura do texto em milímetros"></span></div>`;
+    }
+
+    if (dims.length) {
+        const options = Array.from({ length: 9 }, (_, n) => `<option value="${n}" ${samePrecision === n ? 'selected' : ''}>${n ? `0.${'0'.repeat(n)}` : '0'}</option>`).join('');
+        html += `<div class="cad-prop-row"><span class="cad-prop-key">Precisão dim</span><span class="cad-prop-value"><select data-prop="dim-precision">${samePrecision === '' ? '<option value="">(varia)</option>' : ''}${options}</select></span></div>`;
     }
 
     if (selected.length === 1) {
@@ -601,6 +612,16 @@ function renderProperties(editor, root) {
             }
         });
         textHeightInput.addEventListener('change', applyTextHeight);
+    }
+
+    // 6. Precisão das cotas
+    const precisionSelect = box.querySelector('[data-prop="dim-precision"]');
+    if (precisionSelect) {
+        precisionSelect.addEventListener('change', () => {
+            if (precisionSelect.value === '') return;
+            const value = Number(precisionSelect.value);
+            editor.commit('Precisão das cotas', updateEntities(editor.doc, [...editor.selection], (e) => (e.type === 'dimension' ? { ...e, style: { ...(e.style ?? {}), precision: value } } : e)));
+        });
     }
 }
 
@@ -1276,6 +1297,50 @@ class TabManager {
     }
 }
 
+// Tela Início: mostrada sem abas. Abrir/salvar alimenta a lista de recentes.
+function setupStartScreen(editor, root, tabs) {
+    const openFile = editor.openFile.bind(editor);
+    editor.openFile = async (file, options = {}) => {
+        const result = await openFile(file, options);
+        if (file && editor.doc?.entities?.length) recordRecent(editor.doc, { file }).catch(() => {});
+        return result;
+    };
+    editor.onDocumentSaved = (size) => recordRecent(editor.doc, { size }).catch(() => {});
+    const openRecent = async (entry) => {
+        const file = await readRecentFile(entry);
+        if (!file) {
+            forgetRecent(entry.id);
+            editor.log(t('"{0}" não está mais acessível e saiu da lista de recentes.', { 0: entry.name }), 'warn');
+            refreshUi(editor, root);
+            return false;
+        }
+        await editor.openFile(file, { filePath: entry.filePath || null });
+        return true;
+    };
+    editor.startScreen = new StartScreen(root, {
+        onNew: () => editor.runCommand('NEW'),
+        onOpen: () => editor.runCommand('OPEN'),
+        onOpenRecent: openRecent,
+        onTemplate: async (entry) => {
+            if (!(await openRecent(entry))) return;
+            // O recente vira modelo: mesma geometria, sem vínculo com o arquivo original.
+            const base = entry.name.replace(/\.[^.]+$/, '');
+            editor.setDocumentName(t('{0} (novo).dxf', { 0: base }), null);
+            tabs.render();
+            tabs.save();
+        },
+    });
+}
+
+// Com "Mostrar ao iniciar", a aba em branco da abertura dá lugar à tela Início.
+function closeBlankLaunchTab(tabs) {
+    if (!showOnStart() || tabs.tabs.length !== 1) return;
+    const tab = tabs.current();
+    const doc = tabs.getTabDoc(tab);
+    if (tab.server || doc?.filePath || (doc?.entities?.length ?? 0) > 0 || tabs.isTabDirty(tab)) return;
+    tabs.closeTabs([tab], null, { force: true });
+}
+
 function showTabCloseConfirmModal(root, docName, onConfirm) {
     if (!root) {
         if (typeof onConfirm === 'function') onConfirm();
@@ -1340,6 +1405,7 @@ function refreshUi(editor, root) {
     const redoButton = root.querySelector('[data-cad-command="REDO"]');
 
     if (!hasTabs) {
+        editor.startScreen?.render();
         if (title) title.textContent = '';
         if (count) count.textContent = '';
         if (coords) coords.textContent = '';
@@ -1465,9 +1531,11 @@ async function initCad(root) {
         try {
             tabs = new TabManager(editor, root);
             editor.tabs = tabs;
-            tabs.init().then(() => {
+            setupStartScreen(editor, root, tabs);
+            tabs.init().then(async () => {
                 refreshUi(editor, root);
-                handlePendingOrUrlImport(editor, tabs);
+                await handlePendingOrUrlImport(editor, tabs);
+                closeBlankLaunchTab(tabs);
             }).catch((error) => {
                 console.error('Falha ao restaurar abas', error);
                 editor.log(`Armazenamento local indisponível: ${error.message}`, 'warn');

@@ -3590,6 +3590,7 @@ async function save(editor) {
                 editor.history?.markClean?.();
                 editor.tabs?.render?.();
                 editor.tabs?.save?.();
+                editor.onDocumentSaved?.(payload.content?.length);
                 usage('export_success');
                 editor.log(`Salvo em ${editor.doc.filePath} (${editor.doc.entities.length} entidades).`, 'info');
                 return null;
@@ -3635,6 +3636,7 @@ async function saveAs(editor) {
         editor.history?.markClean?.();
         editor.tabs?.render?.();
         editor.tabs?.save?.();
+        editor.onDocumentSaved?.(payload.content?.length);
         usage('export_success');
         editor.log(`Salvo em ${selected} (${editor.doc.entities.length} entidades).`, 'info');
         return null;
@@ -3685,6 +3687,7 @@ async function exportDwg(editor) {
         editor.history?.markClean?.();
         editor.tabs?.render?.();
         editor.tabs?.save?.();
+        editor.onDocumentSaved?.(content?.length);
         usage('export_success');
         editor.log(`Salvo DWG em ${selected} (${editor.doc.entities.length} entidades).`, 'info');
         return null;

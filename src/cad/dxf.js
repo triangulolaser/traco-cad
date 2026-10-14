@@ -115,8 +115,11 @@ function parseEntity(type, groups) {
     switch (type) {
         case 'LINE':
             return { ...base, type: 'line', start: { x: num(first(groups, 10)), y: num(first(groups, 20)) }, end: { x: num(first(groups, 11)), y: num(first(groups, 21)) } };
-        case 'CIRCLE':
-            return { ...base, type: 'circle', center: { x: num(first(groups, 10)), y: num(first(groups, 20)) }, radius: num(first(groups, 40)) };
+        case 'CIRCLE': {
+            // OCS com Z negativo: o centro está espelhado em X.
+            const cx = num(first(groups, 10));
+            return { ...base, type: 'circle', center: { x: num(first(groups, 230, 1)) < 0 ? -cx : cx, y: num(first(groups, 20)) }, radius: num(first(groups, 40)) };
+        }
         case 'ARC': {
             const extrusion = num(first(groups, 230, 1));
             let start = degToRad(num(first(groups, 50)));
@@ -144,6 +147,10 @@ function parseEntity(type, groups) {
                 } else if (p.code === 20 && current) current.y = num(p.value);
                 else if (p.code === 42 && current) current.bulge = num(p.value);
             });
+            if (num(first(groups, 230, 1)) < 0) {
+                // OCS com Z negativo: espelha em X e inverte o sentido dos arcos.
+                vertices.forEach((v) => { v.x = -v.x; v.bulge = -v.bulge; });
+            }
             return { ...base, type: 'polyline', vertices, closed: Boolean(flags & 1), ...(constWidth > 0 ? { constantWidth: constWidth } : {}) };
         }
         case 'SOLID': {

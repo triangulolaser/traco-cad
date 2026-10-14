@@ -1073,6 +1073,8 @@ export default {
     "Spline por pontos de ajuste (B-spline cúbica)": "Spline por puntos de ajuste (B-spline cúbica)",
     "Subtrair área": "Restar área",
     "Sólido": "Sólido",
+    "Precisão dim": "Precisión cota",
+    "Precisão das cotas": "Precisión de las cotas",
     "Tam. texto": "Tam. texto",
     "Tamanho da fonte (altura)": "Tamaño de la fuente (altura)",
     "Tamanho do texto": "Tamaño del texto",
@@ -1242,5 +1244,16 @@ export default {
     "Nome e caminho": "Nombre y ruta",
     "Escolher no desenho": "Designar en el dibujo",
     "Entidades selecionadas:": "Entidades seleccionadas:",
-    "O arquivo já existe:": "El archivo ya existe:"
+    "O arquivo já existe:": "El archivo ya existe:",
+    "\"{0}\" não está mais acessível e saiu da lista de recentes.": "\"{0}\" ya no está accesible y salió de los archivos recientes.",
+    "{0} (novo).dxf": "{0} (nuevo).dxf",
+    "Começar": "Comenzar",
+    "Modelo": "Plantilla",
+    "Em branco (mm)": "En blanco (mm)",
+    "Abrir desenho": "Abrir dibujo",
+    "Arquivos recentes": "Archivos recientes",
+    "Nenhum arquivo aberto ainda. Os desenhos abertos ou salvos no Traço aparecem aqui.": "Aún no hay archivos abiertos. Los dibujos abiertos o guardados en Traço aparecen aquí.",
+    "Mostrar ao iniciar": "Mostrar al iniciar",
+    "Hoje": "Hoy",
+    "Ontem": "Ayer"
 };

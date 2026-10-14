@@ -58,9 +58,11 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-app.is-empty .cad-workspace {
     background: var(--cad-bg);
 }
-.cad-app.is-empty .cad-workspace > * {
+.cad-app.is-empty .cad-workspace > :not(.cad-start) {
     display: none !important;
 }
+.cad-start { display: none; }
+.cad-app.is-empty .cad-workspace > .cad-start, .cad-app.is-empty > .cad-start { display: flex; }
 .cad-app.is-empty .cad-terminal {
     display: none !important;
 }
@@ -1591,3 +1593,45 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-wblock-dialog footer { display: flex; justify-content: flex-end; gap: 8px; }
 .cad-wblock-count { font-size: .8rem; opacity: .8; margin: 0 0 10px; }
 .cad-wblock-confirm-path { font-family: var(--cad-mono, monospace); word-break: break-all; }
+
+/* Tela Início (sem abas abertas), no espírito do lançador do BricsCAD. */
+.cad-start {
+    grid-column: 1 / -1; grid-row: 1 / -1;
+    flex-direction: column; width: 100%; height: 100%; min-height: 0;
+    box-sizing: border-box; overflow: auto; background: var(--cad-bg); color: var(--cad-text);
+}
+.cad-start-inner { box-sizing: border-box; display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 40px; padding: 32px 40px 16px; max-width: 1280px; width: 100%; margin: 0 auto; flex: 1 0 auto; }
+.cad-start-brand { font-size: 22px; font-weight: 600; margin-bottom: 28px; display: flex; align-items: baseline; gap: 8px; }
+.cad-start-brand .bi { color: var(--cad-accent); }
+.cad-start-brand small { font-size: 12px; font-weight: 400; color: var(--cad-muted); }
+.cad-start-title { font-size: 16px; font-weight: 500; margin: 0 0 12px; color: var(--cad-text); }
+.cad-start-new { border-radius: 8px; overflow: hidden; border: 1px solid var(--cad-border-strong); background: var(--cad-panel); }
+.cad-start-new-btn {
+    width: 100%; aspect-ratio: 4 / 3; border: 0; background: var(--cad-accent); color: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; font-size: 17px; cursor: pointer;
+}
+.cad-start-new-btn .bi { font-size: 48px; line-height: 1; }
+.cad-start-new-btn:hover { filter: brightness(1.08); }
+.cad-start-template { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; font-size: 12px; color: var(--cad-muted); }
+.cad-start-template select { width: 100%; background: var(--cad-panel-2); color: var(--cad-text); border: 1px solid var(--cad-border-strong); border-radius: 4px; padding: 4px 6px; font-size: 13px; }
+.cad-start-open {
+    width: 100%; margin-top: 16px; padding: 10px; border-radius: 20px; cursor: pointer; font-size: 14px;
+    background: transparent; color: var(--cad-text); border: 1px solid var(--cad-border-strong);
+}
+.cad-start-open:hover { background: var(--cad-accent-soft); border-color: var(--cad-accent); }
+.cad-start-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+.cad-start-card { display: flex; flex-direction: column; gap: 4px; padding: 0; border: 0; background: none; color: var(--cad-text); text-align: left; cursor: pointer; min-width: 0; }
+.cad-start-thumb {
+    aspect-ratio: 4 / 3; background: #fff; border-radius: 4px; border: 2px solid transparent;
+    display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 8px;
+}
+.cad-start-thumb svg { width: 100%; height: 100%; }
+.cad-start-thumb-icon { width: 56px; color: #9a9aa3; }
+.cad-start-card:hover .cad-start-thumb, .cad-start-card:focus-visible .cad-start-thumb { border-color: var(--cad-accent); }
+.cad-start-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cad-start-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--cad-muted); }
+.cad-start-empty { color: var(--cad-muted); font-size: 14px; }
+.cad-start-show { align-self: flex-end; padding: 8px 40px 16px; font-size: 12px; color: var(--cad-muted); display: flex; gap: 6px; align-items: center; cursor: pointer; }
+@media (max-width: 720px) {
+    .cad-start-inner { grid-template-columns: 1fr; padding: 20px; gap: 24px; }
+}

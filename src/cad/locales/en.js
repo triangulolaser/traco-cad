@@ -1073,6 +1073,8 @@ export default {
     "Spline por pontos de ajuste (B-spline cúbica)": "Spline by fit points (cubic B-spline)",
     "Subtrair área": "Subtract area",
     "Sólido": "Solid",
+    "Precisão dim": "Dim precision",
+    "Precisão das cotas": "Dimension precision",
     "Tam. texto": "Text size",
     "Tamanho da fonte (altura)": "Font size (height)",
     "Tamanho do texto": "Text size",
@@ -1242,5 +1244,16 @@ export default {
     "Nome e caminho": "File name and path",
     "Escolher no desenho": "Pick in drawing",
     "Entidades selecionadas:": "Selected entities:",
-    "O arquivo já existe:": "The file already exists:"
+    "O arquivo já existe:": "The file already exists:",
+    "\"{0}\" não está mais acessível e saiu da lista de recentes.": "\"{0}\" is no longer accessible and was removed from recent files.",
+    "{0} (novo).dxf": "{0} (new).dxf",
+    "Começar": "Get started",
+    "Modelo": "Template",
+    "Em branco (mm)": "Blank (mm)",
+    "Abrir desenho": "Open drawing",
+    "Arquivos recentes": "Recent files",
+    "Nenhum arquivo aberto ainda. Os desenhos abertos ou salvos no Traço aparecem aqui.": "No files opened yet. Drawings opened or saved in Traço show up here.",
+    "Mostrar ao iniciar": "Show at startup",
+    "Hoje": "Today",
+    "Ontem": "Yesterday"
 };

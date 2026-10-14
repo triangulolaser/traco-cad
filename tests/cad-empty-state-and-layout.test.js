@@ -214,7 +214,7 @@ test('cad.css: estado vazio .cad-app.is-empty oculta workspace contents, termina
 
     assert.match(
         css,
-        /\.cad-app\.is-empty\s+\.cad-workspace\s*>\s*\*\s*\{[^}]*display:\s*none\s*!important/s,
+        /\.cad-app\.is-empty\s+\.cad-workspace\s*>\s*(?:\*|:not\(\.cad-start\))\s*\{[^}]*display:\s*none\s*!important/s,
         '.cad-workspace > * deve ser display: none !important quando is-empty'
     );
     assert.match(
