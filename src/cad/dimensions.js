@@ -267,7 +267,27 @@ function linearGeometry(entity, style) {
     const text = entity.textOverride ?? formatMeasurement(measurement * measurementFactor(style), style, entity.prefix ?? '', entity.suffix ?? '');
     const angle = readableAngle(angleOf(d1, d2));
     const textNormal = perpendicular({ x: Math.cos(angle), y: Math.sin(angle) });
-    const textCenter = add(midpoint(d1, d2), scale(textNormal, style.textGap));
+    const width = textWidth({ text, height: style.textHeight, fontFamily: style.fontFamily, bold: style.bold, italic: style.italic });
+    let textCenter;
+    if (entity.textPosition) {
+        // Código 11 é o meio do texto; a base fica meia altura abaixo.
+        textCenter = sub(entity.textPosition, scale(textNormal, style.textHeight / 2));
+    } else if (width + style.arrowSize * 2 > measurement) {
+        // Como no BricsCAD: texto que não cabe entre as linhas de chamada sai para fora, depois da segunda.
+        const outward = dot(sub(d2, d1), lineDir) >= 0 ? lineDir : scale(lineDir, -1);
+        const reach = (inside ? 0 : style.arrowSize * 2) + style.textGap + width / 2;
+        textCenter = add(add(d2, scale(outward, reach)), scale(textNormal, style.textGap));
+        segments.push({ a: d2, b: add(d2, scale(outward, reach + width / 2)) });
+    } else {
+        textCenter = add(midpoint(d1, d2), scale(textNormal, style.textGap));
+    }
+    if (entity.textPosition) {
+        // Linha de cota prolongada até o texto deslocado, como o CAD de origem desenha.
+        const t = dot(sub(entity.textPosition, d1), lineDir);
+        const len = dot(sub(d2, d1), lineDir);
+        if (t > len) segments.push({ a: d2, b: add(d1, scale(lineDir, t + width / 2)) });
+        else if (t < 0) segments.push({ a: d1, b: add(d1, scale(lineDir, t - width / 2)) });
+    }
     return { segments, arrows, texts: [textEntityAt(textCenter, angle, text, style, entity.id)], measurement, text };
 }
 
@@ -443,7 +463,7 @@ export function dimensionCurves(entity, style) {
 
 export function transformDimension(entity, fn, mirror) {
     const e = { ...entity };
-    ['p1', 'p2', 'linePoint', 'center', 'vertex'].forEach((key) => {
+    ['p1', 'p2', 'linePoint', 'center', 'vertex', 'textPosition'].forEach((key) => {
         if (entity[key]) e[key] = fn(entity[key]);
     });
     if (entity.radius !== undefined && entity.center) {

@@ -26,8 +26,11 @@ the drawings that go to the machines.
   per-layer style and scale.
 - **Layers**: color, linetype and lineweight, hide and lock.
 - **Files**: opens and saves **DXF** and **DWG** natively (no external converter), imports
-  **SVG**, vector **PDF**, **CorelDRAW (CDR)** and **QElectroTech** projects and elements, and
-  prints.
+  **SVG**, vector **PDF** and **QElectroTech** projects and elements, shows the preview stored in
+  **CorelDRAW (CDR)** files, and prints. DWG versions R12, R13, R14, 2000, 2004, 2007, 2010,
+  2013 and 2018 open; DWG and DXF are saved in the 2000 format, which every AutoCAD since 2000
+  reads. Reading and writing DWG is checked automatically against the ODA engine on 72 real
+  drawings, 8 per version.
 - **Desktop app**: tabs, recovery of open work, file associations and signed automatic updates.
 
 Traço is CAD only: no nesting, CAM or machine post-processing.

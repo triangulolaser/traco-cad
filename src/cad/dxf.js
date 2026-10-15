@@ -431,7 +431,9 @@ function parseEntitiesSection(cursor, stopAt, preserveDimensions = false, dimens
                     const straight=Math.abs(angle)<1e-6||Math.abs(angle-180)<1e-6;
                     const upright=Math.abs(angle-90)<1e-6;
                     const rotated=kind===0&&!straight&&!upright;
-                    entities.push({...base,kind:kind===1?'aligned':rotated?'rotated':upright?'vertical':'horizontal',...(rotated?{rotation:angle}:{}),p1:pt(13),p2:pt(14)});continue;
+                    // Bit 128: texto posicionado pelo usuário/CAD de origem (código 11 = meio do texto).
+                    const userText=(num(first(groups,70,0))&128)&&first(groups,11)!==undefined?{textPosition:pt(11)}:{};
+                    entities.push({...base,kind:kind===1?'aligned':rotated?'rotated':upright?'vertical':'horizontal',...(rotated?{rotation:angle}:{}),...userText,p1:pt(13),p2:pt(14)});continue;
                 }
                 if((kind===3||kind===4) && first(groups,15)!==undefined){
                     const a=pt(10),b=pt(15),center=kind===3?{x:(a.x+b.x)/2,y:(a.y+b.y)/2}:a;
@@ -995,7 +997,7 @@ function writeDimension(entity,dimStyle){
     let point=entity.linePoint;
     if(code===4)point=entity.center;
     if(code===3)point={x:entity.center.x-entity.radius,y:entity.center.y};
-    let out=entityHeader('DIMENSION',entity,'AcDbDimension')+pair(2,name)+pt(10,point)+pt(11,entity.linePoint)+pair(70,32+code)+pair(1,encodeText(entity.textOverride??'<>'))+pair(3,outputDimensionStyles.get(entity)?.name??styleName({...dimStyle,...entity.style,...entity}));
+    let out=entityHeader('DIMENSION',entity,'AcDbDimension')+pair(2,name)+pt(10,point)+pt(11,entity.textPosition??entity.linePoint)+pair(70,32+code+(entity.textPosition?128:0))+pair(1,encodeText(entity.textOverride??'<>'))+pair(3,outputDimensionStyles.get(entity)?.name??styleName({...dimStyle,...entity.style,...entity}));
     if(code===0||code===1){out+=pair(100,'AcDbAlignedDimension')+pt(13,entity.p1)+pt(14,entity.p2);if(code===0)out+=pair(100,'AcDbRotatedDimension')+pair(50,entity.kind==='vertical'?90:entity.kind==='rotated'?fmt(entity.rotation??0):0);}
     if(code===3||code===4)out+=pair(100,code===3?'AcDbDiametricDimension':'AcDbRadialDimension')+pt(15,{x:entity.center.x+entity.radius,y:entity.center.y})+pair(40,0);
     if(code===5)out+=pair(100,'AcDb3PointAngularDimension')+pt(13,entity.p1)+pt(14,entity.p2)+pt(15,entity.vertex??entity.center);

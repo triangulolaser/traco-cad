@@ -27,9 +27,30 @@ export const ACI_COLORS = {
     210: '#ff00bf',
 };
 
+// Paleta ACI completa (10–249 em grupos de 10 por matiz, 250–255 cinzas), como no AutoCAD/BricsCAD.
+// As cores nomeadas acima prevalecem para não mudar o que já foi salvo com elas.
+function aciPalette(index) {
+    if (index >= 250 && index <= 255) {
+        const v = [0x33, 0x50, 0x69, 0x82, 0xbe, 0xff][index - 250];
+        return `#${v.toString(16).padStart(2, '0').repeat(3)}`;
+    }
+    if (index < 10 || index > 249) return null;
+    const hue = (Math.floor(index / 10) - 1) * 15;
+    const j = index % 10;
+    const value = [255, 204, 153, 127, 76][j >> 1];
+    const low = j % 2 ? value / 2 : 0;
+    const channel = (h) => {
+        const k = ((h % 360) + 360) % 360;
+        const f = k < 60 ? 1 : k < 120 ? (120 - k) / 60 : k < 240 ? 0 : k < 300 ? (k - 240) / 60 : 1;
+        return Math.round(low + (value - low) * f);
+    };
+    return `#${[channel(hue), channel(hue - 120), channel(hue + 120)].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+}
+
 export function aciToHex(index) {
-    if (typeof index === 'string') return index.startsWith('#') ? index : ACI_COLORS[Number(index)] ?? '#ffffff';
-    return ACI_COLORS[index] ?? '#ffffff';
+    const n = typeof index === 'string' ? (index.startsWith('#') ? null : Number(index)) : index;
+    if (n === null) return index;
+    return ACI_COLORS[n] ?? aciPalette(n) ?? '#ffffff';
 }
 
 // Tipos de linha suportados no render e no DXF (padrões em unidades de desenho, escaláveis).
@@ -42,13 +63,22 @@ export const LINETYPES = {
     DASHDOT: { description: 'Dash dot __ . __ .', pattern: [12, -6, 0, -6] },
     PHANTOM: { description: 'Phantom ____ _ _ ____', pattern: [30, -6, 6, -6, 6, -6] },
 };
+// Variantes do acad.lin: "2" = metade, "X2" = dobro do padrão base (CENTERX2 é a linha de dobra da TRLS).
+for (const base of ['DASHED', 'HIDDEN', 'CENTER', 'DOT', 'DASHDOT', 'PHANTOM']) {
+    for (const [suffix, factor, label] of [['2', 0.5, '(.5x)'], ['X2', 2, '(2x)']]) {
+        LINETYPES[`${base}${suffix}`] = { description: `${LINETYPES[base].description} ${label}`, pattern: LINETYPES[base].pattern.map((v) => v * factor) };
+    }
+}
 
 // Espessuras (centésimos de mm, como o código 370 do DXF). 0 = padrão.
 export const LINEWEIGHTS = [0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158, 200, 211];
 
 export function hexToAci(hex) {
-    const entry = Object.entries(ACI_COLORS).find(([, value]) => value.toLowerCase() === String(hex).toLowerCase());
-    return entry ? Number(entry[0]) : 7;
+    const wanted = String(hex).toLowerCase();
+    const entry = Object.entries(ACI_COLORS).find(([, value]) => value.toLowerCase() === wanted);
+    if (entry) return Number(entry[0]);
+    for (let i = 10; i <= 255; i++) if (aciToHex(i) === wanted) return i;
+    return 7;
 }
 
 let nextId = 1;
