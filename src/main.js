@@ -38,6 +38,12 @@ window.desktopBridge = {
         const u8Array = bytes ? Array.from(new Uint8Array(bytes)) : null;
         return invoke('convert_dwg_to_dxf', { path: path || null, bytes: u8Array });
     },
+    async readCadClipboard() {
+        return invoke('read_cad_clipboard');
+    },
+    async clipboardSequence() {
+        return (await invoke('read_cad_clipboard_seq')) ?? null;
+    },
     async closeWindow() {
         return getCurrentWindow().destroy();
     },

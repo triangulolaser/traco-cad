@@ -130,6 +130,76 @@ fn convert_dwg_to_dxf(path: Option<String>, bytes: Option<Vec<u8>>) -> Result<St
     Ok(dxf_content)
 }
 
+#[derive(Serialize)]
+pub struct CadClipboard {
+    pub seq: u32,
+    pub format: Option<String>,
+    pub bytes: Option<Vec<u8>>,
+}
+
+/// Lê o DWG que SolidWorks, BricsCAD e AutoCAD põem na área de transferência do Windows
+/// (formatos registrados "AutoCAD.rNN": o arquivo DWG inteiro, a partir de "AC10").
+/// `seq` muda a cada cópia no sistema; serve para saber se a cópia é posterior à interna do Traço.
+#[cfg(windows)]
+#[tauri::command]
+fn read_cad_clipboard() -> CadClipboard {
+    use windows_sys::Win32::System::DataExchange::*;
+    use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+    unsafe {
+        let seq = GetClipboardSequenceNumber();
+        let mut out = CadClipboard { seq, format: None, bytes: None };
+        if OpenClipboard(std::ptr::null_mut()) == 0 {
+            return out;
+        }
+        let mut best: Option<(u32, u32, String)> = None;
+        let mut fmt = 0u32;
+        loop {
+            fmt = EnumClipboardFormats(fmt);
+            if fmt == 0 { break; }
+            let mut buf = [0u16; 256];
+            let n = GetClipboardFormatNameW(fmt, buf.as_mut_ptr(), buf.len() as i32);
+            if n <= 0 { continue; }
+            let name = String::from_utf16_lossy(&buf[..n as usize]);
+            if let Some(rev) = name.strip_prefix("AutoCAD.r").and_then(|r| r.parse::<u32>().ok()) {
+                if best.as_ref().map_or(true, |b| rev > b.0) {
+                    best = Some((rev, fmt, name));
+                }
+            }
+        }
+        if let Some((_, fmt, name)) = best {
+            let h = GetClipboardData(fmt);
+            if !h.is_null() {
+                let size = GlobalSize(h as _);
+                let p = GlobalLock(h as _) as *const u8;
+                if !p.is_null() && size >= 6 {
+                    let data = std::slice::from_raw_parts(p, size).to_vec();
+                    if data.starts_with(b"AC10") {
+                        out.format = Some(name);
+                        out.bytes = Some(data);
+                    }
+                }
+                if !p.is_null() { GlobalUnlock(h as _); }
+            }
+        }
+        CloseClipboard();
+        out
+    }
+}
+
+#[tauri::command]
+fn read_cad_clipboard_seq() -> u32 {
+    #[cfg(windows)]
+    unsafe { windows_sys::Win32::System::DataExchange::GetClipboardSequenceNumber() }
+    #[cfg(not(windows))]
+    0
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+fn read_cad_clipboard() -> CadClipboard {
+    CadClipboard { seq: 0, format: None, bytes: None }
+}
+
 fn read_and_dispatch_file(app_handle: &tauri::AppHandle, path: PathBuf) {
     if !path.is_file() {
         return;
@@ -186,7 +256,7 @@ pub fn run() {
     let app = builder
         .manage(PendingFilesState::default())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_pending_open_files, write_file, write_file_binary, read_file_text, read_file_binary, convert_dwg_to_dxf])
+        .invoke_handler(tauri::generate_handler![get_pending_open_files, write_file, write_file_binary, read_file_text, read_file_binary, convert_dwg_to_dxf, read_cad_clipboard, read_cad_clipboard_seq])
         .setup(|app| {
             #[cfg(desktop)]
             {

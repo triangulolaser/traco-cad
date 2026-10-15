@@ -59,3 +59,38 @@ test('Ctrl/Cmd clipboard routes CAD but leaves editable fields and text prompts 
         e.pending=null;assert.equal(key('v').prevented,true);
     } finally {globalThis.document=before;}
 });
+
+test('Ctrl+V cola o DWG do SolidWorks/BricsCAD da área de transferência com layers', async () => {
+    const { documentToDwg } = await import('../src/cad/dwg.js');
+    const src = addEntities({ ...createDocument(), layers: [{ name: '0', color: 7 }, { name: 'DOBRA', color: 3 }] },
+        [{ type: 'line', start: { x: 5, y: 5 }, end: { x: 55, y: 5 }, layer: 'DOBRA' }, { type: 'circle', center: { x: 30, y: 30 }, radius: 10, layer: '0' }]);
+    const bytes = await documentToDwg(src);
+    let seq = 7;
+    const bridge = { readCadClipboard: async () => ({ seq, format: 'AutoCAD.r14', bytes: Array.from(bytes) }), clipboardSequence: async () => seq };
+    const before = globalThis.window; globalThis.window = { desktopBridge: bridge };
+    try {
+        const e = editor(); e.doc = createDocument();
+        await COMMANDS.PASTECLIP.run(e);
+        assert.equal(e.doc.entities.length, 2);
+        assert.ok(e.doc.layers.some(l => l.name === 'DOBRA'));
+        const line = e.doc.entities.find(x => x.type === 'line');
+        assert.equal(line.layer, 'DOBRA');
+        assert.deepEqual(line.start, { x: 100, y: 200 });
+        // Cópia interna depois da cópia do sistema: Ctrl+V volta a usar a interna.
+        e.selection = new Set([line.id]); await COMMANDS.COPYCLIP.run(e);
+        await COMMANDS.PASTECLIP.run(e);
+        assert.equal(e.doc.entities.length, 3);
+        // Nova cópia no SolidWorks: o sistema volta a valer.
+        seq = 8; await COMMANDS.PASTECLIP.run(e);
+        assert.equal(e.doc.entities.length, 5);
+    } finally { globalThis.window = before; }
+});
+
+test('sem DWG na área de transferência o Ctrl+V usa o clipboard interno', async () => {
+    const before = globalThis.window;
+    globalThis.window = { desktopBridge: { readCadClipboard: async () => ({ seq: 1, format: null, bytes: null }), clipboardSequence: async () => 1 } };
+    try {
+        const e = editor(); await COMMANDS.COPYCLIP.run(e); await COMMANDS.PASTECLIP.run(e);
+        assert.equal(e.doc.entities.length, 2);
+    } finally { globalThis.window = before; }
+});

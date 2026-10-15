@@ -123,3 +123,54 @@ test('cotagem automática de chapa com furos e cantos arredondados', () => {
     assert.ok(dims.every((d) => d.layer === 'COTAS' && d.type === 'dimension'));
     assert.ok(!kinds.includes(undefined));
 });
+
+test('Cotar peça em desenho solto: sem cadeia de furos e gerais ancoradas na geometria', () => {
+    // Caso do Traço (14/10): círculo Ø500, linha comprida e segmento de 500 soltos, sem contorno fechado.
+    const parts = [
+        { id: 'c', type: 'circle', layer: '0', center: { x: 250, y: 250 }, radius: 250 },
+        { id: 'l', type: 'line', layer: '0', start: { x: 250, y: 0 }, end: { x: 1339.71, y: 0 } },
+        { id: 's', type: 'line', layer: '0', start: { x: 1339.71, y: 0 }, end: { x: 1339.71, y: 500 } },
+    ];
+    const dims = autoDimensionPart(parts, { dimStyle: { textHeight: 2.5, scale: 1 }, layer: 'COTAS' });
+    const horizontal = dims.filter((d) => d.kind === 'horizontal');
+    const vertical = dims.filter((d) => d.kind === 'vertical');
+    assert.equal(horizontal.length, 1, 'círculo solto não vira furo: só a geral horizontal');
+    assert.equal(vertical.length, 1, 'só a geral vertical');
+    assert.ok(close(dimensionGeometry(horizontal[0]).measurement, 1339.71));
+    assert.ok(close(dimensionGeometry(vertical[0]).measurement, 500));
+    // Extensões presas em pontos que existem: quadrante esquerdo do círculo e pontas das linhas.
+    assert.ok(close(horizontal[0].p1.x, 0) && close(horizontal[0].p1.y, 250));
+    assert.ok(close(horizontal[0].p2.x, 1339.71) && close(horizontal[0].p2.y, 0));
+    assert.ok(close(vertical[0].p1.x, 1339.71) && close(vertical[0].p1.y, 0));
+    assert.ok(close(vertical[0].p2.x, 1339.71) && close(vertical[0].p2.y, 500));
+    const diameters = dims.filter((d) => d.kind === 'diameter');
+    assert.equal(diameters.length, 1);
+    assert.ok(close(diameters[0].radius, 250));
+});
+
+test('Cotar peça: círculo fora do contorno (no recorte de uma peça em L) não entra na cadeia', () => {
+    const lShape = { id: 'p', type: 'polyline', layer: '0', closed: true, vertices: [
+        { x: 0, y: 0, bulge: 0 }, { x: 100, y: 0, bulge: 0 }, { x: 100, y: 40, bulge: 0 },
+        { x: 40, y: 40, bulge: 0 }, { x: 40, y: 100, bulge: 0 }, { x: 0, y: 100, bulge: 0 },
+    ] };
+    const hole = { id: 'h', type: 'circle', layer: '0', center: { x: 20, y: 20 }, radius: 5 };
+    const loose = { id: 'x', type: 'circle', layer: '0', center: { x: 70, y: 70 }, radius: 5 };
+    const dims = autoDimensionPart([lShape, hole, loose], { dimStyle: { textHeight: 2.5, scale: 1 }, layer: 'COTAS' });
+    const chainH = dims.filter((d) => d.kind === 'horizontal').map((d) => Math.round(dimensionGeometry(d).measurement)).sort((a, b) => a - b);
+    assert.deepEqual(chainH, [20, 80, 100], 'cadeia só com o furo de dentro (20 + 80) e a geral');
+    const chainV = dims.filter((d) => d.kind === 'vertical').map((d) => Math.round(dimensionGeometry(d).measurement)).sort((a, b) => a - b);
+    assert.deepEqual(chainV, [20, 80, 100]);
+    assert.equal(dims.filter((d) => d.kind === 'diameter').length, 1, 'só o furo da peça recebe diâmetro');
+});
+
+test('Cotar peça: contorno com arco de bulge negativo continua reconhecendo os furos', () => {
+    // Retângulo 100×60 com o lado de cima afundado por um arco (bulge negativo) e um furo abaixo dele.
+    const part = { id: 'p', type: 'polyline', layer: '0', closed: true, vertices: [
+        { x: 0, y: 0, bulge: 0 }, { x: 100, y: 0, bulge: 0 }, { x: 100, y: 60, bulge: -0.3 },
+        { x: 0, y: 60, bulge: 0 },
+    ] };
+    const hole = { id: 'h', type: 'circle', layer: '0', center: { x: 30, y: 20 }, radius: 4 };
+    const dims = autoDimensionPart([part, hole], { dimStyle: { textHeight: 2.5, scale: 1 }, layer: 'COTAS' });
+    assert.equal(dims.filter((d) => d.kind === 'horizontal').length, 3, 'cadeia 30 + 70 e a geral');
+    assert.equal(dims.filter((d) => d.kind === 'diameter').length, 1);
+});

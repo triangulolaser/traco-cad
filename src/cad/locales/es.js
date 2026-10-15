@@ -190,6 +190,8 @@ export default {
     "Circulo Tangente-Raio": "Círculo Tangente-Radio",
     "Circunscrito": "Circunscrito",
     "Clipboard do desenho vazio.": "El portapapeles del dibujo está vacío.",
+    "Colando {0} objeto(s) da área de transferência ({1}).": "Pegando {0} objeto(s) del portapapeles ({1}).",
+    "Não foi possível ler o DWG da área de transferência: {0}": "No se pudo leer el DWG del portapapeles: {0}",
     "Clique em \"Tentar novamente\" para carregar o Traço nesta janela.": "Haga clic en \"Reintentar\" para cargar Traço en esta ventana.",
     "Clique em um objeto.": "Haga clic en un objeto.",
     "Clique nos objetos, ALL para todos, Enter para confirmar.": "Haga clic en los objetos, ALL para todos, Enter para confirmar.",

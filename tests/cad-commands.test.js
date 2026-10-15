@@ -313,6 +313,47 @@ test('WBLOCK: escolher ponto base no desenho volta para a janela com o ponto', a
     assert.deepEqual(editor.memory.wblockBase, { x: 5, y: 0, z: 0 });
 });
 
+function memoryStorage() {
+    const data = new Map();
+    return { getItem: (k) => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, String(v)) };
+}
+
+test('WBLOCK no desktop: último caminho vale para outra aba (nova área de trabalho)', async () => {
+    const saved = [];
+    globalThis.window = { desktopBridge: { saveFile: async (path, content) => saved.push({ path, content }), fileExists: async () => saved.length > 0 } };
+    try {
+        const storage = memoryStorage();
+        const first = wblockEditor([]);
+        first.storage = storage;
+        first.wblockUi = wblockUi([{ action: 'ok', path: 'C:\\Blocos\\flange.dxf', base: { x: 0, y: 0, z: 0 } }]);
+        await COMMANDS.WBLOCK.run(first);
+        const second = wblockEditor([]);
+        second.storage = storage;
+        second.wblockUi = wblockUi([{ action: 'ok', path: 'C:\\Blocos\\flange.dxf', base: { x: 0, y: 0, z: 0 } }], [true]);
+        await COMMANDS.WBLOCK.run(second);
+        assert.equal(second.wblockUi.shown[0].path, 'C:\\Blocos\\flange.dxf');
+        assert.deepEqual(second.wblockUi.confirms, ['C:\\Blocos\\flange.dxf']);
+        assert.deepEqual(saved.map((s) => s.path), ['C:\\Blocos\\flange.dxf', 'C:\\Blocos\\flange.dxf']);
+    } finally {
+        delete globalThis.window;
+    }
+});
+
+test('WBLOCK na web: outra aba lembra só o nome do arquivo', async () => {
+    const storage = memoryStorage();
+    const first = wblockEditor([]);
+    first.storage = storage;
+    first.downloadText = () => {};
+    first.wblockUi = wblockUi([{ action: 'ok', path: 'peca', base: { x: 0, y: 0, z: 0 } }]);
+    await COMMANDS.WBLOCK.run(first);
+    const second = wblockEditor([]);
+    second.storage = storage;
+    second.downloadText = () => {};
+    second.wblockUi = wblockUi([{ action: 'cancel' }]);
+    await COMMANDS.WBLOCK.run(second);
+    assert.equal(second.wblockUi.shown[0].path, 'peca.dxf');
+});
+
 test('WBLOCK: cancelar não grava', async () => {
     const editor = wblockEditor([]);
     editor.downloadText = () => { throw new Error('não deveria baixar'); };

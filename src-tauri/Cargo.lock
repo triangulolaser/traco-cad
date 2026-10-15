@@ -4424,7 +4424,7 @@ dependencies = [
 
 [[package]]
 name = "traco-cad"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
  "log",
  "serde",
@@ -4436,6 +4436,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

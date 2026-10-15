@@ -1143,6 +1143,7 @@ async function copyClip(editor, cut = false) {
     if (boxIsEmpty(box)) return;
     const names = new Set(entities.map(e => e.layer));
     editor.entityClipboard = structuredClone({ entities, layers: editor.doc.layers.filter(l => names.has(l.name)), base: { x: box.minX, y: box.minY }, units: editor.doc.units });
+    editor.entityClipboard.systemSeq = await systemClipboardSeq();
     if (cut) {
         editor.commit('Recortar', removeEntities(editor.doc, entities.map(e => e.id)));
         editor.selection.clear();
@@ -1150,8 +1151,36 @@ async function copyClip(editor, cut = false) {
     editor.log(`${entities.length} objeto(s) ${cut ? 'recortado(s)' : 'copiado(s)'}; use Ctrl+V para inserir.`);
 }
 
+async function systemClipboardSeq() {
+    try { return (await globalThis.window?.desktopBridge?.clipboardSequence?.()) ?? null; } catch { return null; }
+}
+
+// Ctrl+V vindo do SolidWorks ("Copiar para formato DWG"), BricsCAD ou AutoCAD: no Windows eles deixam o
+// DWG inteiro no formato "AutoCAD.rNN". Só vale se a cópia do sistema for posterior à cópia interna.
+export async function systemCadClip(editor, bridge = globalThis.window?.desktopBridge) {
+    if (typeof bridge?.readCadClipboard !== 'function') return null;
+    let res;
+    try { res = await bridge.readCadClipboard(); } catch { return null; }
+    if (!res?.bytes?.length) return null;
+    if (editor.entityClipboard && editor.entityClipboard.systemSeq === res.seq) return null;
+    const { dwgToDocument } = await import('./dwg.js');
+    const doc = await dwgToDocument(new Uint8Array(res.bytes), { name: 'area-de-transferencia.dwg' });
+    const entities = doc.entities;
+    if (!entities.length) return null;
+    const box = boxOf(entities);
+    if (boxIsEmpty(box)) return null;
+    const names = new Set(entities.map(e => e.layer));
+    return { entities, layers: doc.layers.filter(l => names.has(l.name)), blocks: doc.blocks ?? {}, base: { x: box.minX, y: box.minY }, units: doc.units, source: res.format };
+}
+
 async function pasteClip(editor) {
-    const clip = editor.entityClipboard;
+    let clip = editor.entityClipboard;
+    try {
+        const external = await systemCadClip(editor);
+        if (external) { clip = external; editor.log(`Colando ${external.entities.length} objeto(s) da área de transferência (${external.source}).`); }
+    } catch (err) {
+        editor.log(`Não foi possível ler o DWG da área de transferência: ${err.message}`, 'warn');
+    }
     if (!clip?.entities.length) { editor.log('Clipboard do desenho vazio.', 'warn'); return; }
     if (clip.units !== editor.doc.units) { editor.log('As unidades dos desenhos diferem. Ajuste as unidades antes de colar.', 'warn'); return; }
     const original = editor.doc;
@@ -1172,7 +1201,9 @@ async function pasteClip(editor) {
         occupied.add(id);
         return { ...translateEntity(structuredClone(e), delta), id };
     });
-    editor.commit('Colar', addEntities({ ...editor.doc, layers }, entities));
+    const blocks = { ...(editor.doc.blocks ?? {}) };
+    for (const [name, def] of Object.entries(clip.blocks ?? {})) if (!blocks[name]) blocks[name] = structuredClone(def);
+    editor.commit('Colar', addEntities({ ...editor.doc, layers, blocks }, entities));
     editor.selection = new Set(entities.map(e => e.id));
 }
 
@@ -2326,6 +2357,8 @@ async function wblock(editor) {
         })
         : null;
     // Como no BricsCAD: último caminho já preenchido e ponto base 0,0,0; W, Enter grava.
+    // O último caminho fica gravado no navegador/desktop e vale para outras abas e após reiniciar.
+    if (editor.memory.wblockPath == null && editor.memory.wblockName == null) Object.assign(editor.memory, loadWblockPrefs(editor.storage));
     let state = {
         path: (desktop ? editor.memory.wblockPath : null) ?? editor.memory.wblockName ?? 'bloco.dxf',
         base: editor.memory.wblockBase ?? { x: 0, y: 0, z: 0 },
@@ -2356,6 +2389,7 @@ async function wblock(editor) {
     if (desktop) editor.memory.wblockPath = path;
     editor.memory.wblockName = name;
     editor.memory.wblockBase = state.base;
+    saveWblockPrefs(editor.storage, editor.memory);
     const view = editor.viewport?.getView ? editor.viewport.getView() : editor.doc.view;
     const doc = { ...createDocument(), name, units: editor.doc.units, dimStyle: editor.doc.dimStyle, insBase: base, view };
     doc.layers = editor.doc.layers.filter((l) => used.has(l.name) || l.name === '0');
@@ -2365,6 +2399,29 @@ async function wblock(editor) {
     else editor.downloadText(content, name);
     editor.log(`Bloco exportado: ${desktop ? path : name} (${entities.length} entidades, base ${fmtPoint(base)}).`);
     return null;
+}
+
+const WBLOCK_PREFS_KEY = 'traco.wblock';
+
+function loadWblockPrefs(storage) {
+    try {
+        const saved = JSON.parse(storage?.getItem(WBLOCK_PREFS_KEY) ?? 'null');
+        if (!saved || typeof saved !== 'object') return {};
+        const prefs = {};
+        if (typeof saved.path === 'string' && saved.path) prefs.wblockPath = saved.path;
+        if (typeof saved.name === 'string' && saved.name) prefs.wblockName = saved.name;
+        return prefs;
+    } catch {
+        return {};
+    }
+}
+
+function saveWblockPrefs(storage, memory) {
+    try {
+        storage?.setItem(WBLOCK_PREFS_KEY, JSON.stringify({ path: memory.wblockPath ?? null, name: memory.wblockName ?? null }));
+    } catch {
+        // armazenamento cheio ou bloqueado: vale só para esta aba
+    }
 }
 
 async function fileExists(bridge, path) {

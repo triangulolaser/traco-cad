@@ -190,6 +190,8 @@ export default {
     "Circulo Tangente-Raio": "Circle Tangent-Radius",
     "Circunscrito": "Circumscribed",
     "Clipboard do desenho vazio.": "Drawing clipboard is empty.",
+    "Colando {0} objeto(s) da área de transferência ({1}).": "Pasting {0} object(s) from the clipboard ({1}).",
+    "Não foi possível ler o DWG da área de transferência: {0}": "Could not read the DWG from the clipboard: {0}",
     "Clique em \"Tentar novamente\" para carregar o Traço nesta janela.": "Click \"Try again\" to load Traço in this window.",
     "Clique em um objeto.": "Click an object.",
     "Clique nos objetos, ALL para todos, Enter para confirmar.": "Click objects, ALL for all, Enter to confirm.",
