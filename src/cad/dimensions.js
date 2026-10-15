@@ -485,8 +485,9 @@ export function transformDimension(entity, fn, mirror) {
         // Rotação de 90° troca o tipo; outras rotações viram alinhada.
         const before = angleOf(entity.p1, entity.p2);
         const after = angleOf(e.p1, e.p2);
-        const delta = Math.abs(normalizeAngle(after - before));
-        const quarter = Math.abs(delta - Math.PI / 2) < 1e-6 || Math.abs(delta - (3 * Math.PI) / 2) < 1e-6;
+        // Ângulo entre −π e π: numa translação a diferença é ±1e-15, e normalizar −1e-15 dava ~2π (virava alinhada).
+        const delta = Math.abs(Math.atan2(Math.sin(after - before), Math.cos(after - before)));
+        const quarter = Math.abs(delta - Math.PI / 2) < 1e-6;
         const straight = delta < 1e-6 || Math.abs(delta - Math.PI) < 1e-6;
         if (quarter) e.kind = entity.kind === 'horizontal' ? 'vertical' : 'horizontal';
         else if (!straight && !mirror) e.kind = 'aligned';
