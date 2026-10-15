@@ -930,38 +930,26 @@ export class Renderer {
         ctx.restore();
     }
 
-    // Pedindo ponto (como no BricsCAD): sem quadrado de seleção, eixos maiores, mais grossos e coloridos (X vermelho, Y verde).
+    // Mira no padrão do BricsCAD: eixos X vermelho e Y verde, sempre iguais; pedindo ponto, some o quadrado de seleção.
     drawCrosshair(cursor, snapped, pointMode = false) {
         const { ctx, viewport } = this;
         const s = viewport.worldToScreen(cursor);
         ctx.save();
-        ctx.setLineDash([]);
-        if (pointMode) {
-            const size = 48;
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = this.theme.crosshairX;
-            ctx.beginPath();
-            ctx.moveTo(s.x - size, s.y);
-            ctx.lineTo(s.x + size, s.y);
-            ctx.stroke();
-            ctx.strokeStyle = this.theme.crosshairY;
-            ctx.beginPath();
-            ctx.moveTo(s.x, s.y - size);
-            ctx.lineTo(s.x, s.y + size);
-            ctx.stroke();
-            ctx.restore();
-            return;
-        }
-        ctx.strokeStyle = this.theme.crosshair;
         ctx.lineWidth = 1;
-        const size = 24;
+        ctx.setLineDash([]);
+        const size = 32;
+        ctx.strokeStyle = this.theme.crosshairX;
         ctx.beginPath();
         ctx.moveTo(s.x - size, s.y + 0.5);
         ctx.lineTo(s.x + size, s.y + 0.5);
+        ctx.stroke();
+        ctx.strokeStyle = this.theme.crosshairY;
+        ctx.beginPath();
         ctx.moveTo(s.x + 0.5, s.y - size);
         ctx.lineTo(s.x + 0.5, s.y + size);
         ctx.stroke();
-        if (!snapped) {
+        if (!snapped && !pointMode) {
+            ctx.strokeStyle = this.theme.crosshair;
             ctx.strokeRect(s.x - 4.5, s.y - 4.5, 9, 9);
         }
         ctx.restore();

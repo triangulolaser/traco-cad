@@ -925,13 +925,19 @@ class TabManager {
     findExistingTab({ documentId, revisionId, sourceAttachmentId, anexoId, anexoUrl, name, filePath } = {}) {
         const cleanExt = (n) => (n || '').replace(/\.[^.]+$/, '').toLowerCase().trim();
         const normName = (n) => (n || '').toLowerCase().trim();
+        // Windows não diferencia maiúsculas nem barras; demais sistemas comparam exato.
+        const normPath = (p) => {
+            const v = String(p || '').trim();
+            return /^[a-z]:[\\/]|^\\\\/i.test(v) ? v.replace(/\//g, '\\').toLowerCase() : v;
+        };
+        const targetPath = filePath ? normPath(filePath) : '';
 
         for (const tab of this.tabs) {
             const doc = this.getTabDoc(tab);
             const hasEntities = Boolean(doc?.entities?.length);
 
             // 0. Verificação por caminho em disco
-            if (filePath && doc?.filePath && doc.filePath === filePath) {
+            if (targetPath && doc?.filePath && normPath(doc.filePath) === targetPath) {
                 return tab;
             }
 
@@ -961,8 +967,9 @@ class TabManager {
                 }
             }
 
-            // 4. Verificação por Nome do Arquivo
-            if (name && name !== 'Sem título.dxf') {
+            // 4. Verificação por Nome do Arquivo. Arquivo aberto do disco é identificado
+            // só pelo caminho: mesmo nome em outra pasta ou com outra extensão é outro arquivo.
+            if (!targetPath && name && name !== 'Sem título.dxf') {
                 const tabName = this.getTabName(tab);
                 if (tabName && tabName !== 'Sem título.dxf') {
                     if (normName(tabName) === normName(name)) {

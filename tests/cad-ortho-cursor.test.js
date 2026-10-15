@@ -39,7 +39,9 @@ test('point prompt uses the BricsCAD-style crosshair without pickbox',async()=>{
     r.drawCrosshair({x:100,y:100},false,true);
     assert.ok(!calls.some(c=>c[0]==='strokeRect'));
     assert.ok(calls.some(c=>c[0]==='set'&&c[2]==='red'));assert.ok(calls.some(c=>c[0]==='set'&&c[2]==='green'));
-    assert.ok(calls.some(c=>c[0]==='lineTo'&&c[1]===148));
+    assert.ok(calls.some(c=>c[0]==='lineTo'&&c[1]===132));
+    assert.ok(!calls.some(c=>c[0]==='set'&&c[1]==='lineWidth'&&c[2]!==1));
     calls.length=0;r.drawCrosshair({x:100,y:100},false,false);
     assert.ok(calls.some(c=>c[0]==='strokeRect'));
+    assert.ok(calls.some(c=>c[0]==='set'&&c[2]==='red'));
 });

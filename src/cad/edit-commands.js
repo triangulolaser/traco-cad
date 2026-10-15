@@ -63,6 +63,121 @@ async function peditEditVertex(e, polyline) {
     }
 }
 
+const PURGE_EPS = 1e-9;
+
+function isZeroLength(entity) {
+    switch (entity.type) {
+        case 'line': return distance(entity.start, entity.end) < PURGE_EPS;
+        case 'circle':
+        case 'arc': return !(entity.radius > PURGE_EPS);
+        case 'polyline':
+        case 'spline':
+        case 'ellipse':
+            try { return !(entityLength(entity) > PURGE_EPS); } catch { return false; }
+        default: return false;
+    }
+}
+
+const isEmptyText = (entity) => entity.type === 'text' && String(entity.text ?? '').trim() === '';
+
+// Equivalente ao PURGE do BricsCAD: remove o que não é referenciado. Blocos usados
+// são seguidos até os aninhados, e camadas só valem se usadas por algo que fica.
+// Camada 0, camada atual e entidades em camada bloqueada são preservadas.
+export function purgeDocument(doc, { layers = true, blocks = true, zeroLength = true, emptyText = true } = {}) {
+    const removed = { layers: [], blocks: [], zeroLength: 0, emptyText: 0 };
+    let entities = doc.entities;
+    if (zeroLength || emptyText) {
+        entities = entities.filter((x) => {
+            if (!isEntityEditable(doc, x)) return true;
+            if (zeroLength && isZeroLength(x)) { removed.zeroLength++; return false; }
+            if (emptyText && isEmptyText(x)) { removed.emptyText++; return false; }
+            return true;
+        });
+    }
+    let blockDefs = { ...(doc.blocks ?? {}) };
+    const usedBlocks = () => {
+        const used = new Set();
+        const visit = (list) => {
+            for (const x of list) {
+                if (x.type !== 'insert' || used.has(x.name)) continue;
+                used.add(x.name);
+                visit(blockDefs[x.name]?.entities ?? x.definition?.entities ?? []);
+            }
+        };
+        visit(entities);
+        return used;
+    };
+    if (blocks) {
+        const used = usedBlocks();
+        for (const name of Object.keys(blockDefs)) {
+            if (used.has(name)) continue;
+            delete blockDefs[name];
+            removed.blocks.push(name);
+        }
+    }
+    let docLayers = doc.layers;
+    if (layers) {
+        const used = new Set(['0', doc.currentLayer]);
+        const visit = (list) => list.forEach((x) => {
+            used.add(x.layer);
+            if (x.type === 'insert') visit(blockDefs[x.name]?.entities ?? x.definition?.entities ?? []);
+        });
+        visit(entities);
+        Object.values(blockDefs).forEach((b) => visit(b.entities ?? []));
+        docLayers = doc.layers.filter((l) => {
+            if (used.has(l.name)) return true;
+            removed.layers.push(l.name);
+            return false;
+        });
+    }
+    return { doc: { ...doc, entities, layers: docLayers, ...(doc.blocks ? { blocks: blockDefs } : {}) }, removed };
+}
+
+// Parte "linhas sobrepostas" do OVERKILL do BricsCAD: linhas colineares da mesma
+// camada que se sobrepõem viram uma só. Linhas que apenas se tocam na ponta ficam
+// separadas, porque formam o contorno. Devolve as linhas a substituir e a remover.
+// Última tolerância usada no OVERKILL, como no BricsCAD.
+let overkillTolerance = 1e-3;
+
+export function mergeOverlappingLines(lines, tol = 1e-3) {
+    const groups = [];
+    for (const line of lines) {
+        const len = distance(line.start, line.end);
+        if (len <= tol) continue;
+        let ux = (line.end.x - line.start.x) / len, uy = (line.end.y - line.start.y) / len;
+        if (ux < -1e-12 || (Math.abs(ux) <= 1e-12 && uy < 0)) { ux = -ux; uy = -uy; }
+        const offset = line.start.x * uy - line.start.y * ux;
+        const group = groups.find(g => g.layer === line.layer
+            && Math.abs(g.ux * uy - g.uy * ux) * Math.max(g.reach, len) <= tol
+            && Math.abs(line.start.x * g.uy - line.start.y * g.ux - g.offset) <= tol
+            && Math.abs(line.end.x * g.uy - line.end.y * g.ux - g.offset) <= tol);
+        const t = p => p.x * (group ?? { ux }).ux + p.y * (group ?? { uy }).uy;
+        const item = { line, a: Math.min(t(line.start), t(line.end)), b: Math.max(t(line.start), t(line.end)) };
+        if (group) { group.items.push(item); group.reach = Math.max(group.reach, len); }
+        else groups.push({ layer: line.layer, ux, uy, offset, reach: len, items: [item] });
+    }
+    const replacements = new Map(), removed = new Set();
+    for (const g of groups) {
+        if (g.items.length < 2) continue;
+        g.items.sort((p, q) => p.a - q.a);
+        const runs = [];
+        for (const item of g.items) {
+            const run = runs[runs.length - 1];
+            if (run && item.a < run.b - tol) { run.items.push(item); run.b = Math.max(run.b, item.b); }
+            else runs.push({ a: item.a, b: item.b, items: [item] });
+        }
+        for (const run of runs) {
+            if (run.items.length < 2) continue;
+            const keep = run.items.reduce((m, x) => (x.b - x.a > m.b - m.a ? x : m)).line;
+            const at = v => ({ x: g.ux * v + g.uy * g.offset, y: g.uy * v - g.ux * g.offset });
+            const forward = (keep.end.x - keep.start.x) * g.ux + (keep.end.y - keep.start.y) * g.uy >= 0;
+            replacements.set(keep.id, { ...keep, start: at(forward ? run.a : run.b), end: at(forward ? run.b : run.a) });
+            run.items.forEach(x => { if (x.line !== keep) removed.add(x.line.id); });
+        }
+    }
+    return { replacements, removed };
+}
+
 export const EDIT_COMMANDS = {
     TEXTEDIT:{aliases:['DDEDIT','ED','EDITARTEXTO'],description:'Editar conteúdo e propriedades do texto',async run(e){
         let target=null;
@@ -957,9 +1072,10 @@ export const EDIT_COMMANDS = {
             const targets = e.selection.size > 0
                 ? e.doc.entities.filter(x => e.selection.has(x.id))
                 : e.doc.entities;
+            const EPS = await e.getNumber('Tolerância (mm)', { defaultValue: overkillTolerance, min: 0 });
+            overkillTolerance = EPS;
             const duplicateIds = new Set();
-            const EPS = 1e-4;
-            const arePtsEqual = (p1, p2) => Math.abs(p1.x - p2.x) < EPS && Math.abs(p1.y - p2.y) < EPS;
+            const arePtsEqual = (p1, p2) => Math.abs(p1.x - p2.x) <= EPS && Math.abs(p1.y - p2.y) <= EPS;
 
             for (let i = 0; i < targets.length; i++) {
                 const a = targets[i];
@@ -974,14 +1090,14 @@ export const EDIT_COMMANDS = {
                         isDup = (arePtsEqual(a.start, b.start) && arePtsEqual(a.end, b.end))
                              || (arePtsEqual(a.start, b.end) && arePtsEqual(a.end, b.start));
                     } else if (a.type === 'circle') {
-                        isDup = arePtsEqual(a.center, b.center) && Math.abs(a.radius - b.radius) < EPS;
+                        isDup = arePtsEqual(a.center, b.center) && Math.abs(a.radius - b.radius) <= EPS;
                     } else if (a.type === 'arc') {
                         isDup = arePtsEqual(a.center, b.center)
-                             && Math.abs(a.radius - b.radius) < EPS
-                             && Math.abs(a.start - b.start) < EPS
-                             && Math.abs(a.end - b.end) < EPS;
+                             && Math.abs(a.radius - b.radius) <= EPS
+                             && Math.abs(a.start - b.start) <= EPS
+                             && Math.abs(a.end - b.end) <= EPS;
                     } else if (a.type === 'text') {
-                        isDup = arePtsEqual(a.position, b.position) && a.text === b.text && Math.abs((a.height ?? 2.5) - (b.height ?? 2.5)) < EPS;
+                        isDup = arePtsEqual(a.position, b.position) && a.text === b.text && Math.abs((a.height ?? 2.5) - (b.height ?? 2.5)) <= EPS;
                     }
 
                     if (isDup) {
@@ -990,31 +1106,51 @@ export const EDIT_COMMANDS = {
                 }
             }
 
-            if (duplicateIds.size === 0) {
+            const lines = targets.filter(x => x.type === 'line' && !duplicateIds.has(x.id) && isEntityEditable(e.doc, x));
+            const { replacements, removed } = mergeOverlappingLines(lines, EPS);
+            if (duplicateIds.size === 0 && removed.size === 0) {
                 e.log('Nenhum objeto duplicado encontrado.');
                 return;
             }
-            e.commit('Eliminar duplicatas', removeEntities(e.doc, duplicateIds));
-            e.log(`${duplicateIds.size} objeto(s) duplicado(s) eliminado(s).`);
+            const gone = new Set([...duplicateIds, ...removed]);
+            e.commit('Eliminar duplicatas', replaceEntities(removeEntities(e.doc, gone), replacements));
+            if (duplicateIds.size) e.log(`${duplicateIds.size} objeto(s) duplicado(s) eliminado(s).`);
+            if (removed.size) e.log(`${removed.size} linha(s) sobreposta(s) unida(s) em ${replacements.size}.`);
         },
     },
     PURGE: {
-        aliases: ['LIMPAR', 'EXPURGAR'],
-        description: 'Eliminar camadas (layers) vazias não utilizadas',
+        aliases: ['LIMPAR', 'EXPURGAR', 'LIMPEZA', 'PU'],
+        description: 'Limpeza: eliminar camadas e blocos não utilizados, geometria de comprimento zero e textos vazios',
         async run(e) {
-            const usedLayers = new Set(e.doc.entities.map(x => x.layer));
-            const removable = e.doc.layers.filter(l => l.name !== '0' && l.name !== e.doc.currentLayer && !usedLayers.has(l.name));
-            if (removable.length === 0) {
-                e.log('Nenhuma camada não utilizada para expurgar.');
+            const choice = await e.getKeyword('Limpar', [
+                { key: 't', label: 'Tudo' },
+                { key: 'c', label: 'Camadas' },
+                { key: 'b', label: 'Blocos' },
+                { key: 'g', label: 'Geometria de comprimento zero' },
+                { key: 'v', label: 'Textos vazios' },
+            ], 't');
+            const all = choice?.key === 't';
+            const options = {
+                layers: all || choice?.key === 'c',
+                blocks: all || choice?.key === 'b',
+                zeroLength: all || choice?.key === 'g',
+                emptyText: all || choice?.key === 'v',
+            };
+            const { doc, removed } = purgeDocument(e.doc, options);
+            const parts = [
+                removed.layers.length && `${removed.layers.length} camada(s)`,
+                removed.blocks.length && `${removed.blocks.length} bloco(s)`,
+                removed.zeroLength && `${removed.zeroLength} objeto(s) de comprimento zero`,
+                removed.emptyText && `${removed.emptyText} texto(s) vazio(s)`,
+            ].filter(Boolean);
+            if (parts.length === 0) {
+                e.log('Nada para limpar.');
                 return;
             }
-            const keepNames = new Set(e.doc.layers.filter(l => l.name === '0' || l.name === e.doc.currentLayer || usedLayers.has(l.name)).map(l => l.name));
-            const newDoc = {
-                ...e.doc,
-                layers: e.doc.layers.filter(l => keepNames.has(l.name)),
-            };
-            e.commit('Expurgar camadas', newDoc);
-            e.log(`${removable.length} camada(s) vazia(s) eliminada(s).`);
+            e.commit('Limpeza', doc);
+            e.log(`Limpeza: ${parts.join(', ')} eliminado(s).`);
+            if (removed.layers.length) e.log(`Camadas: ${removed.layers.join(', ')}`);
+            if (removed.blocks.length) e.log(`Blocos: ${removed.blocks.join(', ')}`);
         },
     },
 };
