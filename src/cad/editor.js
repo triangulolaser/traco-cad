@@ -15,7 +15,7 @@ import { parseDxf } from './dxf.js';
 import { kindOf } from './file-types.js';
 import { showCadErrorModal, hideCadErrorModal } from './error-modal.js';
 import { openInlineTextEditor, updateInlineTextEditor, inlineTextEntityId } from './text-editor.js';
-import { lxdsToEntities, looksLikeLxds, LXDS_TRAVEL_LAYER } from './lxds.js';
+import { lxdsToEntities, looksLikeLxds, LXDS_TRAVEL_LAYER, LXDS_LEAD_LAYER } from './lxds.js';
 import { dimensionGeometry } from './dimensions.js';
 import { getEntityGrips, applyGripMove, findGripAt } from './grips.js';
 import './extra-entities.js';
@@ -1707,7 +1707,7 @@ export class Editor {
     async importLxdsBuffer(buffer, name = 'desenho.lxds') {
         let result;
         try {
-            result = await lxdsToEntities(buffer, { name });
+            result = await lxdsToEntities(buffer, { name, blocks: true, leads: true });
         } catch (error) {
             usage('import_failure');
             this.log(`Falha ao ler .lxds: ${error.message}`, 'error');
@@ -1718,7 +1718,7 @@ export class Editor {
             this.log('Nenhuma geometria reconhecida no arquivo .lxds.', 'warn');
             return null;
         }
-        const doc = { ...createDocument(), layers: result.layers, entities: [], name: result.name, sourceFormat: 'lxds' };
+        const doc = { ...createDocument(), layers: result.layers, blocks: result.blocks ?? {}, entities: [], name: result.name, sourceFormat: 'lxds' };
         this.loadDocument(addEntities(doc, result.entities));
         usage('import_success');
         this.resize();
@@ -1726,6 +1726,17 @@ export class Editor {
         const s = result.stats;
         const origem = result.application ? ` (${result.application})` : '';
         this.log(`Aberto ${name}${origem}: ${result.entities.length} entidades — ${s.polylines} polilinhas (${s.arcs} arcos), ${s.circles} círculos, ${s.lines} linhas.`);
+        if (s.parts > 0) {
+            this.log(`${s.parts} peça(s) do nest abertas como bloco (${Object.keys(result.blocks).length} definição(ões)); use EXPLODE para editar os contornos.`);
+        }
+        if (s.leadsIn + s.leadsOut > 0) {
+            this.log(`${s.leadsIn} entradas e ${s.leadsOut} saídas do CypCut no layer ${LXDS_LEAD_LAYER}, desligado: ligue o layer para conferir.`);
+        }
+        const kerf = Object.entries(s.kerf || {});
+        if (kerf.length > 0) {
+            const detail = kerf.map(([v, c]) => `${Number(v).toLocaleString('pt-BR')} mm em ${c}`).join(', ');
+            this.log(`Compensação de kerf gravada no arquivo: ${detail} contorno(s).`);
+        }
         if (s.travel > 0) {
             this.log(`${s.travel} deslocamentos do flycut ficaram no layer ${LXDS_TRAVEL_LAYER}, desligado: o laser não corta esse caminho.`);
         }

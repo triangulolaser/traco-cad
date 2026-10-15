@@ -654,7 +654,7 @@ function parseTables(cursor) {
             layers.textStyles[name]={fontFamily:FONT_FAMILIES.includes(inferred)?inferred:'Liberation Sans',bold:Boolean(flags&0x2000000)||file.includes('bold')||winStyle==='bd'||winStyle==='bi',italic:Boolean(flags&0x1000000)||file.includes('italic')||winStyle==='i'||winStyle==='bi'};layers.textStyleHandles[first(g,5)]=layers.textStyles[name];continue;
         }
         if(p.value==='DIMSTYLE'){
-            const g=collectGroup(cursor);const lfac=first(g,144);layers.dimStyles[first(g,2)]={scale:num(first(g,40,1)),arrowSize:num(first(g,41,2.5)),textHeight:num(first(g,140,2.5)),textGap:num(first(g,147,0.9)),extOffset:num(first(g,42,0.625)),extBeyond:num(first(g,44,1.25)),precision:num(first(g,271,2)),fontHandle:first(g,340),...(lfac===undefined?{}:{measurementScale:num(lfac)})};continue;
+            const g=collectGroup(cursor);const lfac=first(g,144);layers.dimStyles[first(g,2)]={scale:num(first(g,40,1)),arrowSize:num(first(g,41,2.5)),textHeight:num(first(g,140,2.5)),textGap:num(first(g,147,0.9)),extOffset:num(first(g,42,0.625)),extBeyond:num(first(g,44,1.25)),precision:num(first(g,271,2)),...(num(first(g,77,0))>0?{textAbove:true}:{}),fontHandle:first(g,340),...(lfac===undefined?{}:{measurementScale:num(lfac)})};continue;
         }
         if (p.value === 'VPORT') {
             const g = collectGroup(cursor);

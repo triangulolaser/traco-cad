@@ -41,6 +41,9 @@ export const LXDS_LAYER = 'LXDS';
 // Deslocamento entre furos do bloco de flycut: o laser passa desligado. Vai para um layer
 // próprio, desligado, para não virar corte se o desenho for reexportado.
 export const LXDS_TRAVEL_LAYER = 'PERCURSO_FLYCUT';
+// Entradas e saídas do CypCut desenhadas a partir do registro de processo. Layer desligado: é
+// referência de CAM, não contorno de corte.
+export const LXDS_LEAD_LAYER = 'CAM_ENTRADA_SAIDA';
 
 // ---------------------------------------------------------------------------
 // Leitor de ZIP mínimo: só o necessário para o .lxds, sem dependência nova.
@@ -123,21 +126,37 @@ function openShapeRecord(view, address) {
     return { className: text, bodyStart: next, recordEnd };
 }
 
-function sampleCubicBezier(p0, p1, p2, p3, steps = 6) {
-    const pts = [];
-    for (let i = 0; i <= steps; i += 1) {
-        const t = i / steps;
-        const mt = 1 - t;
-        const c0 = mt * mt * mt;
-        const c1 = 3 * mt * mt * t;
-        const c2 = 3 * mt * t * t;
-        const c3 = t * t * t;
-        pts.push({
-            x: c0 * p0.x + c1 * p1.x + c2 * p2.x + c3 * p3.x,
-            y: c0 * p0.y + c1 * p1.y + c2 * p2.y + c3 * p3.y,
-        });
-    }
-    return pts;
+// Subdivisão de De Casteljau até os pontos de controle ficarem a menos de `tolerance` (mm) da
+// corda. Seis segmentos fixos facetavam o laço de retorno do flycut; aqui a curva fica lisa e
+// o trecho quase reto continua com poucos vértices.
+export const BEZIER_TOLERANCE_MM = 0.01;
+
+export function flattenCubicBezier(p0, p1, p2, p3, tolerance = BEZIER_TOLERANCE_MM) {
+    const out = [{ x: p0.x, y: p0.y }];
+    const distanceToChord = (p, a, b) => {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 1e-12) return Math.hypot(p.x - a.x, p.y - a.y);
+        return Math.abs((p.x - a.x) * dy - (p.y - a.y) * dx) / len;
+    };
+    const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    const walk = (a, b, c, d, depth) => {
+        if (depth >= 16 || Math.max(distanceToChord(b, a, d), distanceToChord(c, a, d)) <= tolerance) {
+            out.push({ x: d.x, y: d.y });
+            return;
+        }
+        const ab = mid(a, b);
+        const bc = mid(b, c);
+        const cd = mid(c, d);
+        const abc = mid(ab, bc);
+        const bcd = mid(bc, cd);
+        const m = mid(abc, bcd);
+        walk(a, ab, abc, m, depth + 1);
+        walk(m, bcd, cd, d, depth + 1);
+    };
+    walk(p0, p1, p2, p3, 0);
+    return out;
 }
 
 // Transformação afim { a, b, c, d, e, f }: x' = a·x + c·y + e, y' = b·x + d·y + f.
@@ -321,7 +340,7 @@ export function parseGeometry(geometryBytes, shapes, skipped = null) {
                     const p1 = rawPts[c * 4 + 1];
                     const p2 = rawPts[c * 4 + 2];
                     const p3 = rawPts[c * 4 + 3];
-                    const sampled = sampleCubicBezier(p0, p1, p2, p3, 6);
+                    const sampled = flattenCubicBezier(p0, p1, p2, p3);
                     for (let s = (c === 0 ? 0 : 1); s < sampled.length; s += 1) {
                         const pt = applyTransform(sampled[s], transform);
                         polyVertices.push({ x: pt.x, y: pt.y, bulge: 0 });
@@ -341,7 +360,10 @@ export function parseGeometry(geometryBytes, shapes, skipped = null) {
     shapes.forEach((shape) => {
         const before = out.length;
         parseShape(shape);
-        if (shape.cam) for (let i = before; i < out.length; i += 1) out[i].cam = shape.cam;
+        for (let i = before; i < out.length; i += 1) {
+            if (shape.cam) out[i].cam = shape.cam;
+            if (shape.source) out[i].source = shape.source;
+        }
     });
     return out;
 }
@@ -368,10 +390,197 @@ export function readShapeProcess(dataBytes, address) {
     if (shape < 0 || shape + 16 > end) return null;
     const lead = findAscii(dataBytes, 'LeadParam', address, end);
     const leadFraction = lead >= 0 && lead + 40 <= end ? view.getFloat64(lead + 32, true) : null;
+    const f64 = (at) => (at + 8 <= end ? view.getFloat64(at, true) : NaN);
+    const finite = (v, fallback = 0) => (Number.isFinite(v) ? v : fallback);
+
+    // TGksLeadParam::SaveToPack: tipo (L+16), posição, ângulo, comprimento, raio do arco e raio do furo.
+    let leadIn = null;
+    let leadOut = null;
+    let afterLead = shape;
+    if (lead >= 0 && lead + 72 <= end) {
+        leadIn = {
+            type: view.getUint32(lead + 16, true),
+            angle: finite(f64(lead + 40)),
+            length: finite(f64(lead + 48)),
+            arcRadius: finite(f64(lead + 56)),
+        };
+        // Depois da seção da entrada: u32 de presença e, se 1, a seção da saída, com 4 bytes a
+        // menos (doubles a partir de L+28: selo, ângulo, comprimento, raio).
+        const close = findAscii(dataBytes, '\xc0\xc0\xc0\xc0', lead, end);
+        afterLead = close >= 0 ? close + 4 : lead;
+        if (close >= 0 && close + 8 <= end && view.getUint32(close + 4, true) === 1) {
+            const out = findAscii(dataBytes, 'LeadParam', close, end);
+            if (out >= 0 && out + 68 <= end) {
+                leadOut = {
+                    type: view.getUint32(out + 16, true),
+                    seal: finite(f64(out + 28)),
+                    angle: finite(f64(out + 36)),
+                    length: finite(f64(out + 44)),
+                    arcRadius: finite(f64(out + 52)),
+                };
+                afterLead = out;
+            }
+        }
+    }
+
+    // Subobjeto Curve: externo (C+12) e compensação de kerf ligada (C+24) com o valor (C+28).
+    // Com saída gravada, o CypCut omite o u32 reservado após o nome e tudo recua 4 bytes.
+    let outer = null;
+    let kerfOffset = null;
+    const curve = findAscii(dataBytes, 'Curve\0', afterLead, end);
+    if (curve >= 12 && curve + 36 <= end) {
+        const compact = view.getUint32(curve - 12, true) === 0x44 ? -4 : 0;
+        outer = view.getUint32(curve + 12 + compact, true) === 1;
+        const on = view.getUint32(curve + 24 + compact, true) === 1;
+        const value = f64(curve + 28 + compact);
+        kerfOffset = on && Number.isFinite(value) && value > 0 && value < 10 ? value : 0;
+    }
+
     return {
         process: view.getUint32(shape + 12, true),
         leadFraction: Number.isFinite(leadFraction) && leadFraction >= 0 && leadFraction <= 1 ? leadFraction : null,
+        leadIn,
+        leadOut,
+        outer,
+        kerfOffset,
     };
+}
+
+// ---------------------------------------------------------------------------
+// Entradas e saídas
+
+const TAU = Math.PI * 2;
+
+// Ponto e tangente (sentido do desenho) na fração `fraction` do comprimento do contorno.
+function polylineFrame(vertices, closed, fraction) {
+    const n = vertices.length;
+    const count = closed ? n : n - 1;
+    const pieces = [];
+    let total = 0;
+    for (let i = 0; i < count; i += 1) {
+        const a = vertices[i];
+        const b = vertices[(i + 1) % n];
+        const chord = Math.hypot(b.x - a.x, b.y - a.y);
+        if (chord < 1e-12) continue;
+        const theta = 4 * Math.atan(a.bulge || 0);
+        const length = Math.abs(theta) > 1e-9 ? Math.abs((chord / (2 * Math.sin(theta / 2))) * theta) : chord;
+        pieces.push({ a, b, chord, theta, length });
+        total += length;
+    }
+    if (!pieces.length) return null;
+    let target = Math.min(Math.max(fraction, 0), 1) * total;
+    for (const piece of pieces) {
+        if (target > piece.length && piece !== pieces[pieces.length - 1]) { target -= piece.length; continue; }
+        const t = Math.min(1, target / piece.length);
+        const { a, b, chord, theta } = piece;
+        const ux = (b.x - a.x) / chord;
+        const uy = (b.y - a.y) / chord;
+        if (Math.abs(theta) <= 1e-9) return { point: { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, tangent: { x: ux, y: uy } };
+        // Arco do bulge: a tangente no início gira θ/2 em relação à corda e avança θ ao longo do trecho.
+        const radius = chord / (2 * Math.sin(theta / 2));
+        const heading = Math.atan2(uy, ux) - theta / 2 + theta * t;
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        const h = radius * Math.cos(theta / 2);
+        const cx = mx - uy * h;
+        const cy = my + ux * h;
+        const start = Math.atan2(a.y - cy, a.x - cx);
+        const angle = start + theta * t;
+        const r = Math.abs(radius);
+        return { point: { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) }, tangent: { x: Math.cos(heading), y: Math.sin(heading) } };
+    }
+    return null;
+}
+
+function signedArea(vertices) {
+    let area = 0;
+    for (let i = 0; i < vertices.length; i += 1) {
+        const a = vertices[i];
+        const b = vertices[(i + 1) % vertices.length];
+        area += a.x * b.y - b.x * a.y;
+    }
+    return area / 2;
+}
+
+// Ponto de partida, tangente de corte e normal para o lado da sobra (fora da peça no externo,
+// dentro do furo no interno). A normal é geométrica, então independe do sentido gravado.
+function contourFrame(e, fraction, outer) {
+    if (e.type === 'circle') {
+        // No CypCut a posição no círculo é a fração da volta a partir de 45°.
+        const angle = Math.PI / 4 + (fraction ?? 0) * TAU;
+        const radial = { x: Math.cos(angle), y: Math.sin(angle) };
+        return {
+            point: { x: e.center.x + e.radius * radial.x, y: e.center.y + e.radius * radial.y },
+            tangent: { x: -radial.y, y: radial.x },
+            normal: outer ? radial : { x: -radial.x, y: -radial.y },
+        };
+    }
+    if (e.type !== 'polyline' || e.vertices.length < 2) return null;
+    const first = e.vertices[0];
+    const last = e.vertices[e.vertices.length - 1];
+    const closed = e.closed || Math.hypot(first.x - last.x, first.y - last.y) < 1e-6;
+    if (!closed) return null;
+    const vertices = e.closed ? e.vertices : e.vertices.slice(0, -1);
+    const frame = polylineFrame(vertices, true, fraction ?? 0);
+    if (!frame) return null;
+    const left = { x: -frame.tangent.y, y: frame.tangent.x };
+    const ccw = signedArea(vertices) > 0;
+    // Num contorno anti-horário a esquerda é dentro: o externo sobra à direita, o furo à esquerda.
+    const sign = (ccw ? 1 : -1) * (outer ? -1 : 1);
+    return { ...frame, normal: { x: left.x * sign, y: left.y * sign } };
+}
+
+function arcPoints(center, radius, from, sweep, segments = 12) {
+    return Array.from({ length: segments + 1 }, (_, i) => {
+        const a = from + (sweep * i) / segments;
+        return { x: center.x + radius * Math.cos(a), y: center.y + radius * Math.sin(a), bulge: 0 };
+    });
+}
+
+// Arco de 90° tangente ao contorno em `p`, do lado da sobra. `arriving` = termina em p no sentido
+// do corte (entrada); senão começa em p (saída).
+function tangentArc(p, tangent, normal, radius, arriving) {
+    const center = { x: p.x + normal.x * radius, y: p.y + normal.y * radius };
+    const toP = Math.atan2(p.y - center.y, p.x - center.x);
+    // Sentido do giro que, em p, anda ao longo da tangente.
+    const turn = Math.sign(tangent.x * -(p.y - center.y) + tangent.y * (p.x - center.x)) || 1;
+    return arriving
+        ? arcPoints(center, radius, toP - turn * Math.PI / 2, turn * Math.PI / 2)
+        : arcPoints(center, radius, toP, turn * Math.PI / 2);
+}
+
+// Tipos do CypCut: 0 nenhuma, 1 reta, 2 arco, 3 reta + arco. Ângulo π/2 = perpendicular, 0 = tangente.
+export function leadEntities(e, rec) {
+    if (!rec) return [];
+    const frame = contourFrame(e, rec.leadFraction, Boolean(rec.outer));
+    if (!frame) return [];
+    const { point: p, tangent: t, normal: n } = frame;
+    const out = [];
+    const line = (a, b) => ({ type: 'polyline', layer: LXDS_LEAD_LAYER, closed: false, vertices: [{ ...a, bulge: 0 }, { ...b, bulge: 0 }] });
+    const lin = rec.leadIn;
+    if (lin && lin.type >= 1 && lin.type <= 3) {
+        if (lin.type === 1 && lin.length > 1e-6) {
+            const dir = { x: -t.x * Math.cos(lin.angle) + n.x * Math.sin(lin.angle), y: -t.y * Math.cos(lin.angle) + n.y * Math.sin(lin.angle) };
+            out.push({ ...line({ x: p.x + dir.x * lin.length, y: p.y + dir.y * lin.length }, p), lead: 'in' });
+        } else if (lin.type >= 2 && lin.arcRadius > 1e-6) {
+            const arc = tangentArc(p, t, n, lin.arcRadius, true);
+            if (lin.type === 3 && lin.length > 1e-6) {
+                const s = arc[0];
+                const back = { x: arc[1].x - s.x, y: arc[1].y - s.y };
+                const len = Math.hypot(back.x, back.y) || 1;
+                arc.unshift({ x: s.x - (back.x / len) * lin.length, y: s.y - (back.y / len) * lin.length, bulge: 0 });
+            }
+            out.push({ type: 'polyline', layer: LXDS_LEAD_LAYER, closed: false, vertices: arc, lead: 'in' });
+        }
+    }
+    const lout = rec.leadOut;
+    if (lout && lout.type === 1 && lout.length > 1e-6) {
+        const dir = { x: t.x * Math.cos(lout.angle) + n.x * Math.sin(lout.angle), y: t.y * Math.cos(lout.angle) + n.y * Math.sin(lout.angle) };
+        out.push({ ...line(p, { x: p.x + dir.x * lout.length, y: p.y + dir.y * lout.length }), lead: 'out' });
+    } else if (lout && lout.type >= 2 && lout.arcRadius > 1e-6) {
+        out.push({ type: 'polyline', layer: LXDS_LEAD_LAYER, closed: false, vertices: tangentArc(p, t, n, lout.arcRadius, false), lead: 'out' });
+    }
+    return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -415,7 +624,11 @@ export function parseXml(xml) {
     return root.children[0] || root;
 }
 
-export async function lxdsToEntities(buffer, { name = 'desenho.lxds', withCam = false } = {}) {
+// `blocks`: cada Insert de peça no Model2D (bloco sem a flag de flycut, sem espelho e com escala
+// uniforme) vira um Insert do CAD com a definição do bloco, em vez de formas soltas. A miniatura
+// e as conferências usam a geometria explodida (padrão). `leads`: desenha entradas e saídas no
+// layer CAM_ENTRADA_SAIDA (o CAD liga; miniatura e conferências não).
+export async function lxdsToEntities(buffer, { name = 'desenho.lxds', withCam = false, blocks: asBlocks = false, leads = false } = {}) {
     const zip = await readZip(buffer);
     const geometryBytes = await zip.read('Geometry2D/data.bin');
     const shapesXml = await zip.read('Shapes2D/content.xml');
@@ -483,6 +696,7 @@ export async function lxdsToEntities(buffer, { name = 'desenho.lxds', withCam = 
     }
 
     const instances = [];
+    const parts = [];
     // Inserts podem aninhar: peça agrupada (bloco "Part") contendo o bloco do flycut. Cada nível
     // compõe escala, rotação e translação.
     const emit = (nodes, parent, depth) => {
@@ -502,13 +716,23 @@ export async function lxdsToEntities(buffer, { name = 'desenho.lxds', withCam = 
                     xScale: field('XScale', 1),
                     yScale: field('YScale', 1),
                 });
-                const transform = composeTransform(parent?.transform || IDENTITY, local);
                 const channelPort = Number(s.attrs.ChannelPort) || parent?.channelPort || null;
                 const block = blocksMap.get(bname);
-                emit(block?.shapes || [], { transform, channelPort, flycut: Boolean(block?.flycut) }, depth + 1);
+                const flycut = Boolean(block?.flycut);
+                const scale = Math.hypot(local.a, local.b);
+                const rigid = Math.abs(Math.hypot(local.c, local.d) - scale) < 1e-9 && determinant(local) > 0;
+                if (asBlocks && !parent && block && !flycut && rigid) {
+                    // Peça: as formas ficam no referencial do bloco; o Insert carrega a posição.
+                    const part = { key: s.attrs.Handle || String(parts.length), name: bname, local };
+                    parts.push(part);
+                    emit(block.shapes, { transform: IDENTITY, channelPort, flycut, part }, depth + 1);
+                    return;
+                }
+                const transform = composeTransform(parent?.transform || IDENTITY, local);
+                emit(block?.shapes || [], { transform, channelPort, flycut, part: parent?.part }, depth + 1);
             } else if (s.attrs.Handle) {
                 const desc = shapesMap.get(s.attrs.Handle);
-                if (desc) instances.push(parent ? { ...desc, transform: parent.transform, inFlycut: parent.flycut, channelPort: parent.channelPort } : { ...desc, transform: null });
+                if (desc) instances.push(parent ? { ...desc, transform: parent.transform, inFlycut: parent.flycut, channelPort: parent.channelPort, part: parent.part } : { ...desc, transform: null });
             }
         });
     };
@@ -531,16 +755,75 @@ export async function lxdsToEntities(buffer, { name = 'desenho.lxds', withCam = 
         if (withCam) it.cam = { process, leadFraction: rec?.leadFraction ?? null, link };
         if (link) it.layer = LXDS_TRAVEL_LAYER;
         else if (!it.layer) it.layer = `PROCESSO_${process}`;
+        it.source = { rec: link ? null : rec, part: it.part || null };
     });
 
     const skipped = {};
-    const entities = parseGeometry(geometryBytes, instances, skipped);
+    const parsed = parseGeometry(geometryBytes, instances, skipped);
+
+    // Entradas, saídas e compensação de kerf de cada contorno, a partir do registro de processo.
+    const kerf = {};
+    let leadsIn = 0;
+    let leadsOut = 0;
+    const withLeads = [];
+    parsed.forEach((e) => {
+        const { rec, part } = e.source || {};
+        delete e.source;
+        if (rec?.kerfOffset >= 0.0005 && e.type !== 'line') {
+            e.kerfOffset = rec.kerfOffset;
+            const key = rec.kerfOffset.toFixed(3);
+            kerf[key] = (kerf[key] || 0) + 1;
+        }
+        if (part) e.part = part;
+        withLeads.push(e);
+        if (leads) leadEntities(e, rec).forEach((lead) => {
+            if (lead.lead === 'in') leadsIn += 1; else leadsOut += 1;
+            delete lead.lead;
+            if (part) lead.part = part;
+            withLeads.push(lead);
+        });
+    });
+
+    // Peças como bloco: uma definição por nome, um Insert por ocorrência no Model2D.
+    const definitions = {};
+    const entities = [];
+    const insertsByPart = new Map();
+    withLeads.forEach((e) => {
+        const part = e.part;
+        if (!part) { entities.push(e); return; }
+        delete e.part;
+        if (!insertsByPart.has(part)) {
+            const scale = Math.hypot(part.local.a, part.local.b);
+            const insert = {
+                type: 'insert',
+                name: part.name,
+                definition: null,
+                position: { x: part.local.e, y: part.local.f },
+                scaleX: scale,
+                scaleY: scale,
+                rotation: (Math.atan2(part.local.b, part.local.a) * 180) / Math.PI,
+                layer: DEFAULT_LAYER,
+                color: 'bylayer',
+                entities: [],
+            };
+            insertsByPart.set(part, insert);
+            entities.push(insert);
+        }
+        insertsByPart.get(part).entities.push(e);
+    });
+    insertsByPart.forEach((insert) => {
+        // O mesmo bloco aparece várias vezes no nest; a primeira ocorrência define o conteúdo.
+        if (!definitions[insert.name]) definitions[insert.name] = { basePoint: { x: 0, y: 0 }, entities: insert.entities };
+        insert.definition = definitions[insert.name];
+        delete insert.entities;
+    });
+    const flat = asBlocks ? entities.flatMap((e) => (e.type === 'insert' ? e.definition.entities : [e])) : entities;
 
     const layersXml = await zip.read('Layers/content.xml');
     const layersTree = layersXml ? parseXml(textOf(layersXml)) : null;
     const declaredLayers = layersTree ? layersTree.children.filter((c) => c.tag === 'Layer') : [];
 
-    const used = new Set(entities.map((e) => e.layer));
+    const used = new Set(flat.map((e) => e.layer));
     const layers = [createLayer(DEFAULT_LAYER, { color: 7 })];
     used.forEach((layerName) => {
         if (!layerName || layerName === DEFAULT_LAYER) return;
@@ -548,27 +831,37 @@ export async function lxdsToEntities(buffer, { name = 'desenho.lxds', withCam = 
             layers.push(createLayer(layerName, { color: 8, visible: false, lineType: 'DASHED' }));
             return;
         }
+        if (layerName === LXDS_LEAD_LAYER) {
+            layers.push(createLayer(layerName, { color: 1, visible: false }));
+            return;
+        }
         const info = declaredLayers.find((l) => l.attrs.Name === layerName);
         layers.push(createLayer(layerName, { color: info ? lxdsColorToAci(Number(info.attrs.Color)) : 7 }));
     });
-    entities.forEach((e) => { if (!e.layer) e.layer = DEFAULT_LAYER; });
+    flat.forEach((e) => { if (!e.layer) e.layer = DEFAULT_LAYER; });
 
     const infoXml = await zip.read('info.xml');
     const infoTree = infoXml ? parseXml(textOf(infoXml)) : null;
     const app = infoTree ? infoTree.children.find((c) => c.tag === 'Application') : null;
 
+    const geometry = flat.filter((e) => e.layer !== LXDS_LEAD_LAYER);
     const stats = {
-        lines: entities.filter((e) => e.type === 'line').length,
-        circles: entities.filter((e) => e.type === 'circle').length,
-        polylines: entities.filter((e) => e.type === 'polyline').length,
-        arcs: entities.filter((e) => e.type === 'arc').length
-            + entities.reduce((n, e) => n + (e.type === 'polyline' ? e.vertices.filter((v) => Math.abs(v.bulge) > 1e-12).length : 0), 0),
-        travel: entities.filter((e) => e.layer === LXDS_TRAVEL_LAYER).length,
+        lines: geometry.filter((e) => e.type === 'line').length,
+        circles: geometry.filter((e) => e.type === 'circle').length,
+        polylines: geometry.filter((e) => e.type === 'polyline').length,
+        arcs: geometry.filter((e) => e.type === 'arc').length
+            + geometry.reduce((n, e) => n + (e.type === 'polyline' ? e.vertices.filter((v) => Math.abs(v.bulge) > 1e-12).length : 0), 0),
+        travel: geometry.filter((e) => e.layer === LXDS_TRAVEL_LAYER).length,
+        leadsIn,
+        leadsOut,
+        kerf,
+        parts: insertsByPart.size,
         skipped,
     };
 
     return {
         entities,
+        blocks: definitions,
         layers,
         extents,
         stats,

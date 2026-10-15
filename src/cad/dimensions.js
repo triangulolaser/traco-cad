@@ -277,7 +277,11 @@ function linearGeometry(entity, style) {
     const textNormal = perpendicular({ x: Math.cos(angle), y: Math.sin(angle) });
     const width = textWidth({ text, height: style.textHeight, fontFamily: style.fontFamily, bold: style.bold, italic: style.italic });
     let textCenter;
-    if (entity.textPosition) {
+    const offLine = entity.textPosition ? dot(sub(entity.textPosition, d1), textNormal) : 0;
+    if (entity.textPosition && style.textAbove && Math.abs(offLine) < style.textHeight / 2) {
+        // DIMTAD=1 (SolidWorks/BricsCAD): o código 11 vem sobre a linha de cota; o texto fica acima dela.
+        textCenter = add(sub(entity.textPosition, scale(textNormal, offLine)), scale(textNormal, style.textGap));
+    } else if (entity.textPosition) {
         // Código 11 é o meio do texto; a base fica meia altura abaixo.
         textCenter = sub(entity.textPosition, scale(textNormal, style.textHeight / 2));
     } else if (width + style.arrowSize * 2 > measurement) {
