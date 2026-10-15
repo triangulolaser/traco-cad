@@ -24,3 +24,11 @@ test('RECTANG: entrada dinâmica respeita a rotação', () => {
     const r = rectDynamicInput({ x: 0, y: 0 }, { x: 0, y: 10 }, 90, { w: 100, h: 50 }, 5);
     assert.ok(close(r.corner.x, -50) && close(r.corner.y, 100), JSON.stringify(r.corner));
 });
+
+test('Entrada dinâmica: linhas da cota provisória saem marcadas para a cor vermelha', async () => {
+    const { lineDynamicInput } = await import('../src/cad/commands.js');
+    const r = rectDynamicInput({ x: 0, y: 0 }, { x: 30, y: 20 }, 0, {}, 5);
+    assert.ok(r.guides.every((g) => g.dimGuide === true));
+    const l = lineDynamicInput({ x: 0, y: 0 }, { x: 30, y: 0 }, {}, 5);
+    assert.ok(l.guides.length > 0 && l.guides.every((g) => g.dimGuide === true));
+});

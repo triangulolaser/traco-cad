@@ -10,7 +10,7 @@ import { findSnap, applyOrtho, applyPolar, applyAngleLock, findSoftAxis, default
 import { findTrackingSnap, mergeSnaps, trackingPointFromSnap, addTrackingPoint } from './tracking.js';
 import { parsePointInput, parseNumberInput, matchKeyword, formatOptions, splitCommandLine } from './input.js';
 import { tr } from './i18n.js';
-import { COMMANDS, resolveCommand, suggestCommands, CancelError } from './commands.js';
+import { COMMANDS, resolveCommand, suggestCommands, CancelError, autoDimSpec } from './commands.js';
 import { parseDxf } from './dxf.js';
 import { kindOf } from './file-types.js';
 import { showCadErrorModal, hideCadErrorModal } from './error-modal.js';
@@ -371,7 +371,9 @@ export class Editor {
     }
 
     render() {
-        const preview = this.pending?.preview && this.cursorWorld ? safePreview(this.pending.preview, this.effectiveCursor()) : this.preview;
+        let preview = this.pending?.preview && this.cursorWorld ? safePreview(this.pending.preview, this.effectiveCursor()) : this.preview;
+        // Cota provisória (vermelha) da entrada dinâmica junto ao que está sendo desenhado.
+        if (this.dyn?.spec.guides && this.cursorWorld) preview = [...preview, ...safePreview(this.dyn.spec.guides, this.effectiveCursor())];
         const rubber = this.activeGrip ? this.rubber : (this.pending?.reference && this.cursorWorld && ['point', 'pointOrEntity'].includes(this.pending.mode) ? { from: this.pending.reference, to: this.effectiveCursor() } : null);
         this.renderer.draw({
             doc: this.doc,
@@ -385,7 +387,7 @@ export class Editor {
             window: this.window,
             showGrid: this.settings.grid,
             showCrosshair: Boolean(this.cursorWorld),
-            crosshairMode: this.pending?.mode === 'point' ? 'point' : 'select',
+            crosshairMode: this.pending ? 'point' : 'select',
             tracking: ['point', 'pointOrEntity'].includes(this.pending?.mode) ? { points: this.tracking, lines: this.trackingLines } : null,
             hover: this.hover,
             hoverGrip: this.hoverGrip,
@@ -466,6 +468,11 @@ export class Editor {
         }
         const cursor = this.effectiveCursor() ?? this.cursorWorld ?? this.pending?.reference;
         if (!cursor || !this.pending) return;
+        if (dyn.spec.commitNumber && 'v' in dyn.spec.locked) {
+            this.terminal.echo(this.pending.prompt, formatNumber(dyn.spec.locked.v, 4));
+            this.resolvePending({ number: dyn.spec.locked.v });
+            return;
+        }
         const point = dyn.spec.resolve(cursor);
         this.terminal.echo(this.pending.prompt, dyn.spec.fields.map((f) => `${f.label} ${formatNumber(dyn.spec.values(cursor)[f.key], 4)}`).join(' × '));
         this.lastPoint = point;
@@ -554,6 +561,8 @@ export class Editor {
     setShiftLock(on) {
         if (Boolean(this.shiftLock) === Boolean(on)) return;
         this.shiftLock = Boolean(on);
+        // TRIM/EXTEND: o prompt mostra o modo que o Shift ativou.
+        if (this.pending?.shiftPrompt) this.terminal.setPrompt(`${tr(this.shiftLock ? this.pending.shiftPrompt : this.pending.prompt)}:`);
         if (this.cursorWorld) { this.updateSnap(); this.render(); }
     }
 
@@ -1198,7 +1207,8 @@ export class Editor {
         this.closeDynInput();
         return new Promise((resolve, reject) => {
             this.pending = { mode, prompt, resolve, reject, ...options };
-            if (options.dynInput) this.openDynInput(options.dynInput);
+            const dynInput = options.dynInput || (COMMANDS[this.running]?.dimInput ? autoDimSpec(this, this.pending) : null);
+            if (dynInput) this.openDynInput(dynInput);
             const suffix = options.defaultValue !== undefined && options.defaultValue !== null ? ` <${typeof options.defaultValue === 'number' ? formatNumber(options.defaultValue, 4) : tr(options.defaultValue)}>` : '';
             this.terminal.setPrompt(`${tr(prompt)}${formatOptions(options.options)}${suffix}:`.replace('::', ':'));
             this.updateSnap();
@@ -1316,7 +1326,7 @@ export class Editor {
             }
             case 'entityOrWindow': {
                 const hit = this.hitTest(world, { filter: pending.filter });
-                if (hit) this.resolvePending({ entity: hit, point: world });
+                if (hit) this.resolvePending({ entity: hit, point: world, shift: event.shiftKey });
                 // Sem objeto: a janela já foi armada no pointerdown.
                 return;
             }
@@ -1372,7 +1382,7 @@ export class Editor {
             const box = emptyBox();
             boxAddPoint(box, a);
             boxAddPoint(box, world);
-            this.resolvePending({ entities: filtered, box, crossing });
+            this.resolvePending({ entities: filtered, box, crossing, shift });
         }
     }
 

@@ -21,6 +21,7 @@ function loadImage(src, onReady) {
 }
 import { entityCurves, entityBox, boxesIntersect, polar, curveEndpoints, curveMidpoint, curveQuadrants, pointInBox } from './geometry.js';
 import { getEntityGrips } from './grips.js';
+import { selectionMeasure } from './selection-measure.js';
 
 export const THEMES = {
     dark: {
@@ -37,6 +38,7 @@ export const THEMES = {
         originY: '#4fc46b',
         selection: '#4da3ff',
         preview: 'rgba(255,255,255,0.75)',
+        dimGuide: 'rgba(196,96,96,0.65)',
         rubber: 'rgba(255,255,255,0.6)',
         snap: '#ffd24d',
         tracking: '#7fd6a8',
@@ -65,6 +67,7 @@ export const THEMES = {
         originY: '#1f8f5a',
         selection: '#0a84ff',
         preview: 'rgba(0,0,0,0.7)',
+        dimGuide: 'rgba(170,60,60,0.6)',
         rubber: 'rgba(0,0,0,0.55)',
         snap: '#d99a00',
         tracking: '#1f8f5a',
@@ -211,7 +214,8 @@ export class Renderer {
         deferred.forEach(([entity, style]) => this.drawEntity(entity, style));
 
         (state.preview ?? []).forEach((entity) => {
-            this.drawEntity(entity, { color: entity.color && entity.color !== 'bylayer' ? entity.color : this.theme.preview, width: 1.2, dashed: false, alpha: 0.9 });
+            const color = entity.dimGuide ? this.theme.dimGuide : entity.color && entity.color !== 'bylayer' ? entity.color : this.theme.preview;
+            this.drawEntity(entity, { color, width: entity.dimGuide ? 1 : 1.2, dashed: false, alpha: 0.9 });
         });
 
         state.selection.forEach((id) => {
@@ -222,6 +226,12 @@ export class Renderer {
             }
             if (entity) this.drawGrips(entity, state.hoverGrip, state.activeGrip);
         });
+
+        if (state.selection.size === 2 && !state.activeGrip && !state.rubber) {
+            const [a, b] = [...state.selection].map((id) => state.doc.entities.find((e) => e.id === id));
+            const measure = selectionMeasure(a, b);
+            if (measure && measure.distance > 1e-9) this.drawSelectionMeasure(measure);
+        }
 
         this.drawOrigin();
 
@@ -806,6 +816,53 @@ export class Renderer {
         ctx.restore();
     }
 
+    // Distância entre as pontas mais próximas de duas entidades selecionadas: direta, X (vermelho) e Y (verde).
+    drawSelectionMeasure({ a, b, distance, dx, dy }) {
+        const { ctx, viewport } = this;
+        const origin = a.y <= b.y ? a : b;
+        const other = origin === a ? b : a;
+        const o = viewport.worldToScreen(origin);
+        const t = viewport.worldToScreen(other);
+        const xEnd = viewport.worldToScreen({ x: other.x, y: origin.y });
+        const yEnd = viewport.worldToScreen({ x: origin.x, y: other.y });
+        const fmt = (v) => String(Number(v.toFixed(2)));
+        const leg = (from, to, color, value, labelBg, labelFg) => {
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(from.x, from.y);
+            ctx.lineTo(to.x, to.y);
+            ctx.stroke();
+            const ang = Math.atan2(to.y - from.y, to.x - from.x);
+            ctx.beginPath();
+            ctx.moveTo(to.x, to.y);
+            ctx.lineTo(to.x - 9 * Math.cos(ang - 0.35), to.y - 9 * Math.sin(ang - 0.35));
+            ctx.lineTo(to.x - 9 * Math.cos(ang + 0.35), to.y - 9 * Math.sin(ang + 0.35));
+            ctx.closePath();
+            ctx.fill();
+            const text = fmt(value);
+            const mx = (from.x + to.x) / 2;
+            const my = (from.y + to.y) / 2;
+            const w = ctx.measureText(text).width + 8;
+            ctx.fillStyle = labelBg;
+            ctx.fillRect(mx - w / 2, my - 9, w, 18);
+            ctx.strokeStyle = '#ffffff';
+            ctx.strokeRect(mx - w / 2, my - 9, w, 18);
+            ctx.fillStyle = labelFg;
+            ctx.fillText(text, mx, my + 1);
+        };
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        if (dx > 1e-9) leg(o, xEnd, '#ff7b7b', dx, '#ff7b7b', '#111111');
+        if (dy > 1e-9) leg(o, yEnd, '#1fc46b', dy, '#1fc46b', '#111111');
+        if (dx > 1e-9 && dy > 1e-9) leg(o, t, '#2bb5e0', distance, '#ffffff', '#111111');
+        ctx.restore();
+    }
+
     drawRubber(from, to) {
         const { ctx, viewport } = this;
         const a = viewport.worldToScreen(from);
@@ -930,7 +987,7 @@ export class Renderer {
         ctx.restore();
     }
 
-    // Mira no padrão do BricsCAD: eixos X vermelho e Y verde, sempre iguais; pedindo ponto, some o quadrado de seleção.
+    // Mira no padrão do BricsCAD: eixos X vermelho e Y verde, sempre iguais; com qualquer comando ativo, some o quadrado de seleção.
     drawCrosshair(cursor, snapped, pointMode = false) {
         const { ctx, viewport } = this;
         const s = viewport.worldToScreen(cursor);

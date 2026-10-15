@@ -25,3 +25,26 @@ test('CIRCLE: raio e diâmetro travados', () => {
     const free = circleDynamicInput({ x: 0, y: 0 }, { x: 3, y: 4 }, {}, 'd', 0.5);
     assert.ok(close(free.values.d, 10));
 });
+
+test('Cota automática: círculo mostra a cota do raio e do diâmetro', () => {
+    const r = circleDynamicInput({ x: 0, y: 0 }, { x: 10, y: 0 }, {}, 'r', 1);
+    assert.deepEqual(r.guides.map((g) => [g.start, g.end, g.dimGuide]), [[{ x: 0, y: 0 }, { x: 10, y: 0 }, true]]);
+    const d = circleDynamicInput({ x: 0, y: 0 }, { x: 10, y: 0 }, {}, 'd', 0.5);
+    assert.deepEqual(d.guides[0].start, { x: -10, y: 0 });
+});
+
+test('Cota automática: prompt de ponto vira comprimento/ângulo; numérico vira distância; ângulo fica fora', async () => {
+    const { autoDimSpec } = await import('../src/cad/commands.js');
+    const editor = { viewport: { pixelsToWorld: (n) => n } };
+    const ref = { x: 0, y: 0 };
+    const pt = autoDimSpec(editor, { mode: 'point', reference: ref, prompt: 'Próximo ponto' });
+    assert.deepEqual(pt.fields.map((f) => f.key), ['len', 'ang']);
+    assert.ok(pt.guides({ x: 30, y: 0 }).every((g) => g.dimGuide));
+    const diam = autoDimSpec(editor, { mode: 'point', reference: ref, prompt: 'Diâmetro do círculo:', allowNumber: true });
+    assert.equal(diam.fields[0].label, 'Diâmetro');
+    assert.equal(diam.commitNumber, true);
+    assert.equal(diam.values({ x: 0, y: 25 }).v, 25);
+    assert.equal(autoDimSpec(editor, { mode: 'point', reference: ref, prompt: 'Ângulo incluído (graus):', allowNumber: true }), null);
+    assert.equal(autoDimSpec(editor, { mode: 'point', reference: null, prompt: 'Primeiro ponto' }), null);
+    assert.equal(autoDimSpec(editor, { mode: 'point', reference: ref, prompt: 'x', dynInput: false }), null);
+});

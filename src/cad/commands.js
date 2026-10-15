@@ -182,7 +182,7 @@ export function lineDynamicInput(from, cursor, locked = {}, offset = 8) {
         { type: 'line', start: from, end: { x: from.x + offset * 2, y: from.y } },
     ] : [];
     const angAnchor = { x: from.x + Math.cos(angle / 2) * offset * 2.6, y: from.y + Math.sin(angle / 2) * offset * 2.6 };
-    return { end, values: { len: length, ang: deg }, anchors: { len: mid, ang: angAnchor }, guides };
+    return { end, values: { len: length, ang: deg }, anchors: { len: mid, ang: angAnchor }, guides: guides.map(asDimGuide) };
 }
 
 // Ponto na circunferência com raio (ou diâmetro, scale=0.5) travado; a direção segue o cursor.
@@ -192,7 +192,40 @@ export function circleDynamicInput(center, cursor, locked = {}, key = 'r', scale
     const typed = locked[key];
     const radius = Number.isFinite(typed) && typed > 0 ? typed * scale : free;
     const edge = { x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius };
-    return { edge, radius, values: { [key]: radius / scale }, anchors: { [key]: { x: (center.x + edge.x) / 2, y: (center.y + edge.y) / 2 } } };
+    // Cota do raio (centro → borda) ou do diâmetro (borda → borda oposta).
+    const from = scale < 1 ? { x: 2 * center.x - edge.x, y: 2 * center.y - edge.y } : center;
+    const guides = radius > 0 ? [asDimGuide({ type: 'line', start: from, end: edge })] : [];
+    return { edge, radius, values: { [key]: radius / scale }, anchors: { [key]: { x: (center.x + edge.x) / 2, y: (center.y + edge.y) / 2 } }, guides };
+}
+
+// Linhas da cota provisória da entrada dinâmica: o renderer pinta com theme.dimGuide
+// (vermelho apagado), separadas do traço que está sendo desenhado.
+function asDimGuide(entity) {
+    return { ...entity, dimGuide: true };
+}
+
+// Cota automática dos comandos de desenho (COMMANDS[x].dimInput) para prompts de ponto com
+// referência que não trazem dynInput próprio. Prompt numérico vira um campo com a distância
+// até a referência e devolve { number }, preservando o significado do número em cada comando
+// (raio, diâmetro, corda); prompt de ponto vira comprimento + ângulo, como no LINE.
+// Prompts de ângulo ficam só com o terminal: o número ali não é distância.
+export function autoDimSpec(editor, pending) {
+    const ref = pending?.reference;
+    if (!ref || pending.mode !== 'point' || pending.dynInput === false) return null;
+    if (!pending.allowNumber) return lineDynSpec(editor, ref);
+    if (/[aâ]ngulo/i.test(pending.prompt)) return null;
+    const label = /di[aâ]metro/i.test(pending.prompt) ? 'Diâmetro' : /raio|ap[oó]tema/i.test(pending.prompt) ? 'Raio' : 'Distância';
+    const spec = {
+        fields: [{ key: 'v', label }],
+        locked: {},
+        commitNumber: true,
+        calc: (cursor) => circleDynamicInput(ref, cursor, spec.locked, 'v', 1),
+        values: (cursor) => spec.calc(cursor).values,
+        anchors: (cursor) => spec.calc(cursor).anchors,
+        resolve: (cursor) => spec.calc(cursor).edge,
+        guides: (cursor) => spec.calc(cursor).guides,
+    };
+    return spec;
 }
 
 function lineDynSpec(editor, from) {
@@ -203,6 +236,7 @@ function lineDynSpec(editor, from) {
         values: (cursor) => spec.calc(cursor).values,
         anchors: (cursor) => spec.calc(cursor).anchors,
         resolve: (cursor) => spec.calc(cursor).end,
+        guides: (cursor) => spec.calc(cursor).guides,
     };
     // Ângulo travado não pode ser só "> 0": 0° é válido.
     spec.accepts = (key, n) => (key === 'ang' ? Number.isFinite(n) : n > 0);
@@ -217,6 +251,7 @@ function circleDynSpec(center, key, label, scale) {
         values: (cursor) => spec.calc(cursor).values,
         anchors: (cursor) => spec.calc(cursor).anchors,
         resolve: (cursor) => spec.calc(cursor).edge,
+        guides: (cursor) => spec.calc(cursor).guides,
     };
     return spec;
 }
@@ -237,7 +272,7 @@ async function line(editor) {
             dynInput,
             preview: (cursor) => {
                 const dyn = dynInput.calc(cursor);
-                return [{ type: 'line', start: last, end: dyn.end }, ...dyn.guides];
+                return [{ type: 'line', start: last, end: dyn.end }];
             },
         });
         if (res.enter) break;
@@ -383,7 +418,7 @@ async function circle(editor, args = []) {
         dynInput: radiusDyn,
         preview: (cursor) => {
             const dyn = radiusDyn.calc(cursor);
-            return [{ type: 'circle', center, radius: dyn.radius }, { type: 'line', start: center, end: dyn.edge }];
+            return [{ type: 'circle', center, radius: dyn.radius }];
         },
     });
     if (!res || (!res.point && res.number === undefined && !res.keyword)) return;
@@ -396,7 +431,7 @@ async function circle(editor, args = []) {
             dynInput: diamDyn,
             preview: (cursor) => {
                 const dyn = diamDyn.calc(cursor);
-                return [{ type: 'circle', center, radius: dyn.radius }, { type: 'line', start: { x: 2 * center.x - dyn.edge.x, y: 2 * center.y - dyn.edge.y }, end: dyn.edge }];
+                return [{ type: 'circle', center, radius: dyn.radius }];
             },
         });
         if (!d || (!d.point && d.number === undefined)) return;
@@ -788,7 +823,7 @@ export function rectDynamicInput(a, cursor, rotationDeg = 0, locked = {}, offset
         corner: toWorld(x2, y2),
         values: { w, h },
         anchors: { w: wAnchor, h: hAnchor },
-        guides: w > 0 && h > 0 ? guides : [],
+        guides: w > 0 && h > 0 ? guides.map(asDimGuide) : [],
     };
 }
 
@@ -887,6 +922,7 @@ async function rectangle(editor) {
             values: (cursor) => rectDynamicInput(a, cursor, rotationDeg, dynInput.locked, dynInput.offset()).values,
             anchors: (cursor) => rectDynamicInput(a, cursor, rotationDeg, dynInput.locked, dynInput.offset()).anchors,
             resolve: (cursor) => rectDynamicInput(a, cursor, rotationDeg, dynInput.locked, dynInput.offset()).corner,
+            guides: (cursor) => rectDynamicInput(a, cursor, rotationDeg, dynInput.locked, dynInput.offset()).guides,
         };
         const res2 = await editor.getPoint('Canto oposto', {
             reference: a,
@@ -895,7 +931,7 @@ async function rectangle(editor) {
             dynInput,
             preview: (cursor) => {
                 const dyn = rectDynamicInput(a, cursor, rotationDeg, dynInput.locked, dynInput.offset());
-                return [buildRect(dyn.corner), ...dyn.guides];
+                return [buildRect(dyn.corner)];
             },
         });
         if (!res2) return;
@@ -1622,40 +1658,72 @@ function curvesOf(entities) {
     return entities.flatMap((e) => entityCurves(e));
 }
 
-async function trim(editor) {
-    const edgeIds = await editor.getSelection('Selecione arestas de corte ou <Enter> para todas:', { allowEmpty: true });
-    const trimmable = (e) => ['line', 'circle', 'arc', 'polyline'].includes(e.type);
+// Como no BricsCAD: dentro do TRIM, segurar Shift ao clicar estende; dentro do EXTEND, apara.
+// As arestas escolhidas servem de corte e de limite.
+const TRIM_EXTEND_MODES = {
+    trim: { prompt: 'Selecione objeto para aparar ou abra uma janela (Shift estende)', shiftPrompt: 'Selecione objeto para estender ou abra uma janela (solte Shift para aparar)' },
+    extend: { prompt: 'Selecione objeto para estender ou abra uma janela (Shift apara)', shiftPrompt: 'Selecione objeto para aparar ou abra uma janela (solte Shift para estender)' },
+};
+const isTrimmable = (e) => ['line', 'circle', 'arc', 'polyline'].includes(e.type);
+const isExtendable = (e) => ['line', 'arc'].includes(e.type);
+
+async function trimOrExtend(editor, primary) {
+    const edgeIds = await editor.getSelection(primary === 'trim'
+        ? 'Selecione arestas de corte ou <Enter> para todas:'
+        : 'Selecione arestas de limite ou <Enter> para todas:', { allowEmpty: true });
+    const secondary = primary === 'trim' ? 'extend' : 'trim';
+    const filters = { trim: isTrimmable, extend: isExtendable };
     for (;;) {
-        const pick = await editor.getEntityOrWindow('Selecione objeto para aparar ou abra uma janela', { allowEnter: true, filter: trimmable });
+        const { prompt, shiftPrompt } = TRIM_EXTEND_MODES[primary];
+        const pick = await editor.getEntityOrWindow(prompt, {
+            allowEnter: true,
+            filter: (e) => isTrimmable(e) || isExtendable(e),
+            shiftPrompt,
+        });
         if (!pick) break;
+        const mode = pick.shift ? secondary : primary;
         const edges = edgeIds.length ? editor.entitiesById(edgeIds) : editor.doc.entities;
-        if (pick.entities) {
-            // Janela: remove de cada objeto os trechos que cruzam o retângulo.
-            const replacements = new Map();
-            let count = 0;
-            pick.entities.forEach((entity) => {
-                const cutters = curvesOf(edges.filter((e) => e.id !== entity.id));
-                const result = trimInsideBox(entity, cutters, pick.box);
-                if (result) {
-                    replacements.set(entity.id, result);
-                    count += 1;
-                }
-            });
-            if (count === 0) { editor.log('Nenhum trecho com interseção dentro da janela.', 'warn'); continue; }
-            editor.commit('Aparar', replaceEntities(editor.doc, replacements));
+        if (pick.entities) pick.entities = pick.entities.filter(filters[mode]);
+        else if (!filters[mode](pick.entity)) {
+            editor.log(mode === 'extend' ? 'Só linhas e arcos podem ser estendidos.' : 'Esse objeto não pode ser aparado.', 'warn');
             continue;
         }
-        const cutters = curvesOf(edges.filter((e) => e.id !== pick.entity.id));
-        if (pick.entity.type === 'polyline') {
-            const result = trimPolyline(pick.entity, cutters, pick.point);
-            if (!result) { editor.log('Nenhuma interseção encontrada para aparar.', 'warn'); continue; }
-            editor.commit('Aparar', replaceEntities(editor.doc, new Map([[pick.entity.id, result]])));
-            continue;
-        }
-        const kept = trimAtPoint(pick.entity, cutters, pick.point);
-        if (kept === undefined) { editor.log('Nenhuma interseção encontrada para aparar.', 'warn'); continue; }
-        editor.commit('Aparar', replaceEntities(editor.doc, new Map([[pick.entity.id, kept]])));
+        if (mode === 'trim') trimPick(editor, pick, edges);
+        else extendPick(editor, pick, edges);
     }
+}
+
+function trim(editor) {
+    return trimOrExtend(editor, 'trim');
+}
+
+function extend(editor) {
+    return trimOrExtend(editor, 'extend');
+}
+
+function trimPick(editor, pick, edges) {
+    if (pick.entities) {
+        // Janela: remove de cada objeto os trechos que cruzam o retângulo.
+        const replacements = new Map();
+        pick.entities.forEach((entity) => {
+            const cutters = curvesOf(edges.filter((e) => e.id !== entity.id));
+            const result = trimInsideBox(entity, cutters, pick.box);
+            if (result) replacements.set(entity.id, result);
+        });
+        if (replacements.size === 0) { editor.log('Nenhum trecho com interseção dentro da janela.', 'warn'); return; }
+        editor.commit('Aparar', replaceEntities(editor.doc, replacements));
+        return;
+    }
+    const cutters = curvesOf(edges.filter((e) => e.id !== pick.entity.id));
+    if (pick.entity.type === 'polyline') {
+        const result = trimPolyline(pick.entity, cutters, pick.point);
+        if (!result) { editor.log('Nenhuma interseção encontrada para aparar.', 'warn'); return; }
+        editor.commit('Aparar', replaceEntities(editor.doc, new Map([[pick.entity.id, result]])));
+        return;
+    }
+    const kept = trimAtPoint(pick.entity, cutters, pick.point);
+    if (kept === undefined) { editor.log('Nenhuma interseção encontrada para aparar.', 'warn'); return; }
+    editor.commit('Aparar', replaceEntities(editor.doc, new Map([[pick.entity.id, kept]])));
 }
 
 // TRIM preserva a entidade se o recorte não deixar geometria; exclusão integral pertence ao ERASE.
@@ -1739,38 +1807,31 @@ function curveToEntity(curve, source) {
     return { ...base, type: 'arc', center: curve.center, radius: curve.radius, start: curve.start, end: curve.end };
 }
 
-async function extend(editor) {
-    const boundaryIds = await editor.getSelection('Selecione arestas de limite ou <Enter> para todas:', { allowEmpty: true });
-    const extendable = (e) => ['line', 'arc'].includes(e.type);
-    for (;;) {
-        const pick = await editor.getEntityOrWindow('Selecione objeto para estender ou abra uma janela', { allowEnter: true, filter: extendable });
-        if (!pick) break;
-        const boundaries = boundaryIds.length ? editor.entitiesById(boundaryIds) : editor.doc.entities;
-        if (pick.entities) {
-            // Janela: estende as pontas que estão dentro do retângulo.
-            const replacements = new Map();
-            pick.entities.forEach((entity) => {
-                const limits = curvesOf(boundaries.filter((e) => e.id !== entity.id));
-                let current = entity;
-                const ends = entity.type === 'line'
-                    ? [entity.start, entity.end]
-                    : [polar(entity.center, entity.start, entity.radius), polar(entity.center, entity.end, entity.radius)];
-                ends.forEach((end) => {
-                    if (!pointInBox(end, pick.box)) return;
-                    const result = extendEntity(current, limits, end);
-                    if (result) current = result;
-                });
-                if (current !== entity) replacements.set(entity.id, current);
+function extendPick(editor, pick, boundaries) {
+    if (pick.entities) {
+        // Janela: estende as pontas que estão dentro do retângulo.
+        const replacements = new Map();
+        pick.entities.forEach((entity) => {
+            const limits = curvesOf(boundaries.filter((e) => e.id !== entity.id));
+            let current = entity;
+            const ends = entity.type === 'line'
+                ? [entity.start, entity.end]
+                : [polar(entity.center, entity.start, entity.radius), polar(entity.center, entity.end, entity.radius)];
+            ends.forEach((end) => {
+                if (!pointInBox(end, pick.box)) return;
+                const result = extendEntity(current, limits, end);
+                if (result) current = result;
             });
-            if (replacements.size === 0) { editor.log('Nenhuma ponta dentro da janela pôde ser estendida.', 'warn'); continue; }
-            editor.commit('Estender', replaceEntities(editor.doc, replacements));
-            continue;
-        }
-        const limits = curvesOf(boundaries.filter((e) => e.id !== pick.entity.id));
-        const result = extendEntity(pick.entity, limits, pick.point);
-        if (!result) { editor.log('Nenhum limite encontrado nessa direção.', 'warn'); continue; }
-        editor.commit('Estender', replaceEntities(editor.doc, new Map([[pick.entity.id, result]])));
+            if (current !== entity) replacements.set(entity.id, current);
+        });
+        if (replacements.size === 0) { editor.log('Nenhuma ponta dentro da janela pôde ser estendida.', 'warn'); return; }
+        editor.commit('Estender', replaceEntities(editor.doc, replacements));
+        return;
     }
+    const limits = curvesOf(boundaries.filter((e) => e.id !== pick.entity.id));
+    const result = extendEntity(pick.entity, limits, pick.point);
+    if (!result) { editor.log('Nenhum limite encontrado nessa direção.', 'warn'); return; }
+    editor.commit('Estender', replaceEntities(editor.doc, new Map([[pick.entity.id, result]])));
 }
 
 function extendEntity(entity, limits, pickPoint) {
@@ -4104,16 +4165,16 @@ export const COMMANDS = {
     PASTECLIP: { aliases: [], run: pasteClip, description: 'Colar objetos pelo ponto de inserção' },
     POINT: { aliases: ['PO', 'PONTO'], run: pointCommand, description: 'Desenhar entidade ponto' },
     DONUT: { aliases: ['DO', 'DOUGHNUT', 'ANEL'], run: donut, description: 'Desenhar anel ou disco preenchido com diâmetro interno e externo' },
-    LINE: { aliases: ['L'], run: line, description: 'Linha por pontos' },
-    CIRCLE: { aliases: ['C', 'CIRCULO'], run: circle, description: 'Círculo por centro/raio, diâmetro, 2P, 3P ou TTR' },
-    ARC: { aliases: ['A', 'ARCO'], run: arc, description: 'Arco por 3 pontos, centro, início, fim, raio, ângulo ou direção' },
-    PLINE: { aliases: ['PL', 'POLYLINE'], run: polyline, description: 'Polilinha com segmentos de linha e arco' },
-    RECTANG: { aliases: ['REC', 'RECT', 'RECTANGLE'], run: rectangle, description: 'Retângulo por dois cantos' },
-    REVCLOUD: { aliases: ['REV', 'NUVEMREV'], run: revcloud, description: 'Criar nuvem de revisão em forma de arcos sequenciais' },
+    LINE: { dimInput: true, aliases: ['L'], run: line, description: 'Linha por pontos' },
+    CIRCLE: { dimInput: true, aliases: ['C', 'CIRCULO'], run: circle, description: 'Círculo por centro/raio, diâmetro, 2P, 3P ou TTR' },
+    ARC: { dimInput: true, aliases: ['A', 'ARCO'], run: arc, description: 'Arco por 3 pontos, centro, início, fim, raio, ângulo ou direção' },
+    PLINE: { dimInput: true, aliases: ['PL', 'POLYLINE'], run: polyline, description: 'Polilinha com segmentos de linha e arco' },
+    RECTANG: { dimInput: true, aliases: ['REC', 'RECT', 'RECTANGLE'], run: rectangle, description: 'Retângulo por dois cantos' },
+    REVCLOUD: { dimInput: true, aliases: ['REV', 'NUVEMREV'], run: revcloud, description: 'Criar nuvem de revisão em forma de arcos sequenciais' },
     TEXT: { aliases: ['T', 'DT', 'DTEXT'], run: text, description: 'Texto de linha única' },
-    POLYGON: { aliases: ['POL', 'POLIGONO'], run: polygon, description: 'Polígono regular por lados, inscrito/circunscrito ou por aresta' },
-    ELLIPSE: { aliases: ['EL', 'ELIPSE'], run: ellipse, description: 'Elipse por eixo e distância ou centro' },
-    SPLINE: { aliases: ['SPL'], run: spline, description: 'Spline por pontos de ajuste (B-spline cúbica)' },
+    POLYGON: { dimInput: true, aliases: ['POL', 'POLIGONO'], run: polygon, description: 'Polígono regular por lados, inscrito/circunscrito ou por aresta' },
+    ELLIPSE: { dimInput: true, aliases: ['EL', 'ELIPSE'], run: ellipse, description: 'Elipse por eixo e distância ou centro' },
+    SPLINE: { dimInput: true, aliases: ['SPL'], run: spline, description: 'Spline por pontos de ajuste (B-spline cúbica)' },
     ARRAY: { aliases: ['AR', 'PADRAO'], run: arrayCommand, description: 'Padrão retangular, polar ou linear' },
     ALIGN: { aliases: ['AL', 'ALINHAR'], run: align, description: 'Alinhar por pares de pontos (mover, rotacionar, escalar opcional)' },
     WBLOCK: { aliases: ['W'], run: wblock, description: 'Gravar seleção como bloco em arquivo DXF' },

@@ -31,7 +31,7 @@ test('no ORTO leaves preview free and leaving stage hides cursor',()=>{
 });
 test('point prompt uses the BricsCAD-style crosshair without pickbox',async()=>{
     const {editor,draw}=setup();assert.equal(draw().crosshairMode,'point');
-    editor.pending={mode:'entity'};assert.equal(draw().crosshairMode,'select');
+    editor.pending={mode:'entity'};assert.equal(draw().crosshairMode,'point');
     editor.pending=null;assert.equal(draw().crosshairMode,'select');
     const { Renderer: CadRenderer } = await import('../src/cad/renderer.js');
     const calls=[];const ctx=new Proxy({},{get:(t,k)=>k in t?t[k]:(...a)=>calls.push([k,...a]),set:(t,k,v)=>{t[k]=v;calls.push(['set',k,v]);return true;}});
