@@ -763,6 +763,7 @@ export default {
     "O diâmetro externo deve ser maior que o diâmetro interno.": "El diámetro exterior debe ser mayor que el diámetro interior.",
     "O layer de destino está bloqueado. Desbloqueie-o antes de colar.": "La capa de destino está bloqueada. Desbloquéela antes de pegar.",
     "O limite para DWG é 20 MB.": "El límite para DWG es de 20 MB.",
+    "Não foi possível ler este DWG R12.": "No se pudo leer este DWG R12.",
     "O número de itens deve ser maior ou igual a 2.": "El número de elementos debe ser mayor o igual a 2.",
     "O número de segmentos deve ser pelo menos 2.": "El número de segmentos debe ser al menos 2.",
     "O objeto selecionado não é um arco ou círculo.": "El objeto seleccionado no es un arco ni un círculo.",

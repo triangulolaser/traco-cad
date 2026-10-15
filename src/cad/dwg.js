@@ -10,9 +10,42 @@ import { parseDxf, writeDxf } from './dxf.js';
  * @param {ArrayBuffer|Uint8Array} buffer
  * @returns {Promise<string>}
  */
+/**
+ * O DxfWriter do acad-ts 3.2 omite do MULTILEADER o texto (304), a escala (40) do CONTEXT_DATA e o
+ * comprimento do dogleg (40 dentro de LEADER{}), embora o leitor de DWG os preencha. Sem eles a
+ * chamada perde o texto e o trecho horizontal (DWG 2018 de cliente, 14/10). Completa o writer uma vez.
+ */
+function patchMultiLeaderWriter(acad) {
+    const proto = acad.DxfSectionWriterBase?.prototype;
+    if (!proto || proto.__tracoMultiLeader) return;
+    const writeContext = proto._writeAnnotContext;
+    const writeRoot = proto._writeLeaderRoot;
+    if (typeof writeContext !== 'function' || typeof writeRoot !== 'function') return;
+    proto._writeAnnotContext = function (context, map) {
+        this._writer.write(40, context.scaleFactor || 1);
+        if (context.hasTextContents && context.textLabel) this._writer.write(304, context.textLabel);
+        return writeContext.call(this, context, map);
+    };
+    proto._writeLeaderRoot = function (root) {
+        if (root.landingDistance > 0) this._writer.write(40, root.landingDistance);
+        return writeRoot.call(this, root);
+    };
+    proto.__tracoMultiLeader = true;
+}
+
+/** Versão gravada nos 6 primeiros bytes do DWG (AC1009 = R12, AC1032 = 2018...). */
+export function dwgVersion(u8) {
+    return String.fromCharCode(...u8.subarray(0, 6));
+}
+
 export async function dwgToDxfText(buffer) {
-    const acad = await import('@node-projects/acad-ts');
     const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    if (dwgVersion(u8) === 'AC1009') {
+        const { r12DwgToDxfText } = await import('./dwgR12.js');
+        return r12DwgToDxfText(u8);
+    }
+    const acad = await import('@node-projects/acad-ts');
+    patchMultiLeaderWriter(acad);
     const reader = new acad.DwgReader(u8);
     const cadDoc = reader.read();
 

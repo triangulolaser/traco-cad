@@ -1,4 +1,4 @@
-import {FONT_FAMILIES} from './fonts.js';
+import {FONT_FAMILIES, textWidth} from './fonts.js';
 import {hydrateInsert} from './blocks.js';
 // Leitura e escrita de DXF ASCII (R12 / R2000) para o subconjunto suportado pelo Traço.
 // Entidades: LINE, CIRCLE, ARC, LWPOLYLINE, POLYLINE/VERTEX, TEXT, MTEXT, INSERT (achatado).
@@ -381,14 +381,25 @@ function parseEntity(type, groups) {
     }
 }
 
-function parseEntitiesSection(cursor, stopAt, preserveDimensions = false, dimensionGraphics = true) {
+function parseEntitiesSection(cursor, stopAt, preserveDimensions = false, dimensionGraphics = true, skipPaperSpace = false) {
     const entities = [];
     let pendingPolyline = null;
+    let skippingPolyline = false;
     while (!cursor.done()) {
         const p = cursor.next();
         if (p.code !== 0) continue;
         if (p.value === stopAt) break;
         const groups = collectGroup(cursor);
+        if (skippingPolyline) {
+            if (p.value === 'SEQEND') skippingPolyline = false;
+            continue;
+        }
+        // Código 67 = 1: entidade de layout (paper space). O desenho é só o model space; cotas e
+        // blocos de uma folha de layout entravam no modelo por cima da peça (DWG 2007 de cliente, 14/10).
+        if (skipPaperSpace && num(first(groups, 67, 0)) === 1) {
+            if (p.value === 'POLYLINE') skippingPolyline = true;
+            continue;
+        }
         if (p.value === 'POLYLINE') {
             const flags = num(first(groups, 70, 0));
             pendingPolyline = { type: 'polyline', layer: first(groups, 8, DEFAULT_LAYER), color: entityColor(groups), vertices: [], closed: Boolean(flags & 1) };
@@ -548,6 +559,8 @@ function parseMultiLeader(base, groups) {
     let scale = 1;
     let leader = null;
     let line = null;
+    let leftAttachment = 0;
+    let rightAttachment = 0;
     const leaders = [];
     for (let i = 0; i < groups.length; i += 1) {
         const { code, value } = groups[i];
@@ -563,6 +576,8 @@ function parseMultiLeader(base, groups) {
             else if (code === 41) textHeight = num(value);
             else if (code === 140) arrowSize = num(value);
             else if (code === 304) text = decodeText(value);
+            else if (code === 174) leftAttachment = num(value);
+            else if (code === 175) rightAttachment = num(value);
             else if (code === 12 && next?.code === 22) textPos = { x: num(value), y: num(next.value) };
         } else if (depth === 2 && leader) {
             if (code === 10 && next?.code === 20) leader.landing = { x: num(value), y: num(next.value) };
@@ -577,6 +592,16 @@ function parseMultiLeader(base, groups) {
         if (l.landing) tail.push(l.landing);
         if (l.landing && l.dogleg && l.doglegLength > 0) {
             tail.push({ x: l.landing.x + l.dogleg.x * l.doglegLength, y: l.landing.y + l.dogleg.y * l.doglegLength });
+        }
+        // Anexo "sublinhar" (5 = última linha, 6 = primeira linha, 8 = todas): a linha da chamada
+        // continua por baixo do texto. O lado do texto vem do sentido do dogleg (DWG 2018, 14/10).
+        const attachment = l.dogleg && l.dogleg.x < 0 ? rightAttachment : leftAttachment;
+        if (text && l.dogleg && tail.length && [5, 6, 8].includes(attachment)) {
+            const lines = text.split('\n');
+            const pick = attachment === 6 ? [lines[0]] : attachment === 5 ? [lines[lines.length - 1]] : lines;
+            const width = Math.max(...pick.map((t) => textWidth({ text: t, height: textHeight * scale })));
+            const end = tail[tail.length - 1];
+            if (width > 0) tail.push({ x: end.x + l.dogleg.x * width, y: end.y + l.dogleg.y * width });
         }
         for (const pts of l.lines) {
             const vertices = [...pts, ...tail];
@@ -816,7 +841,7 @@ export function parseDxf(text, { preserveBlocks = false, preserveDimensions = fa
             }
         } else if (section === 'TABLES') layers = parseTables(cursor);
         else if (section === 'BLOCKS') blocks = parseBlocks(cursor, preserveDimensions, dimensionGraphics);
-        else if (section === 'ENTITIES') entities = parseEntitiesSection(cursor, 'ENDSEC', preserveDimensions, dimensionGraphics);
+        else if (section === 'ENTITIES') entities = parseEntitiesSection(cursor, 'ENDSEC', preserveDimensions, dimensionGraphics, true);
     }
     const styles=layers.textStyles??{};
     const applyStyles=items=>items.map(e=>{

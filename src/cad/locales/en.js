@@ -763,6 +763,7 @@ export default {
     "O diâmetro externo deve ser maior que o diâmetro interno.": "The outer diameter must be greater than the inner diameter.",
     "O layer de destino está bloqueado. Desbloqueie-o antes de colar.": "The target layer is locked. Unlock it before pasting.",
     "O limite para DWG é 20 MB.": "The DWG limit is 20 MB.",
+    "Não foi possível ler este DWG R12.": "Could not read this R12 DWG.",
     "O número de itens deve ser maior ou igual a 2.": "The number of items must be at least 2.",
     "O número de segmentos deve ser pelo menos 2.": "The number of segments must be at least 2.",
     "O objeto selecionado não é um arco ou círculo.": "The selected object is not an arc or circle.",
