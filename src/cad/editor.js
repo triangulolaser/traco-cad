@@ -60,6 +60,14 @@ export function wheelZoomFactor(event) {
     return ZOOM_PER_NOTCH ** -clamped;
 }
 
+// Mira como no BricsCAD: sem comando, cruz + quadrado; pedindo objeto (TRIM, EXTEND, seleção), só o quadrado;
+// pedindo ponto ou valor, só a cruz.
+const PICK_MODES = new Set(['entity', 'entityOrWindow', 'selection']);
+function crosshairMode(pending) {
+    if (!pending) return 'select';
+    return PICK_MODES.has(pending.mode) ? 'pick' : 'point';
+}
+
 export class Editor {
     constructor(root, options = {}) {
         this.root = root;
@@ -387,7 +395,7 @@ export class Editor {
             window: this.window,
             showGrid: this.settings.grid,
             showCrosshair: Boolean(this.cursorWorld),
-            crosshairMode: this.pending ? 'point' : 'select',
+            crosshairMode: crosshairMode(this.pending),
             tracking: ['point', 'pointOrEntity'].includes(this.pending?.mode) ? { points: this.tracking, lines: this.trackingLines } : null,
             hover: this.hover,
             hoverGrip: this.hoverGrip,

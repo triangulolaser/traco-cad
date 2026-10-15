@@ -31,17 +31,21 @@ test('no ORTO leaves preview free and leaving stage hides cursor',()=>{
 });
 test('point prompt uses the BricsCAD-style crosshair without pickbox',async()=>{
     const {editor,draw}=setup();assert.equal(draw().crosshairMode,'point');
-    editor.pending={mode:'entity'};assert.equal(draw().crosshairMode,'point');
+    editor.pending={mode:'entity'};assert.equal(draw().crosshairMode,'pick');
+    editor.pending={mode:'selection'};assert.equal(draw().crosshairMode,'pick');
+    editor.pending={mode:'number'};assert.equal(draw().crosshairMode,'point');
     editor.pending=null;assert.equal(draw().crosshairMode,'select');
     const { Renderer: CadRenderer } = await import('../src/cad/renderer.js');
     const calls=[];const ctx=new Proxy({},{get:(t,k)=>k in t?t[k]:(...a)=>calls.push([k,...a]),set:(t,k,v)=>{t[k]=v;calls.push(['set',k,v]);return true;}});
     const r=Object.create(CadRenderer.prototype);r.ctx=ctx;r.viewport={worldToScreen:p=>p};r.theme={crosshair:'w',crosshairX:'red',crosshairY:'green'};
-    r.drawCrosshair({x:100,y:100},false,true);
+    r.drawCrosshair({x:100,y:100},false,'point');
     assert.ok(!calls.some(c=>c[0]==='strokeRect'));
     assert.ok(calls.some(c=>c[0]==='set'&&c[2]==='red'));assert.ok(calls.some(c=>c[0]==='set'&&c[2]==='green'));
     assert.ok(calls.some(c=>c[0]==='lineTo'&&c[1]===132));
     assert.ok(!calls.some(c=>c[0]==='set'&&c[1]==='lineWidth'&&c[2]!==1));
-    calls.length=0;r.drawCrosshair({x:100,y:100},false,false);
+    calls.length=0;r.drawCrosshair({x:100,y:100},false,'pick');
+    assert.ok(calls.some(c=>c[0]==='strokeRect'));assert.ok(!calls.some(c=>c[0]==='lineTo'));
+    calls.length=0;r.drawCrosshair({x:100,y:100},false,'select');
     assert.ok(calls.some(c=>c[0]==='strokeRect'));
     assert.ok(calls.some(c=>c[0]==='set'&&c[2]==='red'));
 });

@@ -239,7 +239,7 @@ export class Renderer {
         if (state.rubber) this.drawRubber(state.rubber.from, state.rubber.to);
         if (state.window) this.drawWindow(state.window);
         if (state.snap) this.drawSnap(state.snap);
-        if (state.showCrosshair && state.cursor) this.drawCrosshair(state.cursor, Boolean(state.snap), state.crosshairMode === 'point');
+        if (state.showCrosshair && state.cursor) this.drawCrosshair(state.cursor, Boolean(state.snap), state.crosshairMode);
         if (state.collaborators && state.collaborators.length > 0) this.drawCollaborators(state.collaborators, state.doc);
         if (isExperimentalLxds) this.drawLxdsHeaderBadge();
         const isCdr = Boolean(state.doc?.sourceFormat === 'cdr' || /\.cdr$/i.test(state.doc?.name ?? ''));
@@ -987,13 +987,20 @@ export class Renderer {
         ctx.restore();
     }
 
-    // Mira no padrão do BricsCAD: eixos X vermelho e Y verde, sempre iguais; com qualquer comando ativo, some o quadrado de seleção.
-    drawCrosshair(cursor, snapped, pointMode = false) {
+    // Mira no padrão do BricsCAD: eixos X vermelho e Y verde; mode 'select' (sem comando) = cruz + quadrado,
+    // 'point' = só a cruz, 'pick' (pedindo objeto) = só o quadrado.
+    drawCrosshair(cursor, snapped, mode = 'select') {
         const { ctx, viewport } = this;
         const s = viewport.worldToScreen(cursor);
         ctx.save();
         ctx.lineWidth = 1;
         ctx.setLineDash([]);
+        if (mode === 'pick') {
+            ctx.strokeStyle = this.theme.crosshair;
+            ctx.strokeRect(s.x - 4.5, s.y - 4.5, 9, 9);
+            ctx.restore();
+            return;
+        }
         const size = 32;
         ctx.strokeStyle = this.theme.crosshairX;
         ctx.beginPath();
@@ -1005,7 +1012,7 @@ export class Renderer {
         ctx.moveTo(s.x + 0.5, s.y - size);
         ctx.lineTo(s.x + 0.5, s.y + size);
         ctx.stroke();
-        if (!snapped && !pointMode) {
+        if (!snapped && mode !== 'point') {
             ctx.strokeStyle = this.theme.crosshair;
             ctx.strokeRect(s.x - 4.5, s.y - 4.5, 9, 9);
         }
