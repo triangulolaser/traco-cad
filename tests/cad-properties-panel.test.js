@@ -12,7 +12,7 @@ test('cad.js contém controles para layer, cor, linetype, lineweight e tamanho d
     const content = readFileSync(cadJsPath, 'utf-8');
 
     assert.match(content, /data-prop="layer"/, 'Deve conter controle de layer');
-    assert.match(content, /data-prop="color"/, 'Deve conter input de cor');
+    assert.match(content, /data-prop="color"/, 'Deve conter seletor de cor');
     assert.match(content, /data-prop="color-picker"/, 'Deve conter color picker nativo acessível via swatch');
     assert.match(content, /data-prop="linetype"/, 'Deve conter select de tipo de linha');
     assert.match(content, /data-prop="lineweight"/, 'Deve conter select de espessura de linha');

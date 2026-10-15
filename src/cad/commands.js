@@ -64,8 +64,8 @@ import {
 import { addEntities, removeEntities, replaceEntities, updateEntities, editableEntities, setCurrentLayer, updateLayer, layerOf, createDocument, documentStats, hexToAci, aciToHex, BYLAYER } from './document.js';
 import { parseDxf, writeDxf } from './dxf.js';
 import { chooseLinearKind, autoDimensionFor, dimensionGeometry, DIMENSION_LAYER, ensureDimensionSetup, computeAutoDimScale, getDrawingContentBox } from './dimensions.js';
-import { interpolateSpline } from './splines.js';
-import { ellipsePoint, imageLocalPoint } from './extra-entities.js';
+import { interpolateSpline, sampleSpline } from './splines.js';
+import { ellipsePoint, imageLocalPoint, ensureSplineGeometry } from './extra-entities.js';
 import { autoDimensionPart } from './autodim.js';
 import { loopsFromEntities, HATCH_PATTERNS } from './hatch.js';
 import { DRAWING_ACCEPT, DRAWING_KINDS, IMAGE_ACCEPT, kindOf } from './file-types.js';
@@ -2120,13 +2120,64 @@ async function explode(editor) {
     let count = 0;
     editor.entitiesById(ids).forEach((entity) => {
         if(entity.type==='insert'){replacements.set(entity.id,expandInsert(entity).map(e=>({...e,id:undefined})));count+=1;return;}
+        if (entity.type === 'spline') {
+            // A spline vira arcos que seguem a curva; trechos retos viram linhas.
+            const lines = splineToLines(entity);
+            if (lines.length) { replacements.set(entity.id, lines); count += 1; }
+            return;
+        }
         if (entity.type !== 'polyline') return;
         replacements.set(entity.id, polylineCurves(entity.vertices, entity.closed).map((c) => curveToEntity(c, entity)));
         count += 1;
     });
-    if (count === 0) return editor.log('Nada para explodir (apenas polilinhas são explodidas).', 'warn');
+    if (count === 0) return editor.log('Nada para explodir (apenas polilinhas, splines e blocos são explodidos).', 'warn');
     editor.commit('Explodir', replaceEntities(editor.doc, replacements));
     editor.clearSelection();
+}
+
+// Ajusta a spline com o menor número de arcos (e linhas onde ela é reta) dentro da tolerância.
+const SPLINE_FIT_TOL = 0.01;
+
+function splineFitPiece(pts, i, j) {
+    const a = pts[i];
+    const b = pts[j];
+    const len = distance(a, b);
+    if (len < 1e-9) return null;
+    let lineOk = true;
+    for (let k = i + 1; k < j && lineOk; k += 1) {
+        const p = pts[k];
+        const d = Math.abs((b.x - a.x) * (a.y - p.y) - (a.x - p.x) * (b.y - a.y)) / len;
+        if (d > SPLINE_FIT_TOL) lineOk = false;
+    }
+    if (lineOk) return { kind: 'segment', a, b };
+    if (j - i < 2) return null;
+    const arc = arcFromThreePoints(a, pts[Math.floor((i + j) / 2)], b);
+    if (!arc) return null;
+    for (let k = i + 1; k < j; k += 1) {
+        if (Math.abs(distance(arc.center, pts[k]) - arc.radius) > SPLINE_FIT_TOL) return null;
+    }
+    return { kind: 'arc', ...arc };
+}
+
+export function splineToCurves(entity) {
+    const pts = sampleSpline(ensureSplineGeometry(entity), 64).filter((p, k, all) => k === 0 || distance(p, all[k - 1]) > 1e-9);
+    const curves = [];
+    let i = 0;
+    while (i < pts.length - 1) {
+        let best = { j: i + 1, piece: { kind: 'segment', a: pts[i], b: pts[i + 1] } };
+        for (let j = i + 2; j < pts.length; j += 1) {
+            const piece = splineFitPiece(pts, i, j);
+            if (!piece) break;
+            best = { j, piece };
+        }
+        curves.push(best.piece);
+        i = best.j;
+    }
+    return curves;
+}
+
+function splineToLines(entity) {
+    return splineToCurves(entity).map((c) => curveToEntity(c, entity));
 }
 
 async function burst(editor) {
@@ -4188,7 +4239,7 @@ export const COMMANDS = {
     TRIM: { aliases: ['TR'], run: trim, description: 'Aparar objetos em arestas de corte' },
     EXTEND: { aliases: ['EX'], run: extend, description: 'Estender linhas e arcos até um limite' },
     FILLET: { aliases: ['F'], run: fillet, description: 'Concordância entre duas linhas' },
-    EXPLODE: { aliases: ['X'], run: explode, description: 'Explodir polilinhas' },
+    EXPLODE: { aliases: ['X'], run: explode, description: 'Explodir polilinhas, splines e blocos' },
     BURST: { aliases: [], run: burst, description: 'Desagrupar blocos preservando atributos como textos' },
     JOIN: { aliases: ['J'], run: join, description: 'Unir linhas e arcos em polilinha' },
     BOUNDARY: { aliases: ['BPOLY', 'CONTORNO'], run: boundary, description: 'Criar polilinha de contorno fechado por ponto interno ou seleção' },

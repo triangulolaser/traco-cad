@@ -816,7 +816,7 @@ export class Renderer {
         ctx.restore();
     }
 
-    // Distância entre as pontas mais próximas de duas entidades selecionadas: direta, X (vermelho) e Y (verde).
+    // Menor distância entre duas entidades selecionadas: direta, X (vermelho) e Y (verde).
     drawSelectionMeasure({ a, b, distance, dx, dy }) {
         const { ctx, viewport } = this;
         const origin = a.y <= b.y ? a : b;

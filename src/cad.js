@@ -14,6 +14,8 @@ import { showCadErrorModal, hideCadErrorModal } from './cad/error-modal.js';
 import { snapIconSvg } from './cad/snaps.js';
 import { LOCALES, detectLocale, getLocale, saveLocale, setLocale, t, tr, translateDom } from './cad/i18n.js';
 
+const STANDARD_ACI = [[1, 'Vermelho'], [2, 'Amarelo'], [3, 'Verde'], [4, 'Ciano'], [5, 'Azul'], [6, 'Magenta'], [7, 'Branco']];
+
 
 function setupToolbar(editor, root) {
     root.querySelectorAll('[data-cad-command]').forEach((button) => {
@@ -423,7 +425,14 @@ function renderProperties(editor, root) {
     const normColor = (e) => (e.color === undefined || e.color === 'bylayer' ? 'bylayer' : e.color);
     const firstColor = normColor(selected[0]);
     const sameColor = selected.every((e) => String(normColor(e)) === String(firstColor)) ? firstColor : '';
-    const colorLabel = sameColor === '' ? '(varia)' : sameColor === 'bylayer' ? 'ByLayer' : String(sameColor);
+    // Lista como a dos parâmetros da camada (BricsCAD): ByLayer, as 7 cores
+    // ACI padrão, a cor atual quando fora delas e "Selecionar cor...".
+    const colorKey = sameColor === '' ? '' : String(sameColor);
+    const colorOptions = [['bylayer', 'ByLayer'], ...STANDARD_ACI.map(([n, name]) => [String(n), name])];
+    if (colorKey && !colorOptions.some(([v]) => v === colorKey)) colorOptions.push([colorKey, colorKey.startsWith('#') ? colorKey.toUpperCase() : colorKey]);
+    const colorSelectHtml = (colorKey === '' ? '<option value="">(varia)</option>' : '')
+        + colorOptions.map(([v, label]) => `<option value="${escapeHtml(v)}" ${v === colorKey ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')
+        + '<option value="__pick">Selecionar cor...</option>';
     const swatchHex = editor.colorOf(selected[0]);
     const pickerHex = swatchHex.startsWith('#') ? swatchHex : (aciToHex(sameColor) || '#ffffff');
 
@@ -454,7 +463,7 @@ function renderProperties(editor, root) {
 
     let html = section('Geral')
         + `<div class="cad-prop-row"><span class="cad-prop-key">Layer</span><span class="cad-prop-value"><select data-prop="layer"><option value="">${sameLayer ? '' : '(varia)'}</option>${layerOptions}</select></span></div>`
-        + `<div class="cad-prop-row"><span class="cad-prop-key">Cor</span><span class="cad-prop-value"><span class="cad-prop-swatch" style="background:${swatchHex}" title="Escolher cor"><input type="color" data-prop="color-picker" value="${pickerHex}" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;"></span><input data-prop="color" value="${escapeHtml(colorLabel)}" title="ByLayer, índice ACI 1-255 ou #hex"></span></div>`
+        + `<div class="cad-prop-row"><span class="cad-prop-key">Cor</span><span class="cad-prop-value"><span class="cad-prop-swatch" style="background:${swatchHex}" title="Escolher cor"><input type="color" data-prop="color-picker" value="${pickerHex}" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;"></span><select data-prop="color">${colorSelectHtml}</select></span></div>`
         + `<div class="cad-prop-row"><span class="cad-prop-key">Tipo de linha</span><span class="cad-prop-value"><select data-prop="linetype">${sameLineType === '' ? '<option value="">(varia)</option>' : ''}<option value="bylayer" ${sameLineType === 'bylayer' ? 'selected' : ''}>ByLayer</option>${Object.keys(LINETYPES).map((lt) => `<option value="${lt}" ${sameLineType === lt ? 'selected' : ''}>${lt}</option>`).join('')}</select></span></div>`
         + `<div class="cad-prop-row"><span class="cad-prop-key">Espessura</span><span class="cad-prop-value"><select data-prop="lineweight">${sameWeight === '' ? '<option value="">(varia)</option>' : ''}<option value="bylayer" ${sameWeight === 'bylayer' ? 'selected' : ''}>ByLayer</option>${LINEWEIGHTS.map((w) => `<option value="${w}" ${sameWeight === w ? 'selected' : ''}>${w === 0 ? 'Padrão (0.00 mm)' : `${(w / 100).toFixed(2)} mm`}</option>`).join('')}</select></span></div>`;
 
@@ -531,11 +540,7 @@ function renderProperties(editor, root) {
                 colorPicker.click();
             }
         });
-        colorPicker.addEventListener('input', () => {
-            const val = colorPicker.value;
-            if (colorInput) colorInput.value = val;
-            swatch.style.background = val;
-        });
+        colorPicker.addEventListener('input', () => { swatch.style.background = colorPicker.value; });
         colorPicker.addEventListener('change', () => {
             const val = colorPicker.value;
             editor.commit('Cor dos objetos', updateEntities(editor.doc, [...editor.selection], (e) => ({ ...e, color: val })));
@@ -543,12 +548,14 @@ function renderProperties(editor, root) {
     }
     if (colorInput) {
         colorInput.addEventListener('change', () => {
-            const raw = colorInput.value.trim();
-            let value;
-            if (/^bylayer$/i.test(raw)) value = 'bylayer';
-            else if (/^#?[0-9a-f]{6}$/i.test(raw)) value = raw.startsWith('#') ? raw : `#${raw}`;
-            else if (Number.isInteger(Number(raw)) && Number(raw) >= 1 && Number(raw) <= 255) value = Number(raw);
-            else { renderProperties(editor, root); return; }
+            const raw = colorInput.value;
+            if (raw === '__pick') {
+                colorInput.value = colorKey;
+                swatch?.click();
+                return;
+            }
+            if (!raw) return;
+            const value = raw === 'bylayer' || raw.startsWith('#') ? raw : Number(raw);
             editor.commit('Cor dos objetos', updateEntities(editor.doc, [...editor.selection], (e) => ({ ...e, color: value })));
         });
     }
