@@ -37,8 +37,8 @@ test('writeDxf: estrutura canônica AC1015 compatível com BricsCAD e AutoCAD se
     // 7. BLOCKS com definições de *Model_Space e *Paper_Space
     assert.match(dxf, /SECTION\r?\n2\r?\nBLOCKS[\s\S]*?BLOCK[\s\S]*?2\r?\n\*Model_Space[\s\S]*?ENDBLK[\s\S]*?BLOCK[\s\S]*?2\r?\n\*Paper_Space[\s\S]*?ENDBLK/, 'Seção BLOCKS deve conter blocos *Model_Space e *Paper_Space');
 
-    // 8. Seção OBJECTS limpa (sem dicionários órfãos com handles arbitrários)
-    assert.match(dxf, /SECTION\r?\n2\r?\nOBJECTS\r?\n0\r?\nENDSEC\r?\n0\r?\nEOF/, 'Seção OBJECTS deve ser limpa');
+    // 8. OBJECTS só com o dicionário raiz e os layouts (SolidWorks recusa a seção vazia)
+    assert.match(dxf, /SECTION\r?\n2\r?\nOBJECTS\r?\n0\r?\nDICTIONARY\r?\n5\r?\nC\r?\n100\r?\nAcDbDictionary/, 'OBJECTS deve começar pelo dicionário raiz');
 
     // 9. Valida que nenhum ponteiro DXF (330, 340, 350, 360, 390) aponta para 0
     const lines = dxf.split(/\r?\n/);

@@ -1227,7 +1227,8 @@ export function writeDxf(doc, { view = doc.view } = {}) {
         + pair(13, 0) + pair(23, 0)
         + pair(14, 10) + pair(24, 10)
         + pair(15, 10) + pair(25, 10)
-        + pair(16, 0) + pair(17, 0)
+        + pair(16, 0) + pair(26, 0) + pair(36, 1)
+        + pair(17, 0) + pair(27, 0) + pair(37, 0)
         + pair(40, fmt(viewHeight)) + pair(41, fmt(viewAspect))
         + pair(0, 'ENDTAB');
 
@@ -1266,6 +1267,10 @@ export function writeDxf(doc, { view = doc.view } = {}) {
     }
     out += pair(0, 'ENDTAB');
 
+    // VIEW e UCS vazios: leitores ODA estritos esperam as nove tabelas.
+    out += pair(0, 'TABLE') + pair(2, 'VIEW') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTable') + pair(70, 0) + pair(0, 'ENDTAB');
+    out += pair(0, 'TABLE') + pair(2, 'UCS') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTable') + pair(70, 0) + pair(0, 'ENDTAB');
+
     // 5. APPID
     out += pair(0, 'TABLE') + pair(2, 'APPID') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTable') + pair(70, 1)
         + pair(0, 'APPID') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTableRecord') + pair(100, 'AcDbRegAppTableRecord')
@@ -1287,8 +1292,12 @@ export function writeDxf(doc, { view = doc.view } = {}) {
     // 7. BLOCK_RECORD
     const allBlockNames = ['*Model_Space', '*Paper_Space', ...Object.keys(definitions), ...dimensionBlocks.values()];
     out += pair(0, 'TABLE') + pair(2, 'BLOCK_RECORD') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTable') + pair(70, allBlockNames.length);
+    const layoutHandles = { '*Model_Space': '1E', '*Paper_Space': '1F' };
+    const blockRecordHandles = {};
     for (const bName of allBlockNames) {
-        out += pair(0, 'BLOCK_RECORD') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTableRecord') + pair(100, 'AcDbBlockTableRecord') + pair(2, bName);
+        blockRecordHandles[bName] = nextHandle();
+        out += pair(0, 'BLOCK_RECORD') + pair(5, blockRecordHandles[bName]) + pair(100, 'AcDbSymbolTableRecord') + pair(100, 'AcDbBlockTableRecord') + pair(2, bName);
+        if (layoutHandles[bName]) out += pair(340, layoutHandles[bName]);
     }
     out += pair(0, 'ENDTAB');
     out += pair(0, 'ENDSEC');
@@ -1316,7 +1325,68 @@ export function writeDxf(doc, { view = doc.view } = {}) {
     out += pair(0, 'ENDSEC');
 
     // OBJECTS Section
-    out += pair(0, 'SECTION') + pair(2, 'OBJECTS') + pair(0, 'ENDSEC');
+    // Dicionário raiz e layouts exigidos pelo R2000 (SolidWorks recusa OBJECTS vazio).
+    // Raiz sem 330: BricsCAD rejeita ponteiro 0 ("Id de objeto nulo").
+    const dictionary = (h, owner, items) => pair(0, 'DICTIONARY') + pair(5, h) + (owner ? pair(330, owner) : '') + pair(100, 'AcDbDictionary') + pair(281, 1)
+        + items.map(([name, ref]) => pair(3, name) + pair(350, ref)).join('');
+    // Mesmos campos do LAYOUT que o ezdxf grava e o SolidWorks 2014 abriu.
+    const layout = (h, name, order, flags, blockRecord) => pair(0, 'LAYOUT') + pair(5, h) + pair(330, '1A') + pair(100, 'AcDbPlotSettings')
+        + pair(1, '') + pair(4, 'A3') + pair(6, '') + pair(40, 7.5) + pair(41, 20) + pair(42, 7.5) + pair(43, 20) + pair(44, 420) + pair(45, 297)
+        + pair(46, 0) + pair(47, 0) + pair(48, 0) + pair(49, 0) + pair(140, 0) + pair(141, 0) + pair(142, 1) + pair(143, 1)
+        + pair(70, flags) + pair(72, 1) + pair(73, 0) + pair(74, 5) + pair(7, '') + pair(75, 16) + pair(76, 0) + pair(77, 2) + pair(78, 300)
+        + pair(147, 1) + pair(148, 0) + pair(149, 0)
+        + pair(100, 'AcDbLayout') + pair(1, name) + pair(70, 1) + pair(71, order)
+        + pair(10, 0) + pair(20, 0) + pair(11, 420) + pair(21, 297) + pair(12, 0) + pair(22, 0) + pair(32, 0)
+        + pair(14, 1e20) + pair(24, 1e20) + pair(34, 1e20) + pair(15, -1e20) + pair(25, -1e20) + pair(35, -1e20) + pair(146, 0)
+        + pair(13, 0) + pair(23, 0) + pair(33, 0) + pair(16, 1) + pair(26, 0) + pair(36, 0) + pair(17, 0) + pair(27, 1) + pair(37, 0)
+        + pair(76, 1) + pair(330, blockRecord);
+    out += pair(0, 'SECTION') + pair(2, 'OBJECTS')
+        + dictionary('C', null, [['ACAD_GROUP', 'D'], ['ACAD_LAYOUT', '1A']])
+        + dictionary('D', 'C', [])
+        + dictionary('1A', 'C', [['Model', '1E'], ['Layout1', '1F']])
+        + layout('1E', 'Model', 0, 1024, blockRecordHandles['*Model_Space'])
+        + layout('1F', 'Layout1', 1, 0, blockRecordHandles['*Paper_Space'])
+        + pair(0, 'ENDSEC');
     out += pair(0, 'EOF');
-    return out;
+    return withOwners(out, blockRecordHandles);
+}
+
+// Grava o 330 (dono) de cada registro, como o AutoCAD: registro → tabela, entidade → block record.
+// Cabeçalhos de tabela e o dicionário raiz ficam sem 330 (BricsCAD recusa ponteiro 0).
+function withOwners(dxf, blockRecordHandles) {
+    const lines = dxf.split('\n');
+    const out = [];
+    let section = '';
+    let table = null;
+    let owner = null;
+    let pendingType = null;
+    for (let i = 0; i + 1 < lines.length; i += 2) {
+        const code = lines[i];
+        const value = lines[i + 1];
+        out.push(code, value);
+        if (code === '0') {
+            pendingType = value;
+            if (value === 'ENDSEC') section = '';
+            if (value === 'ENDTAB') table = null;
+            continue;
+        }
+        if (code === '2' && pendingType === 'SECTION') { section = value; owner = section === 'ENTITIES' ? blockRecordHandles['*Model_Space'] : null; continue; }
+        if ((code === '5' || code === '105') && pendingType && lines[i + 2] !== '330') {
+            let parent = null;
+            if (section === 'TABLES') {
+                if (pendingType === 'TABLE') table = value;
+                else parent = table;
+            } else if (section === 'BLOCKS' && pendingType === 'BLOCK') {
+                let j = i + 2;
+                while (j + 1 < lines.length && lines[j] !== '0' && lines[j] !== '2') j += 2;
+                owner = lines[j] === '2' ? blockRecordHandles[lines[j + 1]] ?? null : null;
+                parent = owner;
+            } else if (section === 'ENTITIES' || section === 'BLOCKS') {
+                parent = owner;
+            }
+            if (parent) out.push('330', parent);
+            pendingType = null;
+        }
+    }
+    return out.join('\n') + '\n';
 }

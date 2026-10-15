@@ -228,7 +228,7 @@ export function autoDimSpec(editor, pending) {
     return spec;
 }
 
-function lineDynSpec(editor, from) {
+export function lineDynSpec(editor, from) {
     const spec = {
         fields: [{ key: 'len', label: 'Comprimento' }, { key: 'ang', label: 'Ângulo' }],
         locked: {},

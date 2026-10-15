@@ -10,7 +10,7 @@ import { findSnap, applyOrtho, applyPolar, applyAngleLock, findSoftAxis, default
 import { findTrackingSnap, mergeSnaps, trackingPointFromSnap, addTrackingPoint } from './tracking.js';
 import { parsePointInput, parseNumberInput, matchKeyword, formatOptions, splitCommandLine } from './input.js';
 import { tr } from './i18n.js';
-import { COMMANDS, resolveCommand, suggestCommands, CancelError, autoDimSpec } from './commands.js';
+import { COMMANDS, resolveCommand, suggestCommands, CancelError, autoDimSpec, lineDynSpec } from './commands.js';
 import { parseDxf } from './dxf.js';
 import { kindOf } from './file-types.js';
 import { showCadErrorModal, hideCadErrorModal } from './error-modal.js';
@@ -400,6 +400,7 @@ export class Editor {
             hover: this.hover,
             hoverGrip: this.hoverGrip,
             activeGrip: this.activeGrip,
+            gripGhost: this.activeGrip ? this.gripOriginalEntity : null,
             hiddenIds: inlineTextEntityId(this) ? new Set([inlineTextEntityId(this)]) : this.pending?.hide ? new Set(this.pending.hide) : (this.activeGrip ? new Set([this.activeGrip.entityId]) : null),
             collaborators: this.collaborators,
         });
@@ -472,6 +473,10 @@ export class Editor {
         // Opções (D, A, R) e coordenadas (@x,y) seguem pelo caminho normal do terminal.
         if (raw && parseNumberInput(raw) === null) {
             this.onTerminalSubmit(raw);
+            return;
+        }
+        if (this.activeGrip) {
+            this.finishGripDrag();
             return;
         }
         const cursor = this.effectiveCursor() ?? this.cursorWorld ?? this.pending?.reference;
@@ -766,6 +771,10 @@ export class Editor {
         this.gripOriginalEntity = JSON.parse(JSON.stringify(entity));
         this.rubber = { from: grip.point, to: grip.point };
         this.preview = [this.gripOriginalEntity];
+        // Ponta de linha: campo de comprimento total medido a partir da ponta que fica parada.
+        if (entity.type === 'line' && (grip.type === 'start' || grip.type === 'end')) {
+            this.openDynInput(lineDynSpec(this, grip.type === 'start' ? entity.end : entity.start));
+        }
         this.terminal.setPrompt('** ALÇA ** Ponto de destino [Cancelar]:');
         this.log(`Alça ativa em (${formatNumber(grip.point.x, 2)}, ${formatNumber(grip.point.y, 2)}). Arraste ou clique no novo ponto.`);
         this.updateSnap();
@@ -774,7 +783,8 @@ export class Editor {
 
     updateGripDrag() {
         if (!this.activeGrip || !this.gripOriginalEntity) return;
-        const target = this.effectiveCursor() ?? this.cursorWorld ?? this.activeGrip.point;
+        const cursor = this.effectiveCursor() ?? this.cursorWorld ?? this.activeGrip.point;
+        const target = this.dyn ? this.dyn.spec.resolve(cursor) : cursor;
         this.rubber = { from: this.activeGrip.point, to: target };
         const modified = applyGripMove(this.gripOriginalEntity, this.activeGrip, target);
         this.preview = [modified];
@@ -783,9 +793,11 @@ export class Editor {
 
     finishGripDrag(targetPoint = null) {
         if (!this.activeGrip || !this.gripOriginalEntity) return;
-        const target = targetPoint ?? this.effectiveCursor() ?? this.cursorWorld ?? this.activeGrip.point;
+        const cursor = this.effectiveCursor() ?? this.cursorWorld ?? this.activeGrip.point;
+        const target = targetPoint ?? (this.dyn ? this.dyn.spec.resolve(cursor) : cursor);
         const modified = applyGripMove(this.gripOriginalEntity, this.activeGrip, target);
         const gripId = this.activeGrip.entityId;
+        this.closeDynInput();
 
         this.activeGrip = null;
         this.gripJustActivated = false;
@@ -804,6 +816,7 @@ export class Editor {
 
     cancelGripDrag() {
         if (!this.activeGrip) return;
+        this.closeDynInput();
         this.activeGrip = null;
         this.gripJustActivated = false;
         this.gripOriginalEntity = null;
@@ -1415,8 +1428,7 @@ export class Editor {
         const value = String(raw ?? '').trim();
         if (this.activeGrip) {
             if (!value) {
-                const target = this.effectiveCursor() ?? this.cursorWorld ?? this.activeGrip.point;
-                this.finishGripDrag(target);
+                this.finishGripDrag();
                 return;
             }
             if (/^(c|cancel|cancelar)$/i.test(value)) {

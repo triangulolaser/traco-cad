@@ -213,6 +213,12 @@ export class Renderer {
         }
         deferred.forEach(([entity, style]) => this.drawEntity(entity, style));
 
+        // Original da entidade sob alça: tracejado e apagado, para ver de onde o traço saiu.
+        if (state.gripGhost) {
+            const color = this.entityDisplayColor(entityColor(state.gripGhost, state.doc));
+            this.drawEntity(state.gripGhost, { color, width: 1, dashed: true, alpha: 0.45 });
+        }
+
         (state.preview ?? []).forEach((entity) => {
             const color = entity.dimGuide ? this.theme.dimGuide : entity.color && entity.color !== 'bylayer' ? entity.color : this.theme.preview;
             this.drawEntity(entity, { color, width: entity.dimGuide ? 1 : 1.2, dashed: false, alpha: 0.9 });
