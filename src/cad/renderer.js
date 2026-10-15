@@ -31,6 +31,8 @@ export const THEMES = {
         axisX: 'rgba(220,80,80,0.55)',
         axisY: 'rgba(90,200,110,0.55)',
         crosshair: 'rgba(255,255,255,0.55)',
+        crosshairX: '#ff3b3b',
+        crosshairY: '#2fe05a',
         originX: '#e2564f',
         originY: '#4fc46b',
         selection: '#4da3ff',
@@ -57,6 +59,8 @@ export const THEMES = {
         axisX: 'rgba(200,60,60,0.55)',
         axisY: 'rgba(40,150,70,0.55)',
         crosshair: 'rgba(0,0,0,0.6)',
+        crosshairX: '#d01010',
+        crosshairY: '#079a2c',
         originX: '#c8342c',
         originY: '#1f8f5a',
         selection: '#0a84ff',
@@ -131,6 +135,9 @@ export class Renderer {
         const entities = spatial ? spatial.search(visible) : visibleEntities(state.doc);
         const hidden = state.hiddenIds ?? new Set();
         const batches = new Map();
+        // Entidades fora do lote (hover, seleção, texto…) só são desenhadas depois dos lotes; imagens raster vão
+        // direto. Desenhá-las na hora fazia a imagem escaneada cobrir a linha em hover quando vinha depois dela.
+        const deferred = [];
         entities.forEach((entity) => {
             if (hidden.has(entity.id)) return;
             const layer = layerOf(state.doc, entity.layer);
@@ -179,8 +186,10 @@ export class Renderer {
                 }
                 const curves = entityCurves(entity);
                 for (let c = 0; c < curves.length; c++) batch.curves.push(curves[c]);
-            } else {
+            } else if (entity.type === 'image') {
                 this.drawEntity(entity, style);
+            } else {
+                deferred.push([entity, style]);
             }
         });
 
@@ -199,6 +208,7 @@ export class Renderer {
                 ctx.restore();
             });
         }
+        deferred.forEach(([entity, style]) => this.drawEntity(entity, style));
 
         (state.preview ?? []).forEach((entity) => {
             this.drawEntity(entity, { color: entity.color && entity.color !== 'bylayer' ? entity.color : this.theme.preview, width: 1.2, dashed: false, alpha: 0.9 });
@@ -219,7 +229,7 @@ export class Renderer {
         if (state.rubber) this.drawRubber(state.rubber.from, state.rubber.to);
         if (state.window) this.drawWindow(state.window);
         if (state.snap) this.drawSnap(state.snap);
-        if (state.showCrosshair && state.cursor) this.drawCrosshair(state.cursor, Boolean(state.snap));
+        if (state.showCrosshair && state.cursor) this.drawCrosshair(state.cursor, Boolean(state.snap), state.crosshairMode === 'point');
         if (state.collaborators && state.collaborators.length > 0) this.drawCollaborators(state.collaborators, state.doc);
         if (isExperimentalLxds) this.drawLxdsHeaderBadge();
         const isCdr = Boolean(state.doc?.sourceFormat === 'cdr' || /\.cdr$/i.test(state.doc?.name ?? ''));
@@ -920,13 +930,30 @@ export class Renderer {
         ctx.restore();
     }
 
-    drawCrosshair(cursor, snapped) {
+    // Pedindo ponto (como no BricsCAD): sem quadrado de seleção, eixos maiores, mais grossos e coloridos (X vermelho, Y verde).
+    drawCrosshair(cursor, snapped, pointMode = false) {
         const { ctx, viewport } = this;
         const s = viewport.worldToScreen(cursor);
         ctx.save();
+        ctx.setLineDash([]);
+        if (pointMode) {
+            const size = 48;
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = this.theme.crosshairX;
+            ctx.beginPath();
+            ctx.moveTo(s.x - size, s.y);
+            ctx.lineTo(s.x + size, s.y);
+            ctx.stroke();
+            ctx.strokeStyle = this.theme.crosshairY;
+            ctx.beginPath();
+            ctx.moveTo(s.x, s.y - size);
+            ctx.lineTo(s.x, s.y + size);
+            ctx.stroke();
+            ctx.restore();
+            return;
+        }
         ctx.strokeStyle = this.theme.crosshair;
         ctx.lineWidth = 1;
-        ctx.setLineDash([]);
         const size = 24;
         ctx.beginPath();
         ctx.moveTo(s.x - size, s.y + 0.5);

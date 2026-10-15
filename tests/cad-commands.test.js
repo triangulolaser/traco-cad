@@ -371,3 +371,14 @@ test('join une cada cadeia separada, como AutoCAD/BricsCAD', () => {
     groups.forEach((g) => { assert.equal(g.entities.length, 4); assert.equal(g.result.closed, true); });
     assert.ok(!groups.some((g) => g.entities.includes(solta)));
 });
+
+test('fillet com clique entre o canto e a tangência mantém o trecho longo das linhas', () => {
+    const up = { type: 'line', start: { x: 0, y: 0 }, end: { x: 60, y: 70 } };
+    const lo = { type: 'line', start: { x: 80, y: -75 }, end: { x: 0, y: 0 } };
+    // Tangências a ~4,8 do canto; cliques a 2 do canto.
+    const r = filletLines(up, { x: 1.3, y: 1.52 }, lo, { x: 1.46, y: -1.36 }, 5);
+    assert.ok(r && r.arc);
+    assert.deepEqual(r.first.end, { x: 60, y: 70 }, 'linha de cima preserva a ponta longe do canto');
+    assert.deepEqual(r.second.start, { x: 80, y: -75 }, 'linha de baixo preserva a ponta longe do canto');
+    assert.ok(r.arc.center.x > 0, 'arco dentro do canto');
+});

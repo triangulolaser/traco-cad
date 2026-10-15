@@ -1895,7 +1895,18 @@ function offsetSupport(curve, dist) {
 }
 
 // Apara a entidade no ponto de tangência mantendo o lado do clique. Círculos ficam inteiros.
-function trimToTangent(entity, tangent, pick) {
+// Entre duas linhas, o lado é decidido pelo canto (interseção), não pelo ponto de tangência:
+// clique entre o canto e a tangência ainda indica o trecho longo, como no AutoCAD.
+function trimToTangent(entity, tangent, pick, corner = null) {
+    if (entity.type === 'line' && corner) {
+        const u = sub(pick, corner);
+        const ds = dot(sub(entity.start, corner), u);
+        const de = dot(sub(entity.end, corner), u);
+        // Tangência além das duas pontas (raio maior que a linha): cai no critério antigo, que estende.
+        if (dot(sub(tangent, corner), u) < Math.max(ds, de)) {
+            return ds >= de ? { ...entity, end: tangent } : { ...entity, start: tangent };
+        }
+    }
     if (entity.type === 'line') {
         const keepStart = dot(sub(entity.start, tangent), sub(pick, tangent)) >= dot(sub(entity.end, tangent), sub(pick, tangent));
         return keepStart ? { ...entity, end: tangent } : { ...entity, start: tangent };
@@ -1931,22 +1942,37 @@ function filletCurves(e1, p1, e2, p2, radius) {
         const side2 = distance(t2, p2);
         return { score: distance(center, pickMid) + side1 + side2, t1, t2 };
     };
+    // Duas linhas: só vale o centro no setor dos cliques (tangências do lado de cada clique em relação ao canto).
+    let corner = null;
+    let pool = candidates;
+    if (e1.type === 'line' && e2.type === 'line') {
+        corner = intersectCurves(c1, c2, { extend1: true, extend2: true })[0] ?? null;
+        if (corner) {
+            const u1 = sub(p1, corner);
+            const u2 = sub(p2, corner);
+            const inSector = pool.filter((center) => {
+                const r = scoreOf(center);
+                return dot(sub(r.t1, corner), u1) > 0 && dot(sub(r.t2, corner), u2) > 0;
+            });
+            if (inSector.length) pool = inSector;
+        }
+    }
     let best = null;
-    candidates.forEach((center) => {
+    pool.forEach((center) => {
         const r = scoreOf(center);
         if (!best || r.score < best.score) best = { center, ...r };
     });
     const { center, t1, t2 } = best;
     if (radius <= 1e-9) {
         // Canto vivo: as duas curvas encontram-se no ponto escolhido.
-        return { first: trimToTangent(e1, center, p1), second: trimToTangent(e2, center, p2), arc: null };
+        return { first: trimToTangent(e1, center, p1, corner), second: trimToTangent(e2, center, p2, corner), arc: null };
     }
     // Arco de concordância: o trecho curto entre t1 e t2.
     let a1 = angleOf(center, t1);
     let a2 = angleOf(center, t2);
     if (sweepCCW(a1, a2) > Math.PI) [a1, a2] = [a2, a1];
-    const first = trimToTangent(e1, t1, p1);
-    const second = trimToTangent(e2, t2, p2);
+    const first = trimToTangent(e1, t1, p1, corner);
+    const second = trimToTangent(e2, t2, p2, corner);
     // Sanidade: tangentes precisam estar sobre as curvas de apoio (linha estendida ou círculo).
     if (c1.kind === 'circle' && Math.abs(distance(t1, c1.center) - c1.radius) > 1e-6) return null;
     if (c2.kind === 'circle' && Math.abs(distance(t2, c2.center) - c2.radius) > 1e-6) return null;

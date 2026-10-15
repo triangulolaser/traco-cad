@@ -385,6 +385,7 @@ export class Editor {
             window: this.window,
             showGrid: this.settings.grid,
             showCrosshair: Boolean(this.cursorWorld),
+            crosshairMode: this.pending?.mode === 'point' ? 'point' : 'select',
             tracking: ['point', 'pointOrEntity'].includes(this.pending?.mode) ? { points: this.tracking, lines: this.trackingLines } : null,
             hover: this.hover,
             hoverGrip: this.hoverGrip,
