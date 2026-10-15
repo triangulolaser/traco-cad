@@ -476,6 +476,8 @@ export default {
     "Falha ao importar SVG: {0}": "Error al importar SVG: {0}",
     "Falha ao iniciar abas": "Error al iniciar las pestañas",
     "Falha ao ler .lxds: {0}": "Error al leer .lxds: {0}",
+    "{0} deslocamentos do flycut ficaram no layer {1}, desligado: o laser não corta esse caminho.": "{0} desplazamientos del flycut quedaron en la capa {1}, apagada: el láser no corta ese camino.",
+    "⚠️ {0} forma(s) do .lxds não foram importadas ({1}). Confira no CypCut se fazem parte do corte.": "⚠️ {0} forma(s) del .lxds no se importaron ({1}). Verifique en CypCut si forman parte del corte.",
     "Falha ao ler DXF: {0}": "Error al leer DXF: {0}",
     "Falha ao restaurar abas": "Error al restaurar las pestañas",
     "Falha ao salvar em {0}: {1}. Tentando Salvar Como...": "Error al guardar en {0}: {1}. Intentando Guardar como...",

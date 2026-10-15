@@ -476,6 +476,8 @@ export default {
     "Falha ao importar SVG: {0}": "Failed to import SVG: {0}",
     "Falha ao iniciar abas": "Failed to start tabs",
     "Falha ao ler .lxds: {0}": "Failed to read .lxds: {0}",
+    "{0} deslocamentos do flycut ficaram no layer {1}, desligado: o laser não corta esse caminho.": "{0} flycut travel moves went to layer {1}, turned off: the laser does not cut this path.",
+    "⚠️ {0} forma(s) do .lxds não foram importadas ({1}). Confira no CypCut se fazem parte do corte.": "⚠️ {0} .lxds shape(s) were not imported ({1}). Check in CypCut whether they are part of the cut.",
     "Falha ao ler DXF: {0}": "Failed to read DXF: {0}",
     "Falha ao restaurar abas": "Failed to restore tabs",
     "Falha ao salvar em {0}: {1}. Tentando Salvar Como...": "Failed to save to {0}: {1}. Trying Save As...",

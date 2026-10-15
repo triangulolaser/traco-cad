@@ -15,7 +15,7 @@ import { parseDxf } from './dxf.js';
 import { kindOf } from './file-types.js';
 import { showCadErrorModal, hideCadErrorModal } from './error-modal.js';
 import { openInlineTextEditor, updateInlineTextEditor, inlineTextEntityId } from './text-editor.js';
-import { lxdsToEntities, looksLikeLxds } from './lxds.js';
+import { lxdsToEntities, looksLikeLxds, LXDS_TRAVEL_LAYER } from './lxds.js';
 import { dimensionGeometry } from './dimensions.js';
 import { getEntityGrips, applyGripMove, findGripAt } from './grips.js';
 import './extra-entities.js';
@@ -1726,6 +1726,15 @@ export class Editor {
         const s = result.stats;
         const origem = result.application ? ` (${result.application})` : '';
         this.log(`Aberto ${name}${origem}: ${result.entities.length} entidades — ${s.polylines} polilinhas (${s.arcs} arcos), ${s.circles} círculos, ${s.lines} linhas.`);
+        if (s.travel > 0) {
+            this.log(`${s.travel} deslocamentos do flycut ficaram no layer ${LXDS_TRAVEL_LAYER}, desligado: o laser não corta esse caminho.`);
+        }
+        const skipped = Object.entries(s.skipped || {});
+        if (skipped.length > 0) {
+            const total = skipped.reduce((n, [, c]) => n + c, 0);
+            const detail = skipped.map(([cls, c]) => `${c} ${cls}`).join(', ');
+            this.log(`⚠️ ${total} forma(s) do .lxds não foram importadas (${detail}). Confira no CypCut se fazem parte do corte.`, 'warn');
+        }
         this.log('⚠️ Visualização de arquivo .lxds é experimental (engenharia reversa). Confira todas as medidas antes de enviar para corte.', 'warn');
         return result;
     }
