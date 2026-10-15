@@ -142,6 +142,14 @@ export function ensureDimensionSetup(editor, referencePoints = []) {
     return doc;
 }
 
+// Texto sobrescrito pode carregar o marcador "<>" do AutoCAD (ex.: "%%c<>" do SolidWorks):
+// o marcador vira a medição; prefixo e sufixo ficam por conta do próprio texto.
+export function dimensionText(override, value, style, prefix = '', suffix = '') {
+    if (override === undefined || override === null) return formatMeasurement(value, style, prefix, suffix);
+    const text = String(override);
+    return text.includes('<>') ? text.replaceAll('<>', formatMeasurement(value, style)) : text;
+}
+
 export function formatMeasurement(value, style, prefix = '', suffix = '') {
     const precision = style?.precision ?? 2;
     let text = Number(value).toFixed(precision);
@@ -264,7 +272,7 @@ function linearGeometry(entity, style) {
         segments.push({ a: sub(d1, scale(lineDir, style.arrowSize * 2)), b: d1 });
         segments.push({ a: d2, b: add(d2, scale(lineDir, style.arrowSize * 2)) });
     }
-    const text = entity.textOverride ?? formatMeasurement(measurement * measurementFactor(style), style, entity.prefix ?? '', entity.suffix ?? '');
+    const text = dimensionText(entity.textOverride, measurement * measurementFactor(style), style, entity.prefix ?? '', entity.suffix ?? '');
     const angle = readableAngle(angleOf(d1, d2));
     const textNormal = perpendicular({ x: Math.cos(angle), y: Math.sin(angle) });
     const width = textWidth({ text, height: style.textHeight, fontFamily: style.fontFamily, bold: style.bold, italic: style.italic });
@@ -303,7 +311,7 @@ function radialGeometry(entity, style) {
     const prefix = entity.prefix ?? (isDiameter ? 'Ø' : 'R');
     const suffix = entity.suffix ?? '';
     const measurement = isDiameter ? radius * 2 : radius;
-    const text = entity.textOverride ?? formatMeasurement(measurement * measurementFactor(style), style, prefix, suffix);
+    const text = dimensionText(entity.textOverride, measurement * measurementFactor(style), style, prefix, suffix);
     const angle = readableAngle(angleOf(center, linePoint));
     if (isDiameter) {
         const opposite = sub(center, scale(dir, radius));
@@ -354,7 +362,7 @@ function angularGeometry(entity, style) {
     }
 
     const measurement = radToDeg(sweep);
-    const text = entity.textOverride ?? formatMeasurement(measurement, style, entity.prefix ?? '', entity.suffix ?? '°');
+    const text = dimensionText(entity.textOverride, measurement, style, entity.prefix ?? '', entity.suffix ?? '°');
 
     const segments = [];
     const arrows = [];
