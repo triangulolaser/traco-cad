@@ -677,7 +677,7 @@ function parseTables(cursor) {
             layers.textStyles[name]={fontFamily:FONT_FAMILIES.includes(inferred)?inferred:'Liberation Sans',bold:Boolean(flags&0x2000000)||file.includes('bold')||winStyle==='bd'||winStyle==='bi',italic:Boolean(flags&0x1000000)||file.includes('italic')||winStyle==='i'||winStyle==='bi'};layers.textStyleHandles[first(g,5)]=layers.textStyles[name];continue;
         }
         if(p.value==='DIMSTYLE'){
-            const g=collectGroup(cursor);const lfac=first(g,144);layers.dimStyles[first(g,2)]={scale:validDimScale(num(first(g,40,1))),arrowSize:num(first(g,41,2.5)),textHeight:num(first(g,140,2.5)),textGap:num(first(g,147,0.9)),extOffset:num(first(g,42,0.625)),extBeyond:num(first(g,44,1.25)),precision:num(first(g,271,2)),...(num(first(g,77,0))>0?{textAbove:true}:{}),fontHandle:first(g,340),...(lfac===undefined?{}:{measurementScale:num(lfac)})};continue;
+            const g=collectGroup(cursor);const lfac=first(g,144);layers.dimStyles[first(g,2)]={scale:validDimScale(num(first(g,40,1))),arrowSize:num(first(g,41,2.5)),textHeight:num(first(g,140,2.5)),textGap:num(first(g,147,0.9)),extOffset:num(first(g,42,0.625)),extBeyond:num(first(g,44,1.25)),precision:num(first(g,271,2)),...dimTextAbove(first(g,2),first(g,77)),fontHandle:first(g,340),...(lfac===undefined?{}:{measurementScale:num(lfac)})};continue;
         }
         if (p.value === 'VPORT') {
             const g = collectGroup(cursor);
@@ -818,6 +818,13 @@ function resolveMeasurementScale(header, dimStyles, blocks) {
         if (!Number.isFinite(computed) || Math.abs(source - computed) <= Math.max(1e-6, Math.abs(source) * 1e-4)) return scaled;
         return { ...scaled, textOverride: shownText ?? formatMeasurement(source, scaled.style ?? {}) };
     };
+}
+
+// DIMTAD: texto acima da linha de cota. O Traço sempre desenha acima; DXFs salvos por ele antes
+// de gravar o código 77 (estilos TRACO_DIM_*) traziam o texto sobre a linha e caíam por baixo.
+function dimTextAbove(name, tad) {
+    if (tad !== undefined) return { textAbove: num(tad) > 0 };
+    return /^TRACO_DIM_/.test(String(name ?? '')) ? { textAbove: true } : {};
 }
 
 function resolveLeader(entity, dimStyles = {}) {
@@ -1312,7 +1319,7 @@ export function writeDxf(doc, { view = doc.view } = {}) {
             + pair(2, entry.name) + pair(70, 0)
             + pair(40, validDimScale(st.scale ?? 1)) + pair(41, st.arrowSize ?? 2.5) + pair(42, st.extOffset ?? 0.625) + pair(44, st.extBeyond ?? 1.25)
             + pair(140, st.textHeight ?? 2.5) + pair(144, st.measurementScale ?? 1) + pair(147, st.textGap ?? 0.9)
-            + pair(271, st.precision ?? 2) + pair(340, font?.handle ?? [...outputStyles.values()][0].handle);
+            + pair(271, st.precision ?? 2) + pair(77, st.textAbove === false ? 0 : 1) + pair(340, font?.handle ?? [...outputStyles.values()][0].handle);
     }
     out += pair(0, 'ENDTAB');
 

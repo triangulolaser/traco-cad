@@ -51,3 +51,16 @@ test('point prompt uses the BricsCAD-style crosshair without pickbox',async()=>{
     assert.ok(calls.some(c=>c[0]==='strokeRect'));
     assert.ok(calls.some(c=>c[0]==='set'&&c[2]==='red'));
 });
+test('leaving the canvas freezes the preview during point prompts and clears it otherwise',()=>{
+    const {editor,draw}=setup();let invalidated=0;editor.invalidate=()=>{invalidated++;};
+    editor.cursorScreen={x:50,y:60};editor.hover={id:'a'};editor.snap={mode:'END',point:{x:12,y:0}};
+    for (const mode of ['point','pointOrEntity']) {
+        editor.pending.mode=mode;Editor.prototype.clearCursor.call(editor);
+        assert.deepEqual(editor.cursorWorld,{x:10,y:3});assert.deepEqual(editor.cursorScreen,{x:50,y:60});assert.equal(editor.hover,null);
+    }
+    editor.pending.mode='point';assert.deepEqual(draw().preview,[{point:{x:12,y:0}}]);
+    editor.pending={mode:'entity'};Editor.prototype.clearCursor.call(editor);
+    assert.equal(editor.cursorWorld,null);assert.equal(editor.cursorScreen,null);assert.equal(editor.snap,null);
+    editor.pending=null;editor.cursorWorld={x:1,y:1};Editor.prototype.clearCursor.call(editor);assert.equal(editor.cursorWorld,null);
+    assert.equal(invalidated,4);
+});

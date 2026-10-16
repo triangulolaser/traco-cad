@@ -60,6 +60,16 @@ export function wheelZoomFactor(event) {
     return ZOOM_PER_NOTCH ** -clamped;
 }
 
+// Campo da entrada dinâmica é centrado no ponto (translate -50%); preso dentro da área visível
+// para não sumir quando a peça passa da tela.
+export function clampDynFieldPosition(screen, stageWidth, stageHeight, fieldWidth = 64, fieldHeight = 20, margin = 4) {
+    if (!(stageWidth > 0) || !(stageHeight > 0)) return screen;
+    const halfW = fieldWidth / 2 + margin;
+    const halfH = fieldHeight / 2 + margin;
+    const clamp = (v, min, max) => (min > max ? (min + max) / 2 : Math.max(min, Math.min(max, v)));
+    return { x: clamp(screen.x, halfW, stageWidth - halfW), y: clamp(screen.y, halfH, stageHeight - halfH) };
+}
+
 // Mira como no BricsCAD: sem comando, cruz + quadrado; pedindo objeto (TRIM, EXTEND, seleção), só o quadrado;
 // pedindo ponto ou valor, só a cruz; pickCursor força o quadrado (Dimensão pede a linha primeiro).
 const PICK_MODES = new Set(['entity', 'entityOrWindow', 'selection']);
@@ -454,6 +464,12 @@ export class Editor {
     }
 
     clearCursor() {
+        // Com comando pedindo ponto, sair da tela congela o prévio na última posição em vez de apagá-lo.
+        if (['point', 'pointOrEntity'].includes(this.pending?.mode) && this.cursorWorld) {
+            this.hover = null;
+            this.invalidate();
+            return;
+        }
         this.cursorWorld = null;
         this.cursorScreen = null;
         this.snap = null;
@@ -555,7 +571,8 @@ export class Editor {
                 }
             }
             input.classList.toggle('is-active', index === dyn.active);
-            const screen = this.viewport.worldToScreen(anchors[field.key]);
+            const screen = clampDynFieldPosition(this.viewport.worldToScreen(anchors[field.key]),
+                this.stage?.clientWidth, this.stage?.clientHeight, input.offsetWidth || 64, input.offsetHeight || 20);
             input.style.left = `${Math.round(screen.x)}px`;
             input.style.top = `${Math.round(screen.y)}px`;
         });

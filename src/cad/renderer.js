@@ -41,6 +41,7 @@ export const THEMES = {
         dimGuide: 'rgba(196,96,96,0.65)',
         rubber: 'rgba(255,255,255,0.6)',
         snap: '#ffd24d',
+        snapDim: '#c77dff',
         tracking: '#7fd6a8',
         trackingLine: 'rgba(127,214,168,0.7)',
         windowFill: 'rgba(77,163,255,0.12)',
@@ -70,6 +71,7 @@ export const THEMES = {
         dimGuide: 'rgba(170,60,60,0.6)',
         rubber: 'rgba(0,0,0,0.55)',
         snap: '#d99a00',
+        snapDim: '#8e2bd6',
         tracking: '#1f8f5a',
         trackingLine: 'rgba(31,143,90,0.7)',
         windowFill: 'rgba(10,132,255,0.10)',
@@ -932,12 +934,13 @@ export class Renderer {
         ctx.restore();
     }
 
-    drawSnap({ mode, point }) {
+    drawSnap({ mode, point, entity }) {
         const { ctx, viewport } = this;
         const s = viewport.worldToScreen(point);
         const r = 7;
         ctx.save();
-        ctx.strokeStyle = this.theme.snap;
+        // Snap em cota fica roxo para não ser confundido com snap na geometria.
+        ctx.strokeStyle = entity?.type === 'dimension' ? (this.theme.snapDim ?? this.theme.snap) : this.theme.snap;
         ctx.lineWidth = 2;
         ctx.setLineDash([]);
         ctx.beginPath();

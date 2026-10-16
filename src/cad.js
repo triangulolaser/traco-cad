@@ -163,6 +163,14 @@ function setupSplitButtons(editor, root) {
 
     root.querySelectorAll('.cad-ribbon-panel').forEach((panel) => {
         panel.addEventListener('scroll', closeAll, { passive: true });
+        // Roda vertical do mouse rola o ribbon para o lado quando ele não cabe na largura.
+        panel.addEventListener('wheel', (event) => {
+            if (event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+            if (panel.scrollWidth <= panel.clientWidth) return;
+            const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? panel.clientWidth : 1;
+            panel.scrollLeft += event.deltaY * unit;
+            event.preventDefault();
+        }, { passive: false });
     });
 }
 
@@ -491,7 +499,8 @@ function renderProperties(editor, root) {
         html += section('Geometria');
         entityRows(editor, selected[0]).forEach(([k, v]) => { html += row(k, escapeHtml(String(v))); });
         const locked = !isEntityEditable(editor.doc, selected[0]);
-        for (const field of geometryFields(selected[0])) html += `<div class="cad-prop-row"><label class="cad-prop-key">${escapeHtml(geometryLabel(field))}</label><span class="cad-prop-value"><input type="number" step="any" data-geometry="${escapeHtml(field.key)}" value="${field.value}" ${locked ? 'disabled' : ''}></span></div>`;
+        for (const field of geometryFields(selected[0])) html += `<div class="cad-prop-row"><label class="cad-prop-key">${escapeHtml(geometryLabel(field))}</label><span class="cad-prop-value"><input type="number" step="any" data-geometry="${escapeHtml(field.key)}" value="${field.value}" ${locked ? 'disabled' : ''}></span></div>`
+            + (field.key === 'length' ? `<div class="cad-prop-row"><span class="cad-prop-key">Ponta fixa</span><span class="cad-prop-value"><select data-prop="line-anchor" title="Ponta que fica parada ao mudar o comprimento">${LINE_ANCHORS.map(([v, label]) => `<option value="${v}" ${v === lineLengthAnchor ? 'selected' : ''}>${label}</option>`).join('')}</select></span></div>` : '');
         if (['text', 'dimension'].includes(selected[0].type)) {
             const entity = selected[0];
             const style = entity.type === 'dimension' ? editor.doc.dimStyle : editor.doc.textStyle;
@@ -530,7 +539,10 @@ function renderProperties(editor, root) {
         const entity = editor.doc.entities.find((x) => x.id === selected[0]?.id);
         if (!entity || !isEntityEditable(editor.doc, entity)) return;
         try {
-            editor.commit('Propriedade geométrica', replaceEntities(editor.doc, new Map([[entity.id, setGeometryField(entity, input.dataset.geometry, input.value)]])));
+            const lengthValue = Number(String(input.value).replace(',', '.'));
+            if (input.dataset.geometry === 'length' && entity.type === 'line' && !(lengthValue > 0)) throw new Error('Valor deve ser positivo.');
+            const next = input.dataset.geometry === 'length' && entity.type === 'line' ? setLineLength(entity, lengthValue, lineLengthAnchor) : setGeometryField(entity, input.dataset.geometry, input.value);
+            editor.commit('Propriedade geométrica', replaceEntities(editor.doc, new Map([[entity.id, next]])));
         } catch (error) {
             editor.log(error.message, 'error');
             renderProperties(editor, root);
