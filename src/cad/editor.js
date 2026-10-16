@@ -439,8 +439,23 @@ export class Editor {
             box.appendChild(input);
             return input;
         });
+        box.addEventListener('pointerleave', (event) => {
+            if (event.relatedTarget !== this.canvas && !box.contains(event.relatedTarget)) this.clearCursor();
+        });
         this.stage.appendChild(box);
         this.dyn = { spec, box, inputs, active: 0, typed: new Set() };
+    }
+
+    clearCursor() {
+        this.cursorWorld = null;
+        this.cursorScreen = null;
+        this.snap = null;
+        this.hover = null;
+        if (this.hoverGrip && !this.activeGrip) this.hoverGrip = null;
+        if (this.collabProvider) {
+            this.collabProvider.updateLocalAwareness({ cursor: null });
+        }
+        this.invalidate();
     }
 
     closeDynInput() {
@@ -973,16 +988,10 @@ export class Editor {
             this.onClick(world, event);
         });
 
-        canvas.addEventListener('pointerleave', () => {
-            this.cursorWorld = null;
-            this.cursorScreen = null;
-            this.snap = null;
-            this.hover = null;
-            if (this.hoverGrip && !this.activeGrip) this.hoverGrip = null;
-            if (this.collabProvider) {
-                this.collabProvider.updateLocalAwareness({ cursor: null });
-            }
-            this.invalidate();
+        canvas.addEventListener('pointerleave', (event) => {
+            // Passar sobre os campos de medida não é sair do desenho; sem isso o prévio some e volta (pisca).
+            if (this.dyn?.box.contains(event.relatedTarget)) return;
+            this.clearCursor();
         });
 
         canvas.addEventListener('wheel', (event) => {
@@ -1533,6 +1542,10 @@ export class Editor {
                 if (pending.options) {
                     const option = matchKeyword(value, pending.options);
                     if (option) return this.resolvePending({ keyword: option.key });
+                }
+                if (pending.allowNumber) {
+                    const number = parseNumberInput(value);
+                    if (number !== null) return this.resolvePending({ number });
                 }
                 return this.log('Clique em um objeto.', 'warn');
             }

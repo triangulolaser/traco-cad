@@ -1561,12 +1561,34 @@ async function offset(editor) {
 
     const trimmable = (e) => ['line', 'circle', 'arc', 'polyline'].includes(e.type);
 
+    // Digitar um número em qualquer etapa troca a distância sem sair do comando.
+    const setDist = (value) => {
+        if (!(value > 0)) {
+            editor.log('Distância deve ser maior que zero.', 'error');
+            return;
+        }
+        dist = value;
+        mode = 'distance';
+        editor.memory.offset = dist;
+        editor.log(`Distância de deslocamento: ${fmt(dist)}`, 'echo');
+    };
+
     for (;;) {
-        const pick = await editor.getEntity('Selecione objeto para deslocar ou <Enter> para sair:', {
-            allowEnter: true,
-            filter: trimmable,
-        });
+        const pick = await editor.getEntity(
+            mode === 'distance'
+                ? `Selecione objeto para deslocar, digite nova distância <${fmt(dist)}> ou <Enter> para sair:`
+                : 'Selecione objeto para deslocar, digite uma distância ou <Enter> para sair:',
+            {
+                allowEnter: true,
+                allowNumber: true,
+                filter: trimmable,
+            }
+        );
         if (!pick) break;
+        if (pick.number !== undefined) {
+            setDist(pick.number);
+            continue;
+        }
         const sourceEntity = pick.entity;
 
         if (mode === 'through') {
@@ -1614,11 +1636,12 @@ async function offset(editor) {
                     { key: 'u', label: 'Desfazer' },
                 ];
             const sidePrompt = isMultiple
-                ? 'Especifique ponto no lado do deslocamento ou [Desfazer/Enter para sair]:'
-                : 'Especifique ponto no lado do deslocamento ou [Sair/Múltiplo/Desfazer] <Sair>:';
+                ? `Especifique ponto no lado do deslocamento, nova distância <${fmt(dist)}> ou [Desfazer/Enter para sair]:`
+                : `Especifique ponto no lado do deslocamento, nova distância <${fmt(dist)}> ou [Sair/Múltiplo/Desfazer] <Sair>:`;
 
             const side = await editor.getPoint(sidePrompt, {
                 allowEnter: true,
+                allowNumber: true,
                 options: sideOptions,
                 preview: (cursor) => {
                     const r = offsetEntity(sourceEntity, dist, cursor);
@@ -1629,6 +1652,11 @@ async function offset(editor) {
             });
 
             if (!side || side.enter) break;
+
+            if (side.number !== undefined) {
+                setDist(side.number);
+                continue;
+            }
 
             if (side.keyword === 'm') {
                 isMultiple = true;

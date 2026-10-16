@@ -180,6 +180,37 @@ test('Comando OFFSET: opção Apagar substitui entidade original', async () => {
     assert.ok(close(remaining.end.y, 10));
 });
 
+test('Comando OFFSET: digitar nova distância durante o comando troca o valor sem sair', async () => {
+    const sourceLine = { id: 1, type: 'line', start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, layer: '0' };
+    const doc = addEntities(createDocument(), [sourceLine]);
+    const commits = [];
+    const entityAnswers = [{ number: 30 }, 'line', { number: 50 }, 'line', null];
+    const sideAnswers = [{ point: { x: 50, y: 1 } }, { number: 70 }, { point: { x: 50, y: -1 } }];
+    const editor = {
+        doc,
+        memory: {},
+        log() {},
+        commit(desc, newDoc) { commits.push(newDoc); this.doc = newDoc; },
+        async getPoint(prompt) {
+            if (prompt.includes('lado do deslocamento')) return sideAnswers.shift();
+            return { number: 10 };
+        },
+        async getEntity(prompt, opts) {
+            assert.equal(opts.allowNumber, true);
+            const a = entityAnswers.shift();
+            return a === 'line' ? { entity: sourceLine } : a;
+        },
+    };
+
+    await COMMANDS.OFFSET.run(editor);
+    assert.equal(commits.length, 2);
+    const ys = editor.doc.entities.filter((e) => e.id !== 1).map((e) => e.start.y).sort((a, b) => a - b);
+    // 30 no primeiro, 50 → 70 trocado na escolha do lado
+    assert.ok(close(ys[0], -70));
+    assert.ok(close(ys[1], 30));
+    assert.equal(editor.memory.offset, 70);
+});
+
 test('Comando AREA: calcula área por objeto e suporta Adicionar/Subtrair', async () => {
     assert.ok(COMMANDS.AREA);
     assert.ok(COMMANDS.AREA.aliases.includes('AA'));
