@@ -4276,7 +4276,7 @@ export const COMMANDS = {
     LAYON: { aliases: [], run: layerOn, description: 'Ligar layer' },
     COLOR: { aliases: ['COL', 'COLOUR'], run: color, description: 'Cor dos objetos' },
     CHPROP: { aliases: ['CH', 'LAYMCUR'], run: chprop, description: 'Mudar objetos de layer' },
-    NEW: { aliases: ['QNEW'], run: newDrawing, description: 'Novo desenho' },
+    NEW: { aliases: ['N', 'QNEW'], run: newDrawing, description: 'Novo desenho' },
     OPEN: { aliases: [], run: open, description: 'Abrir desenho DWG, DXF, LXDS, SVG, CDR, ELMT ou QET' },
     ELMT: { aliases: ['OPENELMT', 'QELEMT'], run: openElmt, description: 'Abrir elemento elétrico QElectroTech (.elmt)' },
     EXPORTELMT: { aliases: ['SAVEELMT'], run: exportElmt, description: 'Exportar elemento elétrico QElectroTech (.elmt)' },

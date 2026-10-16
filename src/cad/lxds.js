@@ -450,6 +450,8 @@ export function readShapeProcess(dataBytes, address) {
 // Entradas e saídas
 
 const TAU = Math.PI * 2;
+// Trecho de partida abaixo disso é chanfro de limpeza, não direção do corte.
+const TINY_START_SEGMENT_MM = 0.5;
 
 // Ponto e tangente (sentido do desenho) na fração `fraction` do comprimento do contorno.
 function polylineFrame(vertices, closed, fraction) {
@@ -523,6 +525,28 @@ function contourFrame(e, fraction, outer) {
     const vertices = e.closed ? e.vertices : e.vertices.slice(0, -1);
     const frame = polylineFrame(vertices, true, fraction ?? 0);
     if (!frame) return null;
+    // Chanfro minúsculo no ponto de partida (canto limpo do DXF): o CypCut mede o ângulo da
+    // entrada pelo trecho seguinte, não pela direção do chanfro. Conferido no CypCut
+    // em 15/10/2026 (OP #45869): a perfuração fica dentro do furo.
+    if (!fraction) {
+        for (let k = 0; k < vertices.length; k += 1) {
+            const a = vertices[k];
+            const b = vertices[(k + 1) % vertices.length];
+            const len = Math.hypot(b.x - a.x, b.y - a.y);
+            if (len < 1e-12) continue;
+            // Só um chanfro isolado: em curva facetada os trechos curtos seguidos são a própria curva.
+            if (k > 1) break;
+            if (len >= TINY_START_SEGMENT_MM) {
+                if (k > 0) {
+                    // Trecho em arco: a tangente no início gira θ/2 em relação à corda.
+                    const heading = Math.atan2(b.y - a.y, b.x - a.x) - 2 * Math.atan(a.bulge || 0);
+                    frame.tangent = { x: Math.cos(heading), y: Math.sin(heading) };
+                }
+                break;
+            }
+        }
+    }
+    
     const left = { x: -frame.tangent.y, y: frame.tangent.x };
     const ccw = signedArea(vertices) > 0;
     // Num contorno anti-horário a esquerda é dentro: o externo sobra à direita, o furo à esquerda.
