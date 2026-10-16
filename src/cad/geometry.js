@@ -959,6 +959,24 @@ export function entityLength(entity) {
     return entityCurves(entity).reduce((sum, c) => sum + curveLength(c), 0);
 }
 
+// Muda o comprimento de uma linha mantendo a direção. anchor diz o que fica
+// parado: 'start' (ponta inicial), 'end' (ponta final) ou 'middle' (centro).
+export function setLineLength(entity, length, anchor = 'start') {
+    const { start: a, end: b } = entity;
+    const current = Math.hypot(b.x - a.x, b.y - a.y);
+    if (!(length > 0) || current < 1e-9) return entity;
+    const ux = (b.x - a.x) / current;
+    const uy = (b.y - a.y) / current;
+    if (anchor === 'end') return { ...entity, start: { ...a, x: b.x - ux * length, y: b.y - uy * length } };
+    if (anchor === 'middle') {
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        const h = length / 2;
+        return { ...entity, start: { ...a, x: mx - ux * h, y: my - uy * h }, end: { ...b, x: mx + ux * h, y: my + uy * h } };
+    }
+    return { ...entity, end: { ...b, x: a.x + ux * length, y: a.y + uy * length } };
+}
+
 export function formatNumber(value, decimals = 4) {
     const fixed = Number(value).toFixed(decimals);
     return fixed.replace(/\.?0+$/, '') || '0';

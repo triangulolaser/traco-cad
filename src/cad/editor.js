@@ -613,7 +613,9 @@ export class Editor {
             })
             : visibleEntities(this.doc);
         const reference = this.pending?.reference ?? (this.activeGrip ? this.activeGrip.point : null);
-        const objectSnap = this.settings.osnap ? findSnap(entities, this.cursorWorld, tolerance, this.settings.snaps, { reference, exclude }) : null;
+        let objectSnap = this.settings.osnap ? findSnap(entities, this.cursorWorld, tolerance, this.settings.snaps, { reference, exclude }) : null;
+        const ghostSnap = this.settings.osnap ? this.gripGhostSnap(tolerance, reference) : null;
+        if (ghostSnap) objectSnap = mergeSnaps(objectSnap, ghostSnap);
         let trackingSnap = null;
         if (this.settings.otrack && (this.tracking.length > 0 || (reference && this.settings.polar))) {
             const result = findTrackingSnap({
@@ -645,6 +647,29 @@ export class Editor {
         }
         if (this.shiftLockActive()) { this.snap = null; this.trackingLines = []; }
         this.scheduleAcquire(objectSnap, tolerance);
+    }
+
+    // Original tracejado da linha sob alça também é geometria para snap: os snaps normais nele
+    // e o "Mais próximo" ao longo da reta prolongada, para esticar/encurtar na mesma direção.
+    gripGhostSnap(tolerance, reference) {
+        const ghost = this.activeGrip ? this.gripOriginalEntity : null;
+        if (!ghost || ghost.type !== 'line' || !['start', 'end'].includes(this.activeGrip.type)) return null;
+        const own = findSnap([{ ...ghost, id: '__grip_ghost__' }], this.cursorWorld, tolerance, this.settings.snaps, { reference });
+        if (own || !this.settings.snaps.nea) return own;
+        const dx = ghost.end.x - ghost.start.x;
+        const dy = ghost.end.y - ghost.start.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 1e-9) return null;
+        const reach = Math.max(this.viewport.pixelsToWorld(this.viewport.width + this.viewport.height) * 4, len * 10);
+        const ux = dx / len;
+        const uy = dy / len;
+        const ray = {
+            ...ghost,
+            id: '__grip_ghost_ext__',
+            start: { x: ghost.start.x - ux * reach, y: ghost.start.y - uy * reach },
+            end: { x: ghost.end.x + ux * reach, y: ghost.end.y + uy * reach },
+        };
+        return findSnap([ray], this.cursorWorld, tolerance, { nea: true }, { reference });
     }
 
     orthoAccepts(reference, point, tolerance) {

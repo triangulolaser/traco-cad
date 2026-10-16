@@ -5,8 +5,12 @@ import {isEntityEditable,replaceEntities} from './cad/document.js';
 // Entrada do app Traço CAD.
 import { Editor } from './cad/editor.js';
 import { LINETYPES, LINEWEIGHTS, aciToHex, hexToAci, createDocument, History, updateEntities, ensureEntityIds } from './cad/document.js';
-import { entityLength, distance, radToDeg, angleOf } from './cad/geometry.js';
-import { dimensionGeometry } from './cad/dimensions.js';
+import { entityLength, distance, radToDeg, angleOf, setLineLength } from './cad/geometry.js';
+
+// Ponta que fica parada ao editar o comprimento de várias linhas; vale até recarregar.
+let lineLengthAnchor = 'start';
+const LINE_ANCHORS = [['start', 'Início'], ['middle', 'Meio'], ['end', 'Fim']];
+import { dimensionGeometry, measurementFactor } from './cad/dimensions.js';
 import { OPENABLE_EXTENSIONS, iconOf, kindOf, extensionOf } from './cad/file-types.js';
 import { saveWorkspace, loadWorkspace, serializeDocument, debounce, popPendingImport } from './cad/storage.js';
 import { StartScreen, recordRecent, readRecentFile, forgetRecent, showOnStart } from './cad/start-screen.js';
@@ -476,6 +480,13 @@ function renderProperties(editor, root) {
         html += `<div class="cad-prop-row"><span class="cad-prop-key">Precisão dim</span><span class="cad-prop-value"><select data-prop="dim-precision">${samePrecision === '' ? '<option value="">(varia)</option>' : ''}${options}</select></span></div>`;
     }
 
+    if (dims.length) {
+        const factorOf = (e) => measurementFactor({ ...editor.doc.dimStyle, ...(e.style ?? {}), ...(e.measurementScale !== undefined ? { measurementScale: e.measurementScale } : {}) });
+        const firstF = factorOf(dims[0]);
+        const sameF = dims.every((e) => Math.abs(factorOf(e) - firstF) < 1e-9) ? firstF : '';
+        html += `<div class="cad-prop-row"><span class="cad-prop-key">Escala da cota</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-prop="dim-scale" value="${sameF !== '' ? fmt(sameF, 6) : ''}" placeholder="${sameF !== '' ? '' : '(varia)'}" title="Fator da medida (DIMLFAC): 5 numa vista 1:5 mostra o tamanho real"></span></div>`;
+    }
+
     if (selected.length === 1) {
         html += section('Geometria');
         entityRows(editor, selected[0]).forEach(([k, v]) => { html += row(k, escapeHtml(String(v))); });
@@ -489,6 +500,14 @@ function renderProperties(editor, root) {
         if (selected[0].type === 'dimension') html += `<div class="cad-prop-row"><label>Texto da cota</label><input data-dim-text ${locked ? 'disabled' : ''} value="${escapeHtml(selected[0].textOverride ?? '<>')}" title="<> restaura medição automática"></div>`;
     } else {
         const total = selected.reduce((sum, e) => sum + (['line', 'arc', 'circle', 'polyline', 'ellipse', 'spline'].includes(e.type) ? entityLength(e) : 0), 0);
+        if (kinds.length === 1 && kinds[0] === 'line') {
+            const lengths = selected.map(entityLength);
+            const same = lengths.every((l) => Math.abs(l - lengths[0]) < 1e-4);
+            const locked = selected.some((e) => !isEntityEditable(editor.doc, e));
+            html += section('Linhas')
+                + `<div class="cad-prop-row"><span class="cad-prop-key">Comprimento</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-prop="line-length" value="${same ? fmt(lengths[0]) : ''}" placeholder="${same ? '' : 'Vários'}" title="Comprimento de cada linha selecionada" ${locked ? 'disabled' : ''}></span></div>`
+                + `<div class="cad-prop-row"><span class="cad-prop-key">Ponta fixa</span><span class="cad-prop-value"><select data-prop="line-anchor" title="Ponta que fica parada ao mudar o comprimento">${LINE_ANCHORS.map(([v, label]) => `<option value="${v}" ${v === lineLengthAnchor ? 'selected' : ''}>${label}</option>`).join('')}</select></span></div>`;
+        }
         html += section('Resumo') + row('Comprimento total', fmt(total));
         kinds.forEach((k) => { html += row(TYPE_LABELS[k] ?? k, String(selected.filter((e) => e.type === k).length)); });
     }
@@ -619,6 +638,51 @@ function renderProperties(editor, root) {
             }
         });
         textHeightInput.addEventListener('change', applyTextHeight);
+    }
+
+    const dimScaleInput = box.querySelector('[data-prop="dim-scale"]');
+    if (dimScaleInput) {
+        const applyDimScale = () => {
+            const val = parseDecimalInput(dimScaleInput.value);
+            if (!Number.isFinite(val) || val <= 0) {
+                renderProperties(editor, root);
+                return;
+            }
+            editor.commit('Escala da cota', updateEntities(editor.doc, [...editor.selection], (e) => (e.type === 'dimension' && isEntityEditable(editor.doc, e) ? { ...e, measurementScale: val, style: { ...(e.style ?? {}), measurementScale: val } } : e)));
+        };
+        dimScaleInput.addEventListener('keydown', (event) => {
+            event.stopPropagation();
+            if (event.key === 'Enter') { event.preventDefault(); applyDimScale(); dimScaleInput.blur(); }
+            else if (event.key === 'Escape') { event.preventDefault(); renderProperties(editor, root); dimScaleInput.blur(); }
+        });
+        dimScaleInput.addEventListener('change', applyDimScale);
+    }
+
+    // Comprimento de várias linhas
+    box.querySelector('[data-prop="line-anchor"]')?.addEventListener('change', (event) => { lineLengthAnchor = event.target.value; });
+    const lineLengthInput = box.querySelector('[data-prop="line-length"]');
+    if (lineLengthInput) {
+        const applyLineLength = () => {
+            const val = parseDecimalInput(lineLengthInput.value);
+            if (!Number.isFinite(val) || val <= 0) {
+                renderProperties(editor, root);
+                return;
+            }
+            editor.commit('Comprimento das linhas', updateEntities(editor.doc, [...editor.selection], (e) => (e.type === 'line' && isEntityEditable(editor.doc, e) ? setLineLength(e, val, lineLengthAnchor) : e)));
+        };
+        lineLengthInput.addEventListener('keydown', (event) => {
+            event.stopPropagation();
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                applyLineLength();
+                lineLengthInput.blur();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                renderProperties(editor, root);
+                lineLengthInput.blur();
+            }
+        });
+        lineLengthInput.addEventListener('change', applyLineLength);
     }
 
     // 6. Precisão das cotas

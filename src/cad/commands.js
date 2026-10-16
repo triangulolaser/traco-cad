@@ -42,6 +42,7 @@ import {
     entityCurves,
     intersectCurves,
     splitEntityAt,
+    curveEndpoints,
     closestPointOnCurve,
     entityBox,
     boxAddPoint,
@@ -1065,9 +1066,11 @@ async function move(editor) {
     if (ids.length === 0) return;
     const entities = editor.entitiesById(ids);
     const base = (await editor.getPoint('Ponto base:')).point;
+    const dynInput = lineDynSpec(editor, base);
     const target = await editor.getPoint('Segundo ponto', {
         reference: base,
-        preview: (cursor) => entities.map((e) => translateEntity(e, sub(cursor, base))),
+        dynInput,
+        preview: (cursor) => entities.map((e) => translateEntity(e, sub(dynInput.resolve(cursor), base))),
         hide: ids,
     });
     if (!target.point) return;
@@ -1094,11 +1097,14 @@ async function copy(editor) {
     const base = baseRes.point;
 
     for (;;) {
+        // Distância e ângulo do ponto base até a cópia, digitáveis junto ao cursor (como no LINE).
+        const dynInput = lineDynSpec(editor, base);
         const target = await editor.getPoint('Segundo ponto ou [Array]', {
             reference: base,
             allowEnter: true,
             options: [{ key: 'a', label: 'Array' }],
-            preview: (cursor) => entities.map((e) => translateEntity(e, sub(cursor, base))),
+            dynInput,
+            preview: (cursor) => entities.map((e) => translateEntity(e, sub(dynInput.resolve(cursor), base))),
         });
         if (!target || target.enter) break;
 
@@ -1112,12 +1118,14 @@ async function copy(editor) {
             }
             const count = Math.round(countNum);
 
+            const arrayDyn = lineDynSpec(editor, base);
             const arrayTarget = await editor.getPoint('Segundo ponto ou [Ajustar]', {
                 reference: base,
                 allowEnter: true,
                 options: [{ key: 'f', label: 'Ajustar' }],
+                dynInput: arrayDyn,
                 preview: (cursor) => {
-                    const delta = sub(cursor, base);
+                    const delta = sub(arrayDyn.resolve(cursor), base);
                     const list = [];
                     for (let i = 1; i < count; i += 1) {
                         list.push(...entities.map((e) => translateEntity(e, scale(delta, i))));
@@ -1726,21 +1734,38 @@ function trimPick(editor, pick, edges) {
     editor.commit('Aparar', replaceEntities(editor.doc, new Map([[pick.entity.id, kept]])));
 }
 
+// Corta só nas pontas dos trechos removidos: o resto da entidade não fica fatiado nas demais interseções.
+// pickRemoved recebe as peças do corte completo e devolve as que saem. Retorna undefined se nada sair.
+function splitRemoving(entity, cuts, pickRemoved) {
+    const pieces = splitEntityAt(entity, cuts);
+    if (pieces.length <= 1) return undefined;
+    const removed = pickRemoved(pieces);
+    if (removed.length === 0) return undefined;
+    const ends = removed.flatMap((p) => curveEndpoints(entityCurves(p)[0]));
+    const tol = 1e-6 * Math.max(1, ...ends.map((p) => Math.hypot(p.x, p.y)));
+    const bounding = cuts.filter((c) => ends.some((e) => distance(c, e) <= tol));
+    const final = splitEntityAt(entity, bounding.length ? bounding : cuts);
+    const gone = new Set(pickRemoved(final));
+    return final.filter((p) => !gone.has(p));
+}
+
+const nearestPiece = (pieces, pickPoint) => {
+    let nearest = null;
+    pieces.forEach((piece) => {
+        const d = distance(pickPoint, closestPointOnCurve(pickPoint, entityCurves(piece)[0]));
+        if (!nearest || d < nearest.d) nearest = { piece, d };
+    });
+    return nearest ? [nearest.piece] : [];
+};
+
 // TRIM preserva a entidade se o recorte não deixar geometria; exclusão integral pertence ao ERASE.
 // Apara a peça mais próxima do clique. Retorna undefined se não houver recorte válido.
 function trimAtPoint(entity, cutters, pickPoint) {
     const own = entityCurves(entity)[0];
     const cuts = cutters.flatMap((c) => intersectCurves(own, c));
     if (cuts.length === 0) return undefined;
-    const pieces = splitEntityAt(entity, cuts);
-    if (pieces.length <= 1) return undefined;
-    let nearest = null;
-    pieces.forEach((piece) => {
-        const d = distance(pickPoint, closestPointOnCurve(pickPoint, entityCurves(piece)[0]));
-        if (!nearest || d < nearest.d) nearest = { piece, d };
-    });
-    const kept = pieces.filter((p) => p !== nearest.piece);
-    return kept.length ? kept : undefined;
+    const kept = splitRemoving(entity, cuts, (pieces) => nearestPiece(pieces, pickPoint));
+    return kept?.length ? kept : undefined;
 }
 
 // Apara os trechos de uma entidade que cruzam a janela. Polilinhas são explodidas nos segmentos afetados.
@@ -1758,10 +1783,9 @@ function trimInsideBox(entity, cutters, box) {
             const seg = curveToEntity(c, entity);
             if (!curveIntersectsBox(c, box)) { out.push(seg); return; }
             const cuts = cutters.flatMap((cut) => intersectCurves(c, cut));
-            const pieces = cuts.length ? splitEntityAt(seg, cuts) : [seg];
-            if (pieces.length <= 1) { out.push(seg); return; }
-            const kept = pieces.filter((p) => !pieceInsideBox(p));
-            if (kept.length !== pieces.length) changed = true;
+            const kept = cuts.length ? splitRemoving(seg, cuts, (pieces) => pieces.filter(pieceInsideBox)) : undefined;
+            if (!kept) { out.push(seg); return; }
+            changed = true;
             out.push(...kept);
         });
         return changed && out.length ? out : undefined;
@@ -1770,11 +1794,8 @@ function trimInsideBox(entity, cutters, box) {
     if (!curveIntersectsBox(own, box)) return undefined;
     const cuts = cutters.flatMap((c) => intersectCurves(own, c));
     if (cuts.length === 0) return undefined;
-    const pieces = splitEntityAt(entity, cuts);
-    if (pieces.length <= 1) return undefined;
-    const kept = pieces.filter((p) => !pieceInsideBox(p));
-    if (kept.length === pieces.length) return undefined;
-    return kept.length ? kept : undefined;
+    const kept = splitRemoving(entity, cuts, (pieces) => pieces.filter(pieceInsideBox));
+    return kept?.length ? kept : undefined;
 }
 
 function trimPolyline(entity, cutters, pickPoint) {
@@ -1789,15 +1810,10 @@ function trimPolyline(entity, cutters, pickPoint) {
     const target = curveToEntity(nearest.c, entity);
     const cuts = cutters.flatMap((c) => intersectCurves(nearest.c, c));
     if (cuts.length === 0) return null;
-    const pieces = splitEntityAt(target, cuts);
-    if (pieces.length <= 1) return null;
-    let closest = null;
-    pieces.forEach((piece) => {
-        const d = distance(pickPoint, closestPointOnCurve(pickPoint, entityCurves(piece)[0]));
-        if (!closest || d < closest.d) closest = { piece, d };
-    });
+    const kept = splitRemoving(target, cuts, (pieces) => nearestPiece(pieces, pickPoint));
+    if (!kept) return null;
     const others = curves.filter((c) => c !== nearest.c).map((c) => curveToEntity(c, entity));
-    return [...others, ...pieces.filter((p) => p !== closest.piece)];
+    return [...others, ...kept];
 }
 
 function curveToEntity(curve, source) {

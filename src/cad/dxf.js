@@ -1185,6 +1185,7 @@ export function writeDxf(doc, { view = doc.view } = {}) {
                 ...(e.fontFamily ? { fontFamily: e.fontFamily } : {}),
                 ...(e.bold !== undefined ? { bold: e.bold } : {}),
                 ...(e.italic !== undefined ? { italic: e.italic } : {}),
+                ...(e.measurementScale !== undefined ? { measurementScale: e.measurementScale } : {}),
             }
         });
     });

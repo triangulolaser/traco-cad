@@ -159,3 +159,13 @@ test('Cota angular ignora o fator linear', () => {
     }, style);
     assert.equal(angular.text, '90°');
 });
+
+// 16/10/2026: escala da cota editada no painel precisa sobreviver à gravação do DXF.
+test('DXF roundtrip: escala definida só na cota (painel) é gravada e reimportada', () => {
+    const { doc } = importedDimension({});
+    const entities = doc.entities.map((e) => (e.type === 'dimension' ? { ...e, textOverride: undefined, measurementScale: 20 } : e));
+    const out = writeDxf({ ...doc, entities });
+    const back = parseDxf(out, { preserveBlocks: true, preserveDimensions: true });
+    const dimension = back.entities.find((e) => e.type === 'dimension');
+    assert.equal(dimensionGeometry(dimension, back.dimStyle ?? defaultDimStyle()).text, '1300.6');
+});
