@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getEntityGrips, applyGripMove, findGripAt } from '../src/cad/grips.js';
+import { getEntityGrips, applyGripMove, findGripAt, dimensionTextCenterSnap } from '../src/cad/grips.js';
 
 test('getEntityGrips returns correct grips for line', () => {
     const line = { id: 'l1', type: 'line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 } };
@@ -143,4 +143,36 @@ test('alças somem acima de GRIP_OBJECT_LIMIT objetos selecionados', async () =>
     assert.equal(gripsVisible(1), true);
     assert.equal(gripsVisible(GRIP_OBJECT_LIMIT), true);
     assert.equal(gripsVisible(GRIP_OBJECT_LIMIT + 1), false);
+});
+
+test('cota importada: alça da linha leva o texto junto e o texto tem alça própria', () => {
+    // Cota vertical do ITEM 10 REFERENCIA (DWG do SolidWorks): texto com posição gravada.
+    const dim = { id: 'd1', type: 'dimension', kind: 'vertical', p1: { x: 95.8, y: 162 }, p2: { x: 95.8, y: 251.5 }, linePoint: { x: 145.7, y: 251.5 }, textPosition: { x: 145.7, y: 205.8 } };
+    const grips = getEntityGrips(dim);
+    const line = grips.find((g) => g.type === 'linePoint');
+    const moved = applyGripMove(dim, line, { x: 175.7, y: 240 });
+    assert.deepEqual(moved.linePoint, { x: 175.7, y: 240 });
+    assert.ok(Math.abs(moved.textPosition.x - 175.7) < 1e-9);
+    assert.ok(Math.abs(moved.textPosition.y - 205.8) < 1e-9, 'ao longo da linha o texto fica onde estava');
+
+    const text = grips.find((g) => g.type === 'textPosition');
+    assert.ok(text);
+    const byText = applyGripMove(dim, text, { x: 150, y: 190 });
+    assert.deepEqual(byText.textPosition, { x: 150, y: 190 });
+    assert.ok(Math.abs(byText.linePoint.x - 150) < 1e-9, 'a linha de cota acompanha o texto');
+    assert.ok(Math.abs(byText.linePoint.y - 251.5) < 1e-9);
+
+    const rotated = { ...dim, kind: 'rotated', rotation: 0, linePoint: { x: 0, y: 10 }, textPosition: { x: 5, y: 10 } };
+    const r = applyGripMove(rotated, getEntityGrips(rotated).find((g) => g.type === 'linePoint'), { x: 3, y: 14 });
+    assert.ok(Math.abs(r.textPosition.x - 5) < 1e-9 && Math.abs(r.textPosition.y - 14) < 1e-9);
+
+    const plain = { id: 'd2', type: 'dimension', kind: 'horizontal', p1: { x: 0, y: 0 }, p2: { x: 10, y: 0 }, linePoint: { x: 0, y: 5 } };
+    assert.equal(applyGripMove(plain, getEntityGrips(plain)[0], { x: 0, y: 8 }).textPosition, undefined);
+});
+
+test('texto da cota encaixa no centro da medida mantendo o afastamento', () => {
+    const dim = { type: 'dimension', kind: 'vertical', p1: { x: 95.8, y: 162 }, p2: { x: 95.8, y: 251.5 }, linePoint: { x: 145.7, y: 251.5 } };
+    assert.deepEqual(dimensionTextCenterSnap(dim, { x: 150, y: 208 }, 2), { x: 150, y: 206.75 });
+    assert.equal(dimensionTextCenterSnap(dim, { x: 150, y: 230 }, 2), null);
+    assert.equal(dimensionTextCenterSnap({ ...dim, kind: 'radius' }, { x: 150, y: 207 }, 2), null);
 });

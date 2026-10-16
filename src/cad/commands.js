@@ -64,7 +64,7 @@ import {
 } from './geometry.js';
 import { addEntities, removeEntities, replaceEntities, updateEntities, editableEntities, setCurrentLayer, updateLayer, layerOf, createDocument, documentStats, hexToAci, aciToHex, BYLAYER } from './document.js';
 import { parseDxf, writeDxf } from './dxf.js';
-import { chooseLinearKind, autoDimensionFor, dimensionGeometry, DIMENSION_LAYER, ensureDimensionSetup, computeAutoDimScale, getDrawingContentBox } from './dimensions.js';
+import { chooseLinearKind, autoDimensionFor, dimensionGeometry, DIMENSION_LAYER, ensureDimensionSetup, computeAutoDimScale, getDrawingContentBox, resolveAngularQuadrant } from './dimensions.js';
 import { interpolateSpline, sampleSpline } from './splines.js';
 import { ellipsePoint, imageLocalPoint, ensureSplineGeometry } from './extra-entities.js';
 import { autoDimensionPart } from './autodim.js';
@@ -2787,9 +2787,23 @@ async function dimPart(editor) {
 // ---------------------------------------------------------------------------
 // Cotas
 
+// Cota entre duas linhas: o cursor escolhe um dos quatro setores formados por elas.
+function withAngularQuadrant(entity) {
+    if (!entity.angularLines) return entity;
+    const { angularLines, ...rest } = entity;
+    const r = resolveAngularQuadrant(rest.vertex, rest.p1, rest.p2, rest.linePoint);
+    // Cada chamada nasce na ponta da linha do lado cotado; sem linha desse lado, no vértice.
+    const reach = (p, pts) => {
+        const u = normalize(sub(p, rest.vertex));
+        const far = Math.max(...pts.map((q) => dot(sub(q, rest.vertex), u)));
+        return add(rest.vertex, scale(u, far > 1e-6 ? far : 1e-6));
+    };
+    return { ...rest, p1: reach(r.p1, angularLines[0]), p2: reach(r.p2, angularLines[1]), sectorLocked: true };
+}
+
 function dimPreview(editor, base) {
     return (cursor) => {
-        const entity = { ...base, layer: base.layer ?? DIMENSION_LAYER, linePoint: cursor };
+        const entity = withAngularQuadrant({ ...base, layer: base.layer ?? DIMENSION_LAYER, linePoint: cursor });
         if (base.kind === 'auto') entity.kind = chooseLinearKind(base.p1, base.p2, cursor);
         return [{ ...entity, type: 'dimension' }];
     };
@@ -2799,7 +2813,7 @@ async function placeDimension(editor, base, prompt = 'Posição da linha de cota
     ensureDimensionSetup(editor, [base.p1, base.p2].filter(Boolean));
     const res = await editor.getPoint(prompt, { preview: dimPreview(editor, base) });
     if (!res.point) return null;
-    const entity = { ...base, type: 'dimension', layer: base.layer ?? DIMENSION_LAYER, linePoint: res.point };
+    const entity = withAngularQuadrant({ ...base, type: 'dimension', layer: base.layer ?? DIMENSION_LAYER, linePoint: res.point });
     if (base.kind === 'auto') entity.kind = chooseLinearKind(base.p1, base.p2, res.point);
     const doc = addEntities(editor.doc, [entity]);
     editor.commit('Cota', doc);
@@ -3358,15 +3372,17 @@ async function dimAngular(editor) {
     }
     const vertex = inter.point;
 
-    let d1 = sub(pick1, vertex);
-    if (Math.hypot(d1.x, d1.y) < 1e-4) d1 = sub(line1.end, line1.start);
-    const p1 = add(vertex, normalize(d1));
+    // Direção da própria linha (não do clique), para a chamada ficar rente à peça.
+    const ray = (line, pick) => {
+        const u = normalize(sub(line.end, line.start));
+        const side = dot(sub(pick, vertex), u) >= 0 ? 1 : -1;
+        return scale(u, side);
+    };
+    const u1 = ray(line1, pick1);
+    const u2 = ray(line2, pick2);
+    const angularLines = [line1, line2].map((l) => [l.start, l.end]);
 
-    let d2 = sub(pick2, vertex);
-    if (Math.hypot(d2.x, d2.y) < 1e-4) d2 = sub(line2.end, line2.start);
-    const p2 = add(vertex, normalize(d2));
-
-    return placeDimension(editor, { kind: 'angular', vertex, p1, p2 }, 'Posição do arco de cota');
+    return placeDimension(editor, { kind: 'angular', vertex, p1: add(vertex, u1), p2: add(vertex, u2), angularLines }, 'Posição do arco de cota');
 }
 
 async function dimScale(editor, args) {

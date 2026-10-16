@@ -109,3 +109,66 @@ test('cota angular é exportada para DXF contendo ARC de cota', () => {
     assert.ok(dxf.includes('SOLID'), 'DXF deve incluir SOLID para as setas');
     assert.ok(dxf.includes('90%%d'), 'DXF deve incluir o texto 90%%d codificado');
 });
+
+test('cota angular entre duas linhas cota o setor apontado entre os quatro', async () => {
+    const { resolveAngularQuadrant } = await import('../src/cad/dimensions.js');
+    const vertex = { x: 0, y: 0 };
+    const p1 = { x: 1, y: 0 };
+    const p2 = { x: Math.cos(Math.PI / 3), y: Math.sin(Math.PI / 3) };
+    const cases = [
+        [{ x: 10, y: 3 }, 60],
+        [{ x: -3, y: 10 }, 120],
+        [{ x: -10, y: -3 }, 60],
+        [{ x: 3, y: -10 }, 120],
+    ];
+    for (const [cursor, expected] of cases) {
+        const r = resolveAngularQuadrant(vertex, p1, p2, cursor);
+        const g = dimensionGeometry({ type: 'dimension', kind: 'angular', vertex, ...r, linePoint: cursor });
+        assert.ok(close(g.measurement, expected), `cursor ${JSON.stringify(cursor)}: ${g.measurement}`);
+        const mid = g.arcs[0].startAngle + (((g.arcs[0].endAngle - g.arcs[0].startAngle) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) / 2;
+        const dot = Math.cos(mid) * cursor.x + Math.sin(mid) * cursor.y;
+        assert.ok(dot > 0, 'arco no lado do cursor');
+    }
+});
+
+test('cota angular travada não troca de setor ao arrastar e põe o texto por dentro do arco', () => {
+    const style = { textHeight: 2.5, arrowSize: 2.5, extOffset: 1, extBeyond: 2, textGap: 1, precision: 1 };
+    const base = { type: 'dimension', kind: 'angular', vertex: { x: 0, y: 0 }, p1: { x: 0, y: -40 }, p2: { x: 30, y: -30 }, sectorLocked: true };
+    for (const linePoint of [{ x: 5, y: -30 }, { x: -20, y: 20 }]) {
+        const g = dimensionGeometry({ ...base, linePoint }, style);
+        assert.ok(close(g.measurement, 45), `${g.measurement}`);
+    }
+    const g = dimensionGeometry({ ...base, linePoint: { x: 10, y: -25 } }, style);
+    const r = Math.hypot(10, 25);
+    const t = g.texts[0];
+    const h = t.rotation * Math.PI / 180;
+    // base do texto e topo (base + altura na direção "para cima" do texto) ficam dentro do raio
+    const baseMid = { x: t.position.x, y: t.position.y };
+    const top = { x: baseMid.x - Math.sin(h) * t.height, y: baseMid.y + Math.cos(h) * t.height };
+    assert.ok(Math.hypot(baseMid.x, baseMid.y) < r && Math.hypot(top.x, top.y) < r);
+});
+
+test('cota angular desenha a chamada do lado sem linha mesmo com o setor invertido', () => {
+    const style = { textHeight: 2.5, arrowSize: 2.5, extOffset: 1, extBeyond: 2, textGap: 1, precision: 1 };
+    // p1 longo (linha da peça), p2 no vértice (lado oposto da diagonal); setor de p2 para p1
+    const dim = { type: 'dimension', kind: 'angular', vertex: { x: 0, y: 0 }, p1: { x: 0, y: -100 }, p2: { x: 0.7e-6, y: -0.7e-6 }, sectorLocked: true, linePoint: { x: 10, y: -20 } };
+    const g = dimensionGeometry(dim, style);
+    assert.ok(close(g.measurement, 45));
+    const diag = g.segments.find((sg) => Math.abs(sg.b.x + sg.b.y) < 1e-6 && sg.b.x > 0);
+    assert.ok(diag, 'falta a chamada na diagonal');
+});
+
+test('cota angular travada vai para o setor oposto e para as laterais mantendo o ângulo', () => {
+    const style = { textHeight: 2.5, arrowSize: 2.5, extOffset: 1, extBeyond: 2, textGap: 1, precision: 1 };
+    const base = { type: 'dimension', kind: 'angular', vertex: { x: 0, y: 0 }, p1: { x: 40, y: 0 }, p2: { x: 0, y: 40 }, sectorLocked: true };
+    const opp = dimensionGeometry({ ...base, linePoint: { x: -20, y: -20 } }, style);
+    assert.ok(close(opp.measurement, 90));
+    assert.ok(close(opp.arcs[0].startAngle, Math.PI) && close(opp.arcs[0].endAngle, 1.5 * Math.PI));
+    assert.equal(opp.segments.length, 2);
+    const side = dimensionGeometry({ ...base, linePoint: { x: 20, y: -10 } }, style);
+    assert.ok(close(side.measurement, 90));
+    assert.equal(side.arcs.length, 2);
+    assert.ok(close(side.arcs[0].startAngle, 0) && close(side.arcs[0].endAngle, Math.PI / 2));
+    const t = side.texts[0];
+    assert.ok(t.position.y < 0, 'texto acompanha o cursor na lateral');
+});

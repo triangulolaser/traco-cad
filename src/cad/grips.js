@@ -14,6 +14,32 @@ import { ensureSplineGeometry } from './extra-entities.js';
 // AutoCAD/BricsCAD, padrão 100): desenhar milhares de quadradinhos travava a tela.
 export const GRIP_OBJECT_LIMIT = 100;
 
+/**
+ * Centro da cota para a alça do texto: mesmo afastamento do cursor, no meio da medida ao longo da linha.
+ * Devolve null fora da tolerância ou em cota não linear.
+ */
+export function dimensionTextCenterSnap(entity, cursor, tolerance) {
+    if (entity?.type !== 'dimension' || !entity.p1 || !entity.p2) return null;
+    const normal = dimensionLineNormal(entity);
+    if (!normal) return null;
+    const dir = { x: normal.y, y: -normal.x };
+    const mid = midpoint(entity.p1, entity.p2);
+    const along = (cursor.x - mid.x) * dir.x + (cursor.y - mid.y) * dir.y;
+    if (Math.abs(along) > tolerance) return null;
+    return sub(cursor, scale(dir, along));
+}
+
+/** Normal unitária à direção de medição da cota linear; null para radial, diametral e angular. */
+function dimensionLineNormal(entity) {
+    if (entity.kind === 'horizontal') return { x: 0, y: 1 };
+    if (entity.kind === 'vertical') return { x: 1, y: 0 };
+    let angle;
+    if (entity.kind === 'rotated') angle = ((entity.rotation ?? 0) * Math.PI) / 180;
+    else if (entity.kind === 'aligned' && entity.p1 && entity.p2) angle = angleOf(entity.p1, entity.p2);
+    else return null;
+    return { x: -Math.sin(angle), y: Math.cos(angle) };
+}
+
 export function gripsVisible(selectionSize) {
     return selectionSize > 0 && selectionSize <= GRIP_OBJECT_LIMIT;
 }
@@ -57,6 +83,9 @@ export function getEntityGrips(entity) {
         case 'dimension':
             if (entity.linePoint) {
                 grips.push({ id: `${entity.id}:linePoint`, entityId: entity.id, type: 'linePoint', point: entity.linePoint });
+            }
+            if (entity.textPosition) {
+                grips.push({ id: `${entity.id}:textPosition`, entityId: entity.id, type: 'textPosition', point: entity.textPosition });
             }
             if (entity.p1) {
                 grips.push({ id: `${entity.id}:p1`, entityId: entity.id, type: 'p1', point: entity.p1 });
@@ -184,7 +213,23 @@ export function applyGripMove(entity, grip, targetPoint) {
 
         case 'dimension':
             if (grip.type === 'linePoint') {
-                return { ...entity, linePoint: { x: p.x, y: p.y } };
+                const linePoint = { x: p.x, y: p.y };
+                if (!entity.textPosition || !entity.linePoint) return { ...entity, linePoint };
+                // Texto com posição gravada (cota de DWG/DXF) acompanha a linha de cota, como no BricsCAD:
+                // em cota linear só o afastamento da linha; nas demais, o deslocamento inteiro.
+                const delta = sub(linePoint, entity.linePoint);
+                const normal = dimensionLineNormal(entity);
+                const shift = normal ? scale(normal, delta.x * normal.x + delta.y * normal.y) : delta;
+                return { ...entity, linePoint, textPosition: add(entity.textPosition, shift) };
+            }
+            if (grip.type === 'textPosition') {
+                // Como no BricsCAD: o texto arrasta a linha de cota e as setas junto; ao longo da linha só o texto desliza.
+                const textPosition = { x: p.x, y: p.y };
+                if (!entity.linePoint || !entity.textPosition) return { ...entity, textPosition };
+                const delta = sub(textPosition, entity.textPosition);
+                const normal = dimensionLineNormal(entity);
+                const shift = normal ? scale(normal, delta.x * normal.x + delta.y * normal.y) : delta;
+                return { ...entity, textPosition, linePoint: add(entity.linePoint, shift) };
             }
             if (grip.type === 'p1') {
                 return { ...entity, p1: { x: p.x, y: p.y } };

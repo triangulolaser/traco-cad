@@ -309,7 +309,7 @@ export default {
     "Criar ou redefinir bloco persistente a partir da seleção": "Crear o redefinir un bloque persistente a partir de la selección",
     "Criar polilinha de contorno fechado por ponto interno ou seleção": "Crear una polilínea de contorno cerrado por punto interno o selección",
     "Cruzado": "Cruzado",
-    "Ctrl+Enter para salvar • Esc para cancelar": "Ctrl+Enter para guardar • Esc para cancelar",
+    "Esc descarta as alterações": "Esc descarta los cambios",
     "Círculo": "Círculo",
     "Círculo 2-Pontos": "Círculo 2 puntos",
     "Círculo Centro-Diâmetro": "Círculo Centro-Diámetro",

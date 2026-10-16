@@ -17,7 +17,7 @@ import { showCadErrorModal, hideCadErrorModal } from './error-modal.js';
 import { openInlineTextEditor, updateInlineTextEditor, inlineTextEntityId } from './text-editor.js';
 import { lxdsToEntities, looksLikeLxds, LXDS_TRAVEL_LAYER, LXDS_LEAD_LAYER } from './lxds.js';
 import { dimensionGeometry } from './dimensions.js';
-import { getEntityGrips, applyGripMove, findGripAt, gripsVisible } from './grips.js';
+import { getEntityGrips, applyGripMove, findGripAt, gripsVisible, dimensionTextCenterSnap } from './grips.js';
 import './extra-entities.js';
 import './hatch.js';
 import { renameLayer, deleteLayer, updateLayer, ensureLayer } from './document.js';
@@ -633,6 +633,11 @@ export class Editor {
             : visibleEntities(this.doc);
         const reference = this.pending?.reference ?? (this.activeGrip ? this.activeGrip.point : null);
         let objectSnap = this.settings.osnap ? findSnap(entities, this.cursorWorld, tolerance, this.settings.snaps, { reference, exclude }) : null;
+        if (this.settings.osnap && !objectSnap && this.activeGrip?.type === 'textPosition' && this.gripOriginalEntity) {
+            // Texto da cota encaixa no centro da medida (a própria cota fica fora do findSnap durante o arrasto).
+            const center = dimensionTextCenterSnap(this.gripOriginalEntity, this.cursorWorld, tolerance);
+            if (center) objectSnap = { mode: 'mid', point: center, entity: this.gripOriginalEntity };
+        }
         if (this.settings.osnap) {
             // Passar pela borda de círculo/arco revela o centro; ele fica visível até tocar outra curva.
             const hints = findCenterHints(entities, this.cursorWorld, tolerance, this.settings.snaps, { exclude });
@@ -1350,7 +1355,8 @@ export class Editor {
         if (!pending) {
             const hit = this.hitTest(world);
             if (hit) {
-                if (event.shiftKey) this.selection.delete(hit.id);
+                // Shift alterna: tira se já estava, põe se não estava.
+                if (event.shiftKey && this.selection.has(hit.id)) this.selection.delete(hit.id);
                 else this.selection.add(hit.id);
                 this.invalidate();
                 this.onChange(this);
@@ -1372,7 +1378,7 @@ export class Editor {
             case 'selection': {
                 const hit = this.hitTest(world, { filter: pending.filter });
                 if (hit) {
-                    if (event.shiftKey) pending.working.delete(hit.id);
+                    if (event.shiftKey && pending.working.has(hit.id)) pending.working.delete(hit.id);
                     else pending.working.add(hit.id);
                     this.selection = new Set(pending.working);
                     this.log(`${pending.working.size} selecionado(s). Enter para confirmar.`, 'echo');
@@ -1432,13 +1438,13 @@ export class Editor {
         this.window = null;
         if (idle || !this.pending) {
             // A caixa sempre soma à seleção (Shift tira); desmarcar tudo é com Esc, como no AutoCAD.
-            found.forEach((e) => (shift ? this.selection.delete(e.id) : this.selection.add(e.id)));
+            found.forEach((e) => (shift && this.selection.has(e.id) ? this.selection.delete(e.id) : this.selection.add(e.id)));
             this.invalidate();
             this.onChange(this);
             return;
         }
         if (this.pending.mode === 'selection') {
-            found.forEach((e) => (shift ? this.pending.working.delete(e.id) : this.pending.working.add(e.id)));
+            found.forEach((e) => (shift && this.pending.working.has(e.id) ? this.pending.working.delete(e.id) : this.pending.working.add(e.id)));
             this.selection = new Set(this.pending.working);
             this.log(`${this.pending.working.size} selecionado(s). Enter para confirmar.`, 'echo');
             this.invalidate();

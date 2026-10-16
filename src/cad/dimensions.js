@@ -344,6 +344,31 @@ function radialGeometry(entity, style) {
     return { segments, arrows, texts: [textEntityAt(textCenter, angle, text, style, entity.id)], measurement, text };
 }
 
+/**
+ * Cota angular entre duas linhas: as retas formam quatro setores. Devolve p1/p2
+ * espelhados pelo vértice quando preciso, para que o setor convexo entre eles
+ * contenha o cursor (o setor apontado é o cotado, como no AutoCAD).
+ */
+export function resolveAngularQuadrant(vertex, p1, p2, cursor) {
+    const d1 = sub(p1, vertex);
+    const d2 = sub(p2, vertex);
+    const c = sub(cursor, vertex);
+    const cross = (a, b) => a.x * b.y - a.y * b.x;
+    if (Math.hypot(c.x, c.y) < 1e-9) return { p1, p2 };
+    for (const s1 of [1, -1]) {
+        for (const s2 of [1, -1]) {
+            const a = scale(d1, s1);
+            const b = scale(d2, s2);
+            const ab = cross(a, b);
+            if (Math.abs(ab) < 1e-12) continue;
+            if (cross(a, c) * ab >= 0 && cross(c, b) * ab >= 0) {
+                return { p1: add(vertex, a), p2: add(vertex, b) };
+            }
+        }
+    }
+    return { p1, p2 };
+}
+
 function angularGeometry(entity, style) {
     const { p1, p2, linePoint } = entity;
     const vertex=entity.vertex??entity.center;
@@ -359,7 +384,8 @@ function angularGeometry(entity, style) {
     let endAngle;
     let sweep;
 
-    if (sweepP1 <= sweep12) {
+    // Setor travado (cota entre duas linhas): arrastar só muda o raio, nunca o quadrante.
+    if (entity.sectorLocked ? sweep12 <= Math.PI : sweepP1 <= sweep12) {
         startAngle = angle1;
         endAngle = angle2;
         sweep = sweep12;
@@ -376,6 +402,26 @@ function angularGeometry(entity, style) {
     const arrows = [];
     const arcs = [];
 
+    // Setor travado: o cursor no setor oposto pelo vértice leva a cota para lá (mesmo ângulo);
+    // fora dos dois, o texto acompanha o cursor e o arco se estende até ele.
+    let oppositeSide = false;
+    let textAt = null;
+    let extraArc = null;
+    if (entity.sectorLocked && normalizeAngle(angleP - startAngle) > sweep) {
+        if (normalizeAngle(angleP - startAngle - Math.PI) <= sweep) {
+            oppositeSide = true;
+            startAngle = normalizeAngle(startAngle + Math.PI);
+            endAngle = normalizeAngle(endAngle + Math.PI);
+        } else {
+            textAt = angleP;
+            const fromEnd = normalizeAngle(angleP - endAngle);
+            const toStart = normalizeAngle(startAngle - angleP);
+            const over = Math.min(Math.PI / 36, style.arrowSize / radius);
+            if (fromEnd <= toStart) extraArc = ({ center: vertex, radius, startAngle: endAngle, endAngle: normalizeAngle(angleP + over), ccw: true });
+            else extraArc = ({ center: vertex, radius, startAngle: normalizeAngle(angleP - over), endAngle: startAngle, ccw: true });
+        }
+    }
+
     arcs.push({
         center: vertex,
         radius,
@@ -383,6 +429,7 @@ function angularGeometry(entity, style) {
         endAngle,
         ccw: true,
     });
+    if (extraArc) arcs.push(extraArc);
 
     const arcLen = radius * sweep;
     const inside = arcLen >= style.arrowSize * 3;
@@ -407,7 +454,9 @@ function angularGeometry(entity, style) {
         arrows.push(arrowAt(pEnd, tEnd, style.arrowSize));
     }
 
-    const d1 = distance(vertex, p1);
+    // Quando o setor começa em p2, as distâncias trocam junto com os ângulos.
+    const swapped = startAngle !== angle1;
+    const d1 = oppositeSide ? 0 : distance(vertex, swapped ? p2 : p1);
     const dir1 = { x: Math.cos(startAngle), y: Math.sin(startAngle) };
     if (radius > d1 + style.extOffset) {
         segments.push({
@@ -416,7 +465,7 @@ function angularGeometry(entity, style) {
         });
     }
 
-    const d2 = distance(vertex, p2);
+    const d2 = oppositeSide ? 0 : distance(vertex, swapped ? p1 : p2);
     const dir2 = { x: Math.cos(endAngle), y: Math.sin(endAngle) };
     if (radius > d2 + style.extOffset) {
         segments.push({
@@ -425,11 +474,14 @@ function angularGeometry(entity, style) {
         });
     }
 
-    const midAngle = normalizeAngle(startAngle + sweep / 2);
+    const midAngle = textAt ?? normalizeAngle(startAngle + sweep / 2);
     const textNormal = { x: Math.cos(midAngle), y: Math.sin(midAngle) };
-    const textCenter = add(vertex, scale(textNormal, radius + style.textGap));
     const tangentAngle = normalizeAngle(midAngle + Math.PI / 2);
     const textAngle = readableAngle(tangentAngle);
+    // Texto sempre por dentro do arco (lado do vértice); se a leitura virou, a base encosta no arco.
+    const up = { x: -Math.sin(textAngle), y: Math.cos(textAngle) };
+    const flipped = up.x * textNormal.x + up.y * textNormal.y < 0;
+    const textCenter = add(vertex, scale(textNormal, radius - style.textGap - (flipped ? 0 : style.textHeight)));
 
     return {
         segments,

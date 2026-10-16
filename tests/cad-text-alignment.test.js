@@ -238,10 +238,14 @@ test('openTextEditorModal cria interface completa e atualiza documento com novos
     }
 
     const prevDoc = globalThis.document;
+    const docKeydown = new Set();
     globalThis.document = {
         createElement: (tag) => createMockEl(tag),
         body: createMockEl('body'),
+        addEventListener(type, fn) { if (type === 'keydown') docKeydown.add(fn); },
+        removeEventListener(type, fn) { if (type === 'keydown') docKeydown.delete(fn); },
     };
+    const pressKey = (init) => [...docKeydown].forEach((fn) => fn({ preventDefault() {}, stopPropagation() {}, ...init }));
 
     try {
         const entity = {
@@ -277,6 +281,15 @@ test('openTextEditorModal cria interface completa e atualiza documento com novos
             onChange() {},
             log() {},
         };
+
+        // Esc descarta e Ctrl+Enter não salva: confirmar só pelo botão.
+        const discarded = openTextEditorModal(fakeEditor, entity);
+        discarded.querySelector('#cadTextEditorValue').value = 'Descartar';
+        pressKey({ key: 'Enter', ctrlKey: true });
+        assert.equal(committedDoc, null, 'Ctrl+Enter não salva');
+        pressKey({ key: 'Escape' });
+        assert.equal(committedDoc, null, 'Esc descarta');
+        assert.equal(docKeydown.size, 0, 'Esc fecha o modal e solta o atalho');
 
         // Abre o modal
         const overlay = openTextEditorModal(fakeEditor, entity);

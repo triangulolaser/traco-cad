@@ -222,3 +222,18 @@ test('caixa clique-clique soma à seleção anterior', () => {
     assert.equal(editor.window, null);
     assert.deepEqual([...editor.selection].sort(), ['l1', 'l2']);
 });
+
+test('shift alterna: tira o selecionado e põe o não selecionado', () => {
+    const { editor } = createMockEditor([
+        { id: 'l1', type: 'line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 } },
+        { id: 'l2', type: 'line', start: { x: 0, y: 50 }, end: { x: 10, y: 50 } },
+    ], ['l1']);
+    editor.onClick({ x: 5, y: 0 }, { shiftKey: true });
+    assert.equal(editor.selection.has('l1'), false);
+    editor.onClick({ x: 5, y: 50 }, { shiftKey: true });
+    assert.equal(editor.selection.has('l2'), true);
+    editor.selection = new Set(['l1']);
+    editor.window = { a: { x: -1, y: -1 }, idle: true };
+    editor.finishWindow({ x: 11, y: 51 }, true);
+    assert.deepEqual([...editor.selection], ['l2']);
+});

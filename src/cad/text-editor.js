@@ -12,9 +12,14 @@ function escapeHtml(text) {
 
 let activeOverlay = null;
 let activeInline = null;
+let activeOverlayEscape = null;
 
 export function closeTextEditorModal() {
     activeInline?.close();
+    if (activeOverlayEscape) {
+        document.removeEventListener('keydown', activeOverlayEscape, true);
+        activeOverlayEscape = null;
+    }
     if (activeOverlay) {
         activeOverlay.remove();
         activeOverlay = null;
@@ -124,7 +129,7 @@ export function openTextEditorModal(editor, entity) {
                 </div>
             </div>
             <div class="cad-text-editor-footer">
-                <span class="cad-text-editor-hint">Ctrl+Enter para salvar • Esc para cancelar</span>
+                <span class="cad-text-editor-hint">Esc descarta as alterações</span>
                 <div class="cad-text-editor-actions">
                     <button type="button" class="cad-btn cad-btn-secondary" data-action="close">
                         Cancelar
@@ -148,6 +153,13 @@ export function openTextEditorModal(editor, entity) {
     const boldCheckbox = overlay.querySelector('#cadTextEditorBold');
     const italicCheckbox = overlay.querySelector('#cadTextEditorItalic');
 
+    // Esc descarta com o foco em qualquer lugar; salvar só pelo botão.
+    const onEscape = (e) => {
+        if (e.key !== 'Escape' || e.isComposing) return;
+        e.preventDefault();
+        e.stopPropagation();
+        dismiss();
+    };
     const dismiss = () => {
         closeTextEditorModal();
         if (editor.terminal && typeof editor.terminal.focus === 'function') {
@@ -219,17 +231,8 @@ export function openTextEditorModal(editor, entity) {
         }
     });
 
-    overlay.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            if (typeof e.preventDefault === 'function') e.preventDefault();
-            if (typeof e.stopPropagation === 'function') e.stopPropagation();
-            dismiss();
-        } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            if (typeof e.preventDefault === 'function') e.preventDefault();
-            if (typeof e.stopPropagation === 'function') e.stopPropagation();
-            save();
-        }
-    });
+    document.addEventListener('keydown', onEscape, true);
+    activeOverlayEscape = onEscape;
 
     root.appendChild(overlay);
     activeOverlay = overlay;
@@ -287,7 +290,7 @@ export function openInlineTextEditor(editor, entity) {
         <button type="button" data-action="bold" aria-label="Negrito" title="Negrito"><b>B</b></button>
         <button type="button" data-action="italic" aria-label="Itálico" title="Itálico"><i>I</i></button>
         <button type="button" data-action="advanced" title="Propriedades avançadas" aria-label="Propriedades avançadas">⚙</button>
-        <button type="button" data-action="save" title="Confirmar (Ctrl+Enter)" aria-label="Confirmar texto">✓</button>
+        <button type="button" data-action="save" title="Confirmar" aria-label="Confirmar texto">✓</button>
         <button type="button" data-action="cancel" title="Cancelar (Esc)" aria-label="Cancelar edição">✕</button>
         </div><div class="cad-inline-text-anchor"><textarea aria-label="Texto no desenho" spellcheck="false"></textarea></div>`;
     const textarea = root.querySelector('textarea');
@@ -304,7 +307,15 @@ export function openInlineTextEditor(editor, entity) {
     const draft = () => ({ ...entity, text: textarea.value, fontFamily: font.value,
         height: Number.isFinite(Number(size.value)) && Number(size.value) > 0 ? Number(size.value) : (entity.height || 2.5), bold, italic,
         isMText: entity.isMText || textarea.value.includes('\n') || !!entity.boxWidth });
+    // Esc descarta com o foco em qualquer lugar (inclusive no desenho); salvar só pelo botão ✓.
+    const onEscape = event => {
+        if (event.key !== 'Escape' || event.isComposing) return;
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+    };
     const close = () => {
+        document.removeEventListener('keydown', onEscape, true);
         root.remove();
         activeInline = null;
         editor.invalidate();
@@ -350,10 +361,8 @@ export function openInlineTextEditor(editor, entity) {
     };
     root.addEventListener('keydown', event => {
         event.stopPropagation();
-        if (event.isComposing) return;
-        if (event.key === 'Escape') { event.preventDefault(); close(); }
-        else if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); save(); }
     });
+    document.addEventListener('keydown', onEscape, true);
     for (const type of ['pointerdown', 'click', 'dblclick', 'wheel']) root.addEventListener(type, e => e.stopPropagation());
     root.addEventListener('input', update);
     root.addEventListener('change', update);
