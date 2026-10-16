@@ -20,7 +20,7 @@ function loadImage(src, onReady) {
     return img;
 }
 import { entityCurves, entityBox, boxesIntersect, polar, curveEndpoints, curveMidpoint, curveQuadrants, pointInBox } from './geometry.js';
-import { getEntityGrips } from './grips.js';
+import { getEntityGrips, gripsVisible } from './grips.js';
 import { selectionMeasure } from './selection-measure.js';
 
 export const THEMES = {
@@ -234,7 +234,7 @@ export class Renderer {
             this.drawEntity(entity, { color, width: entity.dimGuide ? 1 : 1.2, dashed: false, alpha: 0.9 });
         });
 
-        state.selection.forEach((id) => {
+        if (gripsVisible(state.selection.size)) state.selection.forEach((id) => {
             let entity = state.doc.entities.find((e) => e.id === id);
             if (state.activeGrip && state.activeGrip.entityId === id) {
                 const previewEntity = (state.preview ?? []).find((e) => e.id === id);

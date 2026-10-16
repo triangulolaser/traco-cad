@@ -190,7 +190,9 @@ function effectiveStyle(style, entity) {
         ...(entity?.tolerance !== undefined ? { tolerance: entity.tolerance } : {}),
         ...(entity?.measurementScale !== undefined ? { measurementScale: entity.measurementScale } : {}),
     };
-    const s = entity?.scale ?? base.scale ?? 1;
+    // DIMSCALE 0 (escala pela viewport no AutoCAD) zeraria texto e setas.
+    const raw = entity?.scale ?? base.scale ?? 1;
+    const s = Number.isFinite(raw) && raw > 0 ? raw : 1;
     return {
         ...base,
         textHeight: base.textHeight * s,

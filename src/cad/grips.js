@@ -10,6 +10,14 @@ import { ensureSplineGeometry } from './extra-entities.js';
  * @param {object} entity
  * @returns {Array<{ id: string, entityId: string, type: string, index?: number|string, point: {x: number, y: number} }>}
  */
+// Acima disso as alças somem e a seleção fica só no tracejado (GRIPOBJLIMIT do
+// AutoCAD/BricsCAD, padrão 100): desenhar milhares de quadradinhos travava a tela.
+export const GRIP_OBJECT_LIMIT = 100;
+
+export function gripsVisible(selectionSize) {
+    return selectionSize > 0 && selectionSize <= GRIP_OBJECT_LIMIT;
+}
+
 export function getEntityGrips(entity) {
     if (!entity || !entity.id) return [];
     const grips = [];

@@ -136,3 +136,11 @@ test('findGripAt detects grip within tolerance and rejects beyond', () => {
     const miss = findGripAt(grips, { x: 20, y: 30 }, worldToScreen, 8);
     assert.equal(miss, null);
 });
+
+test('alças somem acima de GRIP_OBJECT_LIMIT objetos selecionados', async () => {
+    const { gripsVisible, GRIP_OBJECT_LIMIT } = await import('../src/cad/grips.js');
+    assert.equal(gripsVisible(0), false);
+    assert.equal(gripsVisible(1), true);
+    assert.equal(gripsVisible(GRIP_OBJECT_LIMIT), true);
+    assert.equal(gripsVisible(GRIP_OBJECT_LIMIT + 1), false);
+});

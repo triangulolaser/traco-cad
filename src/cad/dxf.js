@@ -77,6 +77,28 @@ function dimStyleOverride(groups, code) {
     return undefined;
 }
 
+const DSTYLE_FIELDS = { 40: 'scale', 41: 'arrowSize', 42: 'extOffset', 44: 'extBeyond', 140: 'textHeight', 147: 'textGap', 271: 'precision' };
+
+/** Todos os overrides de DSTYLE que o Traço modela (DIMTXT, DIMASZ, DIMSCALE...), por nome do campo do estilo. */
+function dimStyleOverrides(groups) {
+    const start = groups.findIndex((p) => p.code === 1000 && p.value === 'DSTYLE');
+    if (start < 0) return undefined;
+    const out = {};
+    for (let i = start + 1; i < groups.length - 1; i += 1) {
+        if (groups[i].code === 1002 && groups[i].value === '}') break;
+        if (groups[i].code !== 1070) continue;
+        // Cada override é um par (1070 código, valor); o valor pode ser outro 1070 e nunca é um código.
+        const field = DSTYLE_FIELDS[num(groups[i].value)];
+        const next = groups[i + 1];
+        if (field && (next.code === 1040 || next.code === 1070)) out[field] = num(next.value);
+        if (next.code === 1040 || next.code === 1070 || next.code === 1000 || next.code === 1005) i += 1;
+    }
+    return Object.keys(out).length ? out : undefined;
+}
+
+/** DIMSCALE 0 é "escala pela viewport" no AutoCAD; sem viewport o tamanho real é o do estilo (escala 1). */
+const validDimScale = (value) => (Number.isFinite(value) && value > 0 ? value : 1);
+
 function all(groups, code) {
     return groups.filter((p) => p.code === code).map((p) => p.value);
 }
@@ -421,8 +443,9 @@ function parseEntitiesSection(cursor, stopAt, preserveDimensions = false, dimens
                 const pt=code=>({x:num(first(groups,code)),y:num(first(groups,code+10))});
                 const kind=num(first(groups,70,0))&7;
                 const lfac=dimStyleOverride(groups,144);
+                const styleOverride=dimStyleOverrides(groups);
                 const measured=first(groups,42);
-                const base={type:'dimension',textStyleName:first(groups,3,'STANDARD'),layer:first(groups,8,DEFAULT_LAYER),color:entityColor(groups),linePoint:pt(10),__graphicsBlock:first(groups,2,''),__measured:measured===undefined?undefined:num(measured),...(lfac===undefined?{}:{measurementScale:lfac})};
+                const base={type:'dimension',textStyleName:first(groups,3,'STANDARD'),layer:first(groups,8,DEFAULT_LAYER),color:entityColor(groups),linePoint:pt(10),__graphicsBlock:first(groups,2,''),__measured:measured===undefined?undefined:num(measured),...(lfac===undefined?{}:{measurementScale:lfac}),...(styleOverride?{__styleOverride:styleOverride}:{})};
                 const override=first(groups,1);if(override && override!=='<>')base.textOverride=decodeText(override);
                 if((kind===0||kind===1) && first(groups,13)!==undefined && first(groups,14)!==undefined){
                     // Código 50 é a direção de medição da cota linear: 0 e 90 são os casos comuns,
@@ -654,7 +677,7 @@ function parseTables(cursor) {
             layers.textStyles[name]={fontFamily:FONT_FAMILIES.includes(inferred)?inferred:'Liberation Sans',bold:Boolean(flags&0x2000000)||file.includes('bold')||winStyle==='bd'||winStyle==='bi',italic:Boolean(flags&0x1000000)||file.includes('italic')||winStyle==='i'||winStyle==='bi'};layers.textStyleHandles[first(g,5)]=layers.textStyles[name];continue;
         }
         if(p.value==='DIMSTYLE'){
-            const g=collectGroup(cursor);const lfac=first(g,144);layers.dimStyles[first(g,2)]={scale:num(first(g,40,1)),arrowSize:num(first(g,41,2.5)),textHeight:num(first(g,140,2.5)),textGap:num(first(g,147,0.9)),extOffset:num(first(g,42,0.625)),extBeyond:num(first(g,44,1.25)),precision:num(first(g,271,2)),...(num(first(g,77,0))>0?{textAbove:true}:{}),fontHandle:first(g,340),...(lfac===undefined?{}:{measurementScale:num(lfac)})};continue;
+            const g=collectGroup(cursor);const lfac=first(g,144);layers.dimStyles[first(g,2)]={scale:validDimScale(num(first(g,40,1))),arrowSize:num(first(g,41,2.5)),textHeight:num(first(g,140,2.5)),textGap:num(first(g,147,0.9)),extOffset:num(first(g,42,0.625)),extBeyond:num(first(g,44,1.25)),precision:num(first(g,271,2)),...(num(first(g,77,0))>0?{textAbove:true}:{}),fontHandle:first(g,340),...(lfac===undefined?{}:{measurementScale:num(lfac)})};continue;
         }
         if (p.value === 'VPORT') {
             const g = collectGroup(cursor);
@@ -848,7 +871,10 @@ export function parseDxf(text, { preserveBlocks = false, preserveDimensions = fa
     const styles=layers.textStyles??{};
     const applyStyles=items=>items.map(e=>{
         const ds=e.type==='dimension'?layers.dimStyles?.[e.textStyleName]:null;
-        return {...e,...(styles[e.textStyleName]??(ds?layers.textStyleHandles?.[ds.fontHandle]:{})??{}),...(ds?{style:ds}:{})};
+        const {__styleOverride:over,...rest}=e;
+        const style=ds||over?{...(ds??{}),...(over??{})}:null;
+        if(style&&over)style.scale=validDimScale(style.scale);
+        return {...rest,...(styles[e.textStyleName]??(ds?layers.textStyleHandles?.[ds.fontHandle]:{})??{}),...(style?{style}:{})};
     });
     entities=applyStyles(entities);
     for(const b of blocks.values())b.entities=applyStyles(b.entities);
@@ -1284,7 +1310,7 @@ export function writeDxf(doc, { view = doc.view } = {}) {
         const font = outputStyles.get(styleKey(st));
         out += pair(0, 'DIMSTYLE') + pair(105, nextHandle()) + pair(100, 'AcDbSymbolTableRecord') + pair(100, 'AcDbDimStyleTableRecord')
             + pair(2, entry.name) + pair(70, 0)
-            + pair(40, st.scale ?? 1) + pair(41, st.arrowSize ?? 2.5) + pair(42, st.extOffset ?? 0.625) + pair(44, st.extBeyond ?? 1.25)
+            + pair(40, validDimScale(st.scale ?? 1)) + pair(41, st.arrowSize ?? 2.5) + pair(42, st.extOffset ?? 0.625) + pair(44, st.extBeyond ?? 1.25)
             + pair(140, st.textHeight ?? 2.5) + pair(144, st.measurementScale ?? 1) + pair(147, st.textGap ?? 0.9)
             + pair(271, st.precision ?? 2) + pair(340, font?.handle ?? [...outputStyles.values()][0].handle);
     }

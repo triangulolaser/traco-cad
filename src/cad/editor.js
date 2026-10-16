@@ -17,7 +17,7 @@ import { showCadErrorModal, hideCadErrorModal } from './error-modal.js';
 import { openInlineTextEditor, updateInlineTextEditor, inlineTextEntityId } from './text-editor.js';
 import { lxdsToEntities, looksLikeLxds, LXDS_TRAVEL_LAYER, LXDS_LEAD_LAYER } from './lxds.js';
 import { dimensionGeometry } from './dimensions.js';
-import { getEntityGrips, applyGripMove, findGripAt } from './grips.js';
+import { getEntityGrips, applyGripMove, findGripAt, gripsVisible } from './grips.js';
 import './extra-entities.js';
 import './hatch.js';
 import { renameLayer, deleteLayer, updateLayer, ensureLayer } from './document.js';
@@ -787,7 +787,7 @@ export class Editor {
     // ------------------------------------------------------------------ alças (grips)
 
     getSelectionGrips() {
-        if (this.selection.size === 0) return [];
+        if (!gripsVisible(this.selection.size)) return [];
         const grips = [];
         for (const id of this.selection) {
             const entity = this.doc.entities.find((e) => e.id === id);

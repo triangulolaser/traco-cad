@@ -1346,5 +1346,16 @@ export default {
     "O retângulo não cobre a imagem.": "El rectángulo no cubre la imagen.",
     "Imagem recortada. IMAGECLIP › Remover volta a imagem inteira.": "Imagen recortada. IMAGECLIP › Quitar restaura la imagen entera.",
     "Ajustar a opacidade de imagens": "Ajustar la opacidad de imágenes",
-    "Recortar imagem com retângulo": "Recortar imagen con un rectángulo"
+    "Recortar imagem com retângulo": "Recortar imagen con un rectángulo",
+    "Dimensão": "Dimensión",
+    "Dimensão Linear": "Cota lineal",
+    "Dimensão Alinhada": "Cota alineada",
+    "Linhabase": "Línea base",
+    "Continuar": "Continuar",
+    "Clique na linha e puxe a cota até a primeira interseção (DIMENSAO)": "Haga clic en la línea y arrastre la cota hasta la primera intersección (DIMENSAO)",
+    "Mais opções de linear": "Más opciones de lineal",
+    "Cota linear horizontal/vertical (DLI)": "Cota lineal horizontal/vertical (DLI)",
+    "Cota alinhada ao objeto (DAL)": "Cota alineada al objeto (DAL)",
+    "Cotas a partir da mesma base da última cota (DBA)": "Cotas desde la misma base de la última cota (DBA)",
+    "Cota em sequência da última cota (DCO)": "Cota en secuencia de la última cota (DCO)"
 };

@@ -1346,5 +1346,16 @@ export default {
     "O retângulo não cobre a imagem.": "The rectangle does not cover the image.",
     "Imagem recortada. IMAGECLIP › Remover volta a imagem inteira.": "Image clipped. IMAGECLIP › Remove restores the whole image.",
     "Ajustar a opacidade de imagens": "Adjust image opacity",
-    "Recortar imagem com retângulo": "Clip image with a rectangle"
+    "Recortar imagem com retângulo": "Clip image with a rectangle",
+    "Dimensão": "Dimension",
+    "Dimensão Linear": "Linear Dimension",
+    "Dimensão Alinhada": "Aligned Dimension",
+    "Linhabase": "Baseline",
+    "Continuar": "Continue",
+    "Clique na linha e puxe a cota até a primeira interseção (DIMENSAO)": "Click the line and drag the dimension to the first intersection (DIMENSAO)",
+    "Mais opções de linear": "More linear options",
+    "Cota linear horizontal/vertical (DLI)": "Horizontal/vertical linear dimension (DLI)",
+    "Cota alinhada ao objeto (DAL)": "Dimension aligned to the object (DAL)",
+    "Cotas a partir da mesma base da última cota (DBA)": "Dimensions from the same base as the last dimension (DBA)",
+    "Cota em sequência da última cota (DCO)": "Dimension continuing from the last dimension (DCO)"
 };
