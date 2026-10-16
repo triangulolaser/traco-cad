@@ -1291,6 +1291,15 @@ class TabManager {
         return true;
     }
 
+    // Ctrl+Tab vai para o próximo desenho e Ctrl+Shift+Tab para o anterior, dando a volta nas pontas.
+    cycle(step = 1) {
+        if (this.tabs.length < 2) return false;
+        const index = Math.max(this.tabs.findIndex((t) => t.id === this.activeId), 0);
+        const next = this.tabs[(index + step + this.tabs.length) % this.tabs.length];
+        this.activate(next.id);
+        return true;
+    }
+
     async closeCurrent() {
         const tab = this.current();
         if (!tab) return false;

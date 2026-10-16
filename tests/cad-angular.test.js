@@ -172,3 +172,14 @@ test('cota angular travada vai para o setor oposto e para as laterais mantendo o
     const t = side.texts[0];
     assert.ok(t.position.y < 0, 'texto acompanha o cursor na lateral');
 });
+
+test('setas da cota angular: dentro do arco quando cabe, fora com rabicho quando não cabe', () => {
+    const style = { textHeight: 2.5, arrowSize: 2.5, extOffset: 1, extBeyond: 2, textGap: 1, precision: 1 };
+    const inSector = (pt, a0, a1) => { const a = Math.atan2(pt.y, pt.x); return a > a0 + 1e-9 && a < a1 - 1e-9; };
+    const wide = dimensionGeometry({ type: 'dimension', kind: 'angular', vertex: { x: 0, y: 0 }, p1: { x: 40, y: 0 }, p2: { x: 0, y: 40 }, linePoint: { x: 20, y: 20 } }, style);
+    for (const ar of wide.arrows) assert.ok(inSector(ar[1], 0, Math.PI / 2), 'corpo da seta dentro');
+    const a = (5 * Math.PI) / 180;
+    const narrow = dimensionGeometry({ type: 'dimension', kind: 'angular', vertex: { x: 0, y: 0 }, p1: { x: 40, y: 0 }, p2: { x: 40 * Math.cos(a), y: 40 * Math.sin(a) }, linePoint: { x: 20, y: 1 } }, style);
+    for (const ar of narrow.arrows) assert.ok(!inSector(ar[1], 0, a), 'corpo da seta fora');
+    assert.equal(narrow.arcs.length, 3);
+});

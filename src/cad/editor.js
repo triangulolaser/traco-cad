@@ -69,6 +69,9 @@ function crosshairMode(pending) {
     return PICK_MODES.has(pending.mode) ? 'pick' : 'point';
 }
 
+// Alternar a seleção é com Ctrl (Cmd no Mac); Shift fica para ortho e para TRIM↔EXTEND.
+const toggleKey = (event) => event.ctrlKey || event.metaKey;
+
 export class Editor {
     constructor(root, options = {}) {
         this.root = root;
@@ -995,7 +998,7 @@ export class Editor {
                     return;
                 }
                 if (this.window.armed) {
-                    this.finishWindow(world, event.shiftKey);
+                    this.finishWindow(world, event);
                 } else {
                     // Soltar o botão (com ou sem arrasto) mantém a janela aberta até o próximo clique, como no BricsCAD.
                     this.window.armed = true;
@@ -1195,6 +1198,12 @@ export class Editor {
             else this.tabs.closeCurrent?.();
             return;
         }
+        // Ctrl+Tab / Ctrl+Shift+Tab alternam entre os desenhos abertos.
+        if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === 'Tab' && this.tabs?.cycle) {
+            event.preventDefault();
+            this.tabs.cycle(event.shiftKey ? -1 : 1);
+            return;
+        }
         if (inInputField) {
             if (event.key === 'Escape') {
                 active.blur?.();
@@ -1355,13 +1364,13 @@ export class Editor {
         if (!pending) {
             const hit = this.hitTest(world);
             if (hit) {
-                // Shift alterna: tira se já estava, põe se não estava.
-                if (event.shiftKey && this.selection.has(hit.id)) this.selection.delete(hit.id);
+                // Ctrl alterna (Cmd no Mac): tira se já estava, põe se não estava.
+                if (toggleKey(event) && this.selection.has(hit.id)) this.selection.delete(hit.id);
                 else this.selection.add(hit.id);
                 this.invalidate();
                 this.onChange(this);
             } else {
-                if (!event.shiftKey && this.selection.size > 0) {
+                if (!toggleKey(event) && this.selection.size > 0) {
                     this.clearSelection();
                 }
                 this.window = { a: world, b: world, crossing: false, idle: true, armed: true };
@@ -1378,7 +1387,7 @@ export class Editor {
             case 'selection': {
                 const hit = this.hitTest(world, { filter: pending.filter });
                 if (hit) {
-                    if (event.shiftKey && pending.working.has(hit.id)) pending.working.delete(hit.id);
+                    if (toggleKey(event) && pending.working.has(hit.id)) pending.working.delete(hit.id);
                     else pending.working.add(hit.id);
                     this.selection = new Set(pending.working);
                     this.log(`${pending.working.size} selecionado(s). Enter para confirmar.`, 'echo');
@@ -1430,21 +1439,22 @@ export class Editor {
         }
     }
 
-    finishWindow(world, shift) {
+    finishWindow(world, event = {}) {
+        const toggle = toggleKey(event);
         const { a, idle } = this.window;
         // Em TRIM/EXTEND a janela é sempre crossing: basta o objeto atravessar o retângulo.
         const crossing = world.x < a.x || this.pending?.mode === 'entityOrWindow';
         const found = this.entitiesInWindow(a, world, crossing);
         this.window = null;
         if (idle || !this.pending) {
-            // A caixa sempre soma à seleção (Shift tira); desmarcar tudo é com Esc, como no AutoCAD.
-            found.forEach((e) => (shift && this.selection.has(e.id) ? this.selection.delete(e.id) : this.selection.add(e.id)));
+            // A caixa sempre soma à seleção (Ctrl tira); desmarcar tudo é com Esc, como no AutoCAD.
+            found.forEach((e) => (toggle && this.selection.has(e.id) ? this.selection.delete(e.id) : this.selection.add(e.id)));
             this.invalidate();
             this.onChange(this);
             return;
         }
         if (this.pending.mode === 'selection') {
-            found.forEach((e) => (shift && this.pending.working.has(e.id) ? this.pending.working.delete(e.id) : this.pending.working.add(e.id)));
+            found.forEach((e) => (toggle && this.pending.working.has(e.id) ? this.pending.working.delete(e.id) : this.pending.working.add(e.id)));
             this.selection = new Set(this.pending.working);
             this.log(`${this.pending.working.size} selecionado(s). Enter para confirmar.`, 'echo');
             this.invalidate();
@@ -1455,7 +1465,7 @@ export class Editor {
             const box = emptyBox();
             boxAddPoint(box, a);
             boxAddPoint(box, world);
-            this.resolvePending({ entities: filtered, box, crossing, shift });
+            this.resolvePending({ entities: filtered, box, crossing, shift: !!event.shiftKey });
         }
     }
 

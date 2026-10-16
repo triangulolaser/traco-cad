@@ -115,19 +115,19 @@ test('clique e arrasto no vazio com seleção ativa soma os objetos da área à 
     assert.equal(editor.selection.has('l1'), true);
 });
 
-test('shift-clique no vazio preserva a seleção anterior e arma a janela para seleção/remoção', () => {
+test('ctrl-clique no vazio preserva a seleção anterior e arma a janela para seleção/remoção', () => {
     const { editor, listeners } = createMockEditor([
         { id: 'l1', type: 'line', start: { x: 10, y: 10 }, end: { x: 50, y: 10 } },
     ], ['l1']);
 
-    // Pressionar no vazio com shift pressionado
-    listeners.pointerdown({ button: 0, clientX: 300, clientY: 300, pointerId: 1, shiftKey: true });
+    // Pressionar no vazio com Ctrl pressionado
+    listeners.pointerdown({ button: 0, clientX: 300, clientY: 300, pointerId: 1, ctrlKey: true });
 
     // A seleção anterior NÃO é limpa
     assert.equal(editor.selection.has('l1'), true);
     assert.ok(editor.window);
 
-    listeners.pointerup({ button: 0, clientX: 300, clientY: 300, pointerId: 1, shiftKey: true });
+    listeners.pointerup({ button: 0, clientX: 300, clientY: 300, pointerId: 1, ctrlKey: true });
     assert.equal(editor.window.armed, true);
     assert.equal(editor.selection.has('l1'), true);
 });
@@ -223,17 +223,23 @@ test('caixa clique-clique soma à seleção anterior', () => {
     assert.deepEqual([...editor.selection].sort(), ['l1', 'l2']);
 });
 
-test('shift alterna: tira o selecionado e põe o não selecionado', () => {
+test('ctrl (ou cmd) alterna: tira o selecionado e põe o não selecionado; shift não tira', () => {
     const { editor } = createMockEditor([
         { id: 'l1', type: 'line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 } },
         { id: 'l2', type: 'line', start: { x: 0, y: 50 }, end: { x: 10, y: 50 } },
     ], ['l1']);
     editor.onClick({ x: 5, y: 0 }, { shiftKey: true });
+    assert.equal(editor.selection.has('l1'), true);
+    editor.onClick({ x: 5, y: 0 }, { ctrlKey: true });
     assert.equal(editor.selection.has('l1'), false);
-    editor.onClick({ x: 5, y: 50 }, { shiftKey: true });
+    editor.onClick({ x: 5, y: 50 }, { metaKey: true });
     assert.equal(editor.selection.has('l2'), true);
     editor.selection = new Set(['l1']);
     editor.window = { a: { x: -1, y: -1 }, idle: true };
-    editor.finishWindow({ x: 11, y: 51 }, true);
+    editor.finishWindow({ x: 11, y: 51 }, { shiftKey: true });
+    assert.deepEqual([...editor.selection].sort(), ['l1', 'l2']);
+    editor.selection = new Set(['l1']);
+    editor.window = { a: { x: -1, y: -1 }, idle: true };
+    editor.finishWindow({ x: 11, y: 51 }, { ctrlKey: true });
     assert.deepEqual([...editor.selection], ['l2']);
 });

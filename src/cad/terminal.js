@@ -59,7 +59,7 @@ export class Terminal {
                 this.input.value = this.entries[this.cursor] ?? '';
                 return;
             }
-            if (event.key === 'Tab') {
+            if (event.key === 'Tab' && !event.ctrlKey) {
                 event.preventDefault();
                 this.onTab();
             }
@@ -86,7 +86,7 @@ export class Terminal {
             this.renderSuggestions();
             return true;
         }
-        if (event.key === 'Tab') {
+        if (event.key === 'Tab' && !event.ctrlKey) {
             event.preventDefault();
             this.input.value = this.suggestions[Math.max(0, this.suggestIndex)].name;
             this.hideSuggestions();

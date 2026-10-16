@@ -446,12 +446,18 @@ function angularGeometry(entity, style) {
     const tStart = { x: -Math.sin(startAngle), y: Math.cos(startAngle) };
     const tEnd = { x: -Math.sin(endAngle), y: Math.cos(endAngle) };
 
+    // arrowAt aponta para `direction` com o corpo atrás da ponta. Com espaço, as setas ficam
+    // dentro do arco apontando para as linhas; sem espaço, ficam fora apontando para dentro,
+    // com um rabicho de arco além de cada uma.
     if (inside) {
-        arrows.push(arrowAt(pStart, tStart, style.arrowSize));
-        arrows.push(arrowAt(pEnd, scale(tEnd, -1), style.arrowSize));
-    } else {
         arrows.push(arrowAt(pStart, scale(tStart, -1), style.arrowSize));
         arrows.push(arrowAt(pEnd, tEnd, style.arrowSize));
+    } else {
+        arrows.push(arrowAt(pStart, tStart, style.arrowSize));
+        arrows.push(arrowAt(pEnd, scale(tEnd, -1), style.arrowSize));
+        const tail = (style.arrowSize * 2) / radius;
+        arcs.push({ center: vertex, radius, startAngle: normalizeAngle(startAngle - tail), endAngle: startAngle, ccw: true });
+        arcs.push({ center: vertex, radius, startAngle: endAngle, endAngle: normalizeAngle(endAngle + tail), ccw: true });
     }
 
     // Quando o setor começa em p2, as distâncias trocam junto com os ângulos.
