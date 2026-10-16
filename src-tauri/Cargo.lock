@@ -4424,7 +4424,7 @@ dependencies = [
 
 [[package]]
 name = "traco-cad"
-version = "0.3.25"
+version = "0.3.26"
 dependencies = [
  "log",
  "serde",

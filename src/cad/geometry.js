@@ -345,7 +345,8 @@ export function textBox(entity) {
                     }
                 }
             }
-            if (currentLine) lines.push(currentLine);
+            // Linha vazia (\P\P do MTEXT) também ocupa altura; sem isso o texto encolhe e invade o que está abaixo.
+            if (currentLine || !rawLine.trim()) lines.push(currentLine);
         }
     }
     const maxLen = Math.max(...lines.map((l) => l.length), 1);

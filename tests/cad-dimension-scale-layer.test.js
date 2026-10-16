@@ -240,3 +240,14 @@ test('ensureDimensionSetup: escala ajustada a partir de pontos de referência se
     assert.equal(mockEditor.doc.dimStyle.scale, 15, 'Escala calculada pelos pontos de referência: 15x (1500mm / 100)');
     assert.ok(layerOf(mockEditor.doc, DIMENSION_LAYER), 'Layer dimensions criado');
 });
+
+test('ensureDimensionSetup: cotas importadas do DWG não impedem o ajuste da escala das cotas novas', () => {
+    const doc = createDocument();
+    doc.entities = [
+        { id: '1', type: 'line', start: { x: 0, y: 0 }, end: { x: 3000, y: 0 } },
+        { id: '2', type: 'dimension', kind: 'horizontal', p1: { x: 0, y: 0 }, p2: { x: 3000, y: 0 }, linePoint: { x: 0, y: 50 }, dimStyleName: 'STANDARD' },
+    ];
+    const mockEditor = { history: { present: doc }, get doc() { return this.history.present; }, log: () => {}, onChange: () => {}, invalidate: () => {} };
+    ensureDimensionSetup(mockEditor);
+    assert.ok(mockEditor.doc.dimStyle.scale > 1, `escala ficou ${mockEditor.doc.dimStyle.scale}`);
+});

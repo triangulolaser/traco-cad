@@ -2894,7 +2894,7 @@ export function dimensionTarget(entity, pickPoint, others = []) {
 async function dimension(editor) {
     ensureDimensionSetup(editor);
     for (;;) {
-        const first = await editor.getPointOrEntity('Clique em uma linha, arco ou círculo [ou dois pontos; Enter para sair]:', { allowEnter: true });
+        const first = await editor.getPointOrEntity('Clique em uma linha, arco ou círculo [ou dois pontos; Enter para sair]:', { allowEnter: true, pickCursor: true });
         if (!first || first.enter) return null;
         if (first.entity) {
             const base = dimensionTarget(first.entity, first.pickPoint ?? first.point, editor.doc.entities);

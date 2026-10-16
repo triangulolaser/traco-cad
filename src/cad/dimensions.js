@@ -98,7 +98,9 @@ export function ensureDimensionSetup(editor, referencePoints = []) {
     }
 
     // 2. Auto-escala de cotas pelo tamanho retangular máximo do conteúdo
-    const hasDimensions = doc.entities.some((e) => e.type === 'dimension');
+    // Cotas importadas do DXF/DWG trazem o próprio estilo (dimStyleName); não contam como "já ajustado",
+    // senão um DWG com cotas deixa a escala em 1 e a cota nova sai com texto minúsculo.
+    const hasDimensions = doc.entities.some((e) => e.type === 'dimension' && !e.dimStyleName);
     const currentScale = doc.dimStyle?.scale ?? 1;
 
     if (!hasDimensions && currentScale === 1) {

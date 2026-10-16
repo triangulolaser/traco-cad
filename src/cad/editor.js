@@ -61,10 +61,11 @@ export function wheelZoomFactor(event) {
 }
 
 // Mira como no BricsCAD: sem comando, cruz + quadrado; pedindo objeto (TRIM, EXTEND, seleção), só o quadrado;
-// pedindo ponto ou valor, só a cruz.
+// pedindo ponto ou valor, só a cruz; pickCursor força o quadrado (Dimensão pede a linha primeiro).
 const PICK_MODES = new Set(['entity', 'entityOrWindow', 'selection']);
 function crosshairMode(pending) {
     if (!pending) return 'select';
+    if (pending.pickCursor) return 'pick';
     return PICK_MODES.has(pending.mode) ? 'pick' : 'point';
 }
 

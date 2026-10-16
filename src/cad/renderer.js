@@ -696,7 +696,7 @@ export class Renderer {
                         }
                     }
                 }
-                if (currentLine) {
+                if (currentLine || !rawLine.trim()) { // linha vazia do MTEXT mantém a altura
                     lines.push(currentLine);
                 }
             }
