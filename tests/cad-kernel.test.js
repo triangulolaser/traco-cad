@@ -22,7 +22,7 @@ import {
 import { parsePointInput, parseNumberInput, matchKeyword, splitCommandLine } from '../src/cad/input.js';
 import { History, createDocument, addEntities, removeEntities, replaceEntities, setCurrentLayer, entityColor } from '../src/cad/document.js';
 import { parseDxf, writeDxf } from '../src/cad/dxf.js';
-import { findSnap, applyOrtho, applyPolar, defaultSnapSettings } from '../src/cad/snaps.js';
+import { findSnap, findCenterHints, applyOrtho, applyPolar, defaultSnapSettings } from '../src/cad/snaps.js';
 import { wheelZoomFactor } from '../src/cad/editor.js';
 
 const close = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol;
@@ -406,4 +406,14 @@ test('zoom da roda é proporcional ao deslocamento, não fixo por evento', () =>
     // Evento gigante (pinça no trackpad, rolagem por página) fica com teto.
     assert.ok(close(roda(-5000), 1.15 ** 2, 1e-9));
     assert.ok(close(roda(5000), 1.15 ** -2, 1e-9));
+});
+
+test('borda do círculo revela o centro sem puxar o snap', () => {
+    const circle = { id: 'c1', type: 'circle', layer: '0', center: { x: 0, y: 0 }, radius: 10 };
+    const settings = defaultSnapSettings();
+    const hints = findCenterHints([circle], { x: 10.1, y: 0.3 }, 0.5, settings);
+    assert.equal(hints.length, 1);
+    assert.deepEqual(hints[0].point, { x: 0, y: 0 });
+    assert.equal(findCenterHints([circle], { x: 5, y: 0 }, 0.5, settings).length, 0);
+    assert.equal(findCenterHints([circle], { x: 10.1, y: 0 }, 0.5, { ...settings, cen: false }).length, 0);
 });

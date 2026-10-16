@@ -104,8 +104,13 @@ test('clique e arrasto no vazio com seleção ativa soma os objetos da área à 
     // 2. Arrastar além de DRAG_PIXELS (4px)
     listeners.pointermove({ clientX: 250, clientY: 250 });
 
-    // 3. Soltar finaliza imediatamente a janela de seleção por arrasto
+    // 3. Soltar mantém a janela aberta (como no BricsCAD); o próximo clique conclui
     listeners.pointerup({ button: 0, clientX: 250, clientY: 250, pointerId: 1 });
+    assert.ok(editor.window);
+    assert.equal(editor.window.armed, true);
+    listeners.pointermove({ clientX: 300, clientY: 300 });
+    listeners.pointerdown({ button: 0, clientX: 300, clientY: 300, pointerId: 1 });
+    listeners.pointerup({ button: 0, clientX: 300, clientY: 300, pointerId: 1 });
     assert.equal(editor.window, null);
     assert.equal(editor.selection.has('l1'), true);
 });
@@ -168,6 +173,9 @@ test('arrastar a partir de cima de um objeto abre a janela; clique parado seleci
     assert.ok(editor.window);
     listeners.pointermove({ clientX: far.x, clientY: far.y });
     listeners.pointerup({ button: 0, clientX: far.x, clientY: far.y, pointerId: 1 });
+    assert.equal(editor.window.armed, true);
+    listeners.pointerdown({ button: 0, clientX: far.x, clientY: far.y, pointerId: 1 });
+    listeners.pointerup({ button: 0, clientX: far.x, clientY: far.y, pointerId: 1 });
     assert.equal(editor.window, null);
     assert.equal(editor.selection.has('l2'), true);
 });
@@ -185,6 +193,8 @@ test('clique em objeto seguido de janela arrastada mantém o objeto e soma os da
 
     listeners.pointerdown({ button: 0, clientX: 100, clientY: 100, pointerId: 1 });
     listeners.pointermove({ clientX: 200, clientY: 200 });
+    listeners.pointerup({ button: 0, clientX: 200, clientY: 200, pointerId: 1 });
+    listeners.pointerdown({ button: 0, clientX: 200, clientY: 200, pointerId: 1 });
     listeners.pointerup({ button: 0, clientX: 200, clientY: 200, pointerId: 1 });
 
     assert.equal(editor.window, null);

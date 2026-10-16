@@ -508,6 +508,13 @@ function renderProperties(editor, root) {
                 + `<div class="cad-prop-row"><span class="cad-prop-key">Comprimento</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-prop="line-length" value="${same ? fmt(lengths[0]) : ''}" placeholder="${same ? '' : 'Vários'}" title="Comprimento de cada linha selecionada" ${locked ? 'disabled' : ''}></span></div>`
                 + `<div class="cad-prop-row"><span class="cad-prop-key">Ponta fixa</span><span class="cad-prop-value"><select data-prop="line-anchor" title="Ponta que fica parada ao mudar o comprimento">${LINE_ANCHORS.map(([v, label]) => `<option value="${v}" ${v === lineLengthAnchor ? 'selected' : ''}>${label}</option>`).join('')}</select></span></div>`;
         }
+        if (kinds.length === 1 && kinds[0] === 'circle') {
+            const radii = selected.map((e) => e.radius);
+            const same = radii.every((r) => Math.abs(r - radii[0]) < 1e-4);
+            const locked = selected.some((e) => !isEntityEditable(editor.doc, e));
+            const field = (key, label, hint, value) => `<div class="cad-prop-row"><span class="cad-prop-key">${label}</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-prop="circle-${key}" value="${same ? fmt(value) : ''}" placeholder="${same ? '' : '*Varia*'}" title="${hint}" ${locked ? 'disabled' : ''}></span></div>`;
+            html += section('Círculos') + field('radius', 'Raio', 'Raio de cada círculo selecionado', radii[0]) + field('diameter', 'Diâmetro', 'Diâmetro de cada círculo selecionado', radii[0] * 2);
+        }
         html += section('Resumo') + row('Comprimento total', fmt(total));
         kinds.forEach((k) => { html += row(TYPE_LABELS[k] ?? k, String(selected.filter((e) => e.type === k).length)); });
     }
@@ -684,6 +691,32 @@ function renderProperties(editor, root) {
         });
         lineLengthInput.addEventListener('change', applyLineLength);
     }
+
+    // Raio/diâmetro de vários círculos
+    box.querySelectorAll('[data-prop="circle-radius"], [data-prop="circle-diameter"]').forEach((input) => {
+        const apply = () => {
+            const val = parseDecimalInput(input.value);
+            if (!Number.isFinite(val) || val <= 0) {
+                renderProperties(editor, root);
+                return;
+            }
+            const radius = input.dataset.prop === 'circle-diameter' ? val / 2 : val;
+            editor.commit('Raio dos círculos', updateEntities(editor.doc, [...editor.selection], (e) => (e.type === 'circle' && isEntityEditable(editor.doc, e) ? { ...e, radius } : e)));
+        };
+        input.addEventListener('keydown', (event) => {
+            event.stopPropagation();
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                apply();
+                input.blur();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                renderProperties(editor, root);
+                input.blur();
+            }
+        });
+        input.addEventListener('change', apply);
+    });
 
     // 6. Precisão das cotas
     const precisionSelect = box.querySelector('[data-prop="dim-precision"]');

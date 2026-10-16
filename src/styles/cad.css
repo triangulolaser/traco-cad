@@ -1552,8 +1552,9 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 @media(max-width:600px){.cad-feedback-btn span{display:none}.cad-feedback-dialog{padding:12px}}
 
 /* Entrada dinâmica (RECTANG): campos de cota junto ao cursor; Tab alterna. */
+/* Campos não capturam o mouse: o clique passa para o desenho; digitar e Tab continuam editando. */
 .cad-dyn-input { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
-.cad-dyn-field { position: absolute; transform: translate(-50%, -50%); width: 64px; padding: 1px 4px; pointer-events: auto;
+.cad-dyn-field { position: absolute; transform: translate(-50%, -50%); width: 64px; padding: 1px 4px; pointer-events: none;
     font: 12px/1.4 var(--cad-font-mono, ui-monospace, monospace); text-align: center; color: #e8ecf1;
     background: #2a2e35; border: 1px solid #5b6472; border-radius: 2px; outline: none; }
 .cad-dyn-field.is-active { background: #1f6fd1; border-color: #8ab8f0; color: #fff; }

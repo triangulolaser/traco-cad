@@ -144,6 +144,28 @@ export function findSnap(entities, cursor, tolerance, settings, { reference = nu
     return candidates[0];
 }
 
+// Centros de arcos/círculos/elipses sob o cursor: a borda não puxa o snap, mas o centro
+// passa a aparecer como referência para o usuário levar o cursor até ele.
+export function findCenterHints(entities, cursor, tolerance, settings, { exclude = new Set() } = {}) {
+    if (!settings?.cen) return [];
+    const hints = [];
+    entities.forEach((entity) => {
+        if (exclude.has(entity.id)) return;
+        const curves = entityCurves(entity);
+        if (!curves.some((curve) => distanceToCurve(cursor, curve) <= tolerance)) return;
+        const provider = entityProvider(entity.type);
+        if (provider?.snapPoints) {
+            provider.snapPoints(entity).forEach(({ mode, point }) => mode === 'cen' && hints.push({ point, entity }));
+            return;
+        }
+        curves.forEach((curve) => {
+            const c = curveCenter(curve);
+            if (c && !curve.approx && !hints.some((h) => distance(h.point, c) < 1e-9)) hints.push({ point: c, entity });
+        });
+    });
+    return hints;
+}
+
 // Orto: projeta o cursor no eixo dominante a partir do ponto de referência.
 export function applyOrtho(reference, cursor) {
     if (!reference) return cursor;

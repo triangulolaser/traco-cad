@@ -244,6 +244,46 @@ export function lineDynSpec(editor, from) {
     return spec;
 }
 
+// Ângulo do ROTATE: arco do eixo de referência (0° = horizontal, ou o ângulo de referência)
+// até o cursor, com o valor em graus editável. Digitado, devolve { number } como o terminal.
+export function angleDynamicInput(base, cursor, locked = {}, offset = 20, refAngle = 0) {
+    const free = distance(base, cursor);
+    const cursorAngle = free > 1e-12 ? Math.atan2(cursor.y - base.y, cursor.x - base.x) : refAngle;
+    const typed = Number.isFinite(locked.v) ? degToRad(locked.v) : null;
+    const sweep = typed !== null ? typed : cursorAngle - refAngle;
+    const angle = refAngle + sweep;
+    let deg = typed !== null ? locked.v : (radToDeg(sweep) % 360 + 360) % 360;
+    if (deg > 359.995) deg = 0;
+    const radius = Math.max(free, offset * 3);
+    const tip = { x: base.x + Math.cos(angle) * radius, y: base.y + Math.sin(angle) * radius };
+    const arcR = Math.min(radius, offset * 2.5);
+    const span = (sweep % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+    const ccw = typed === null || typed >= 0;
+    const guides = [
+        { type: 'line', start: base, end: { x: base.x + Math.cos(refAngle) * radius, y: base.y + Math.sin(refAngle) * radius } },
+        { type: 'line', start: base, end: tip },
+    ];
+    if (span > 1e-9) guides.push({ type: 'arc', center: base, radius: arcR, start: ccw ? refAngle : angle, end: ccw ? angle : refAngle });
+    const mid = refAngle + (ccw ? span : -((2 * Math.PI - span) % (2 * Math.PI))) / 2;
+    const anchor = { x: base.x + Math.cos(mid) * arcR * 1.3, y: base.y + Math.sin(mid) * arcR * 1.3 };
+    return { end: tip, values: { v: deg }, anchors: { v: anchor }, guides: guides.map(asDimGuide) };
+}
+
+export function angleDynSpec(editor, base, refAngle = 0) {
+    const spec = {
+        fields: [{ key: 'v', label: 'Ângulo' }],
+        locked: {},
+        commitNumber: true,
+        calc: (cursor) => angleDynamicInput(base, cursor, spec.locked, editor.viewport.pixelsToWorld(22), refAngle),
+        values: (cursor) => spec.calc(cursor).values,
+        anchors: (cursor) => spec.calc(cursor).anchors,
+        resolve: (cursor) => spec.calc(cursor).end,
+        guides: (cursor) => spec.calc(cursor).guides,
+    };
+    spec.accepts = (_key, n) => Number.isFinite(n);
+    return spec;
+}
+
 function circleDynSpec(center, key, label, scale) {
     const spec = {
         fields: [{ key, label }],
@@ -1260,6 +1300,7 @@ async function rotate(editor) {
     const base = baseRes.point;
 
     let copyMode = false;
+    let rotDyn = angleDynSpec(editor, base);
     let res = await editor.getPoint('Ângulo de rotação ou [Copiar/Referência]', {
         reference: base,
         allowNumber: true,
@@ -1268,19 +1309,22 @@ async function rotate(editor) {
             { key: 'c', label: 'Copiar' },
             { key: 'r', label: 'Referência' },
         ],
-        preview: (cursor) => entities.map((e) => rotateEntity(e, base, angleOf(base, cursor))),
+        dynInput: rotDyn,
+        preview: (cursor) => entities.map((e) => rotateEntity(e, base, angleOf(base, rotDyn.resolve(cursor)))),
         hide: ids,
     });
     if (!res) return;
 
     if (res.keyword === 'c') {
         copyMode = true;
+        rotDyn = angleDynSpec(editor, base);
         res = await editor.getPoint('Ângulo de rotação ou [Referência]', {
             reference: base,
             allowNumber: true,
             angle: true,
             options: [{ key: 'r', label: 'Referência' }],
-            preview: (cursor) => entities.map((e) => rotateEntity(e, base, angleOf(base, cursor))),
+            dynInput: rotDyn,
+            preview: (cursor) => entities.map((e) => rotateEntity(e, base, angleOf(base, rotDyn.resolve(cursor)))),
         });
         if (!res) return;
     }
@@ -1465,6 +1509,28 @@ async function scaleCommand(editor) {
     }
 }
 
+// Cota temporária da prévia do Deslocamento: do ponto da origem mais próximo do cursor até a cópia.
+function nearestOnEntity(p, entity) {
+    let best = null;
+    let bestD = Infinity;
+    for (const curve of entityCurves(entity)) {
+        const q = closestPointOnCurve(p, curve);
+        const d = distance(p, q);
+        if (d < bestD) {
+            bestD = d;
+            best = q;
+        }
+    }
+    return best;
+}
+
+export function offsetPreviewDimension(source, result, cursor) {
+    const p1 = nearestOnEntity(cursor, source);
+    const p2 = p1 && nearestOnEntity(p1, result);
+    if (!p2 || distance(p1, p2) <= 1e-6) return [];
+    return [{ type: 'dimension', kind: 'aligned', p1, p2, linePoint: midpoint(p1, p2), layer: DIMENSION_LAYER, dimGuide: true }];
+}
+
 async function offset(editor) {
     let dist = editor.memory.offset ?? 1;
     let mode = 'distance'; // 'distance' | 'through'
@@ -1600,7 +1666,7 @@ async function offset(editor) {
                     const r = offsetEntity(sourceEntity, d, cursor);
                     if (!r) return [];
                     const targetLayer = layerTarget === 'current' ? editor.doc.currentLayer : sourceEntity.layer;
-                    return [{ ...r, id: undefined, layer: targetLayer }];
+                    return [{ ...r, id: undefined, layer: targetLayer }, ...offsetPreviewDimension(sourceEntity, r, cursor)];
                 },
             });
             if (throughRes?.enter || !throughRes?.point) continue;
@@ -1647,7 +1713,7 @@ async function offset(editor) {
                     const r = offsetEntity(sourceEntity, dist, cursor);
                     if (!r) return [];
                     const targetLayer = layerTarget === 'current' ? editor.doc.currentLayer : sourceEntity.layer;
-                    return [{ ...r, id: undefined, layer: targetLayer }];
+                    return [{ ...r, id: undefined, layer: targetLayer }, ...offsetPreviewDimension(sourceEntity, r, cursor)];
                 },
             });
 
@@ -2780,6 +2846,70 @@ async function dimAuto(editor) {
         }
 
         if (!second.point) continue;
+        await placeDimension(editor, { kind: 'auto', p1, p2: second.point });
+    }
+}
+
+// Como o "Dimensão" do BricsCAD: o trecho clicado vai até a primeira interseção de cada lado,
+// ou até a ponta do segmento quando nada o cruza. Círculo e arco viram diâmetro e raio.
+const DIMENSION_CUTTER_SKIP = new Set(['dimension', 'text', 'mtext', 'hatch', 'image', 'leader', 'point']);
+
+export function dimensionTarget(entity, pickPoint, others = []) {
+    if (entity.type === 'circle' || entity.type === 'arc') return autoDimensionFor(entity, pickPoint);
+    let segment = null;
+    if (entity.type === 'line') segment = { kind: 'segment', a: entity.start, b: entity.end };
+    else if (entity.type === 'polyline' || entity.type === 'lwpolyline') {
+        let best = null;
+        polylineCurves(entity.vertices, entity.closed).forEach((c) => {
+            const d = distance(pickPoint, closestPointOnCurve(pickPoint, c));
+            if (!best || d < best.d) best = { c, d };
+        });
+        if (!best) return null;
+        if (best.c.kind !== 'segment') return { kind: 'radius', center: best.c.center, radius: best.c.radius };
+        segment = best.c;
+    }
+    if (!segment) return null;
+    const { a, b } = segment;
+    const len = distance(a, b);
+    if (len < 1e-9) return null;
+    const dir = scale(sub(b, a), 1 / len);
+    const along = (p) => dot(sub(p, a), dir);
+    const t = Math.min(len, Math.max(0, along(pickPoint)));
+    const tol = 1e-6 * Math.max(1, len);
+    let lo = 0;
+    let hi = len;
+    others
+        .filter((o) => o.id !== entity.id && !DIMENSION_CUTTER_SKIP.has(o.type))
+        .flatMap((o) => entityCurves(o))
+        .flatMap((c) => intersectCurves(segment, c))
+        .forEach((p) => {
+            const s = along(p);
+            if (s <= tol || s >= len - tol) return;
+            if (s <= t && s > lo) lo = s;
+            if (s > t && s < hi) hi = s;
+        });
+    return { kind: 'auto', p1: add(a, scale(dir, lo)), p2: add(a, scale(dir, hi)), auto: 'linear' };
+}
+
+async function dimension(editor) {
+    ensureDimensionSetup(editor);
+    for (;;) {
+        const first = await editor.getPointOrEntity('Clique em uma linha, arco ou círculo [ou dois pontos; Enter para sair]:', { allowEnter: true });
+        if (!first || first.enter) return null;
+        if (first.entity) {
+            const base = dimensionTarget(first.entity, first.pickPoint ?? first.point, editor.doc.entities);
+            if (!base) { editor.log('Esse objeto não pode ser cotado assim; clique em dois pontos.', 'warn'); continue; }
+            const prompt = base.kind === 'radius' ? 'Posição do texto do raio' : base.kind === 'diameter' ? 'Posição do texto do diâmetro' : 'Posição da linha de cota';
+            await placeDimension(editor, base, prompt);
+            continue;
+        }
+        if (!first.point) continue;
+        const p1 = first.point;
+        const second = await editor.getPoint('Segundo ponto da cota:', {
+            reference: p1,
+            preview: (cursor) => [{ type: 'line', start: p1, end: cursor }],
+        });
+        if (!second?.point) continue;
         await placeDimension(editor, { kind: 'auto', p1, p2: second.point });
     }
 }
@@ -4290,6 +4420,7 @@ export const COMMANDS = {
     DRAWORDER: { aliases: ['ORDEMDES', 'ORDEM'], run: drawOrder, description: 'Alterar ordem de sobreposição dos objetos (Frente, Trás, Acima, Abaixo)' },
     SELECTSIMILAR: { aliases: ['SELECSIMILAR', 'SIMILAR'], run: selectSimilar, description: 'Selecionar objetos com tipo e layer similares' },
     DIM: { aliases: ['COTA', 'DIMAUTO'], run: dimAuto, description: 'Cota automática: linear, alinhada, raio ou diâmetro conforme o alvo' },
+    DIMENSION: { aliases: ['DIMENSAO'], run: dimension, description: 'Dimensão: clique na linha e puxe a cota até a primeira interseção; arco e círculo dão raio e diâmetro' },
     DIMPART: { aliases: ['COTARPECA', 'DIMPECA'], run: dimPart, description: 'Cotar a peça inteira: gerais, posições de furos, diâmetros e raios únicos' },
     HATCH: { aliases: ['H', 'HACHURA', 'BHATCH'], run: hatch, description: 'Hachura ou preenchimento de contornos fechados (sólido, linhas, cruzado, pontos)' },
     DIMLINEAR: { aliases: ['DLI', 'DIMLIN'], run: dimLinear, description: 'Cota linear horizontal/vertical' },

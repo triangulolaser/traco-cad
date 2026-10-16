@@ -213,6 +213,16 @@ export class Renderer {
         }
         deferred.forEach(([entity, style]) => this.drawEntity(entity, style));
 
+        // Originais escondidos pelo mover/girar/escalar: tracejados e apagados no lugar, como o fantasma da alça.
+        if (state.ghostIds?.size && state.doc) {
+            state.doc.entities.forEach((entity) => {
+                if (!state.ghostIds.has(entity.id)) return;
+                const layer = layerOf(state.doc, entity.layer);
+                if (layer && !layer.visible) return;
+                this.drawEntity(entity, { color: this.entityDisplayColor(entityColor(entity, state.doc)), width: 1, dashed: true, alpha: 0.45 });
+            });
+        }
+
         // Original da entidade sob alça: tracejado e apagado, para ver de onde o traço saiu.
         if (state.gripGhost) {
             const color = this.entityDisplayColor(entityColor(state.gripGhost, state.doc));
@@ -220,7 +230,7 @@ export class Renderer {
         }
 
         (state.preview ?? []).forEach((entity) => {
-            const color = entity.dimGuide ? this.theme.dimGuide : entity.color && entity.color !== 'bylayer' ? entity.color : this.theme.preview;
+            const color = entity.dimGuide ? this.theme.dimGuide : entity.color && entity.color !== 'bylayer' ? this.entityDisplayColor(entityColor(entity, state.doc)) : this.theme.preview;
             this.drawEntity(entity, { color, width: entity.dimGuide ? 1 : 1.2, dashed: false, alpha: 0.9 });
         });
 
@@ -244,6 +254,7 @@ export class Renderer {
         if (state.tracking) this.drawTracking(state.tracking);
         if (state.rubber) this.drawRubber(state.rubber.from, state.rubber.to);
         if (state.window) this.drawWindow(state.window);
+        if (state.centerHint) this.drawCenterHint(state.centerHint);
         if (state.snap) this.drawSnap(state.snap);
         if (state.showCrosshair && state.cursor) this.drawCrosshair(state.cursor, Boolean(state.snap), state.crosshairMode);
         if (state.collaborators && state.collaborators.length > 0) this.drawCollaborators(state.collaborators, state.doc);
@@ -899,6 +910,25 @@ export class Renderer {
         const h = Math.abs(q.y - p.y);
         ctx.fillRect(x, y, w, h);
         ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+        ctx.restore();
+    }
+
+    // Centro revelado ao passar pela borda: marca discreta, sem roubar o ponto de construção.
+    drawCenterHint(point) {
+        const { ctx, viewport } = this;
+        const s = viewport.worldToScreen(point);
+        const r = 6;
+        ctx.save();
+        ctx.strokeStyle = this.theme.snap;
+        ctx.globalAlpha = 0.75;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(s.x - r, s.y);
+        ctx.lineTo(s.x + r, s.y);
+        ctx.moveTo(s.x, s.y - r);
+        ctx.lineTo(s.x, s.y + r);
+        ctx.stroke();
         ctx.restore();
     }
 

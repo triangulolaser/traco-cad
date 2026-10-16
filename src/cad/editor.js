@@ -6,7 +6,7 @@ import { Viewport } from './viewport.js';
 import { Renderer } from './renderer.js';
 import { Terminal } from './terminal.js';
 import { History, createDocument, addEntities, removeEntities, updateEntities, editableEntities, visibleEntities, entityColor, layerOf, isEntityEditable, aciToHex, getDocumentSpatialIndex, ensureEntityIds } from './document.js';
-import { findSnap, applyOrtho, applyPolar, applyAngleLock, findSoftAxis, defaultSnapSettings, SNAP_MODES } from './snaps.js';
+import { findSnap, findCenterHints, applyOrtho, applyPolar, applyAngleLock, findSoftAxis, defaultSnapSettings, SNAP_MODES } from './snaps.js';
 import { findTrackingSnap, mergeSnaps, trackingPointFromSnap, addTrackingPoint } from './tracking.js';
 import { parsePointInput, parseNumberInput, matchKeyword, formatOptions, splitCommandLine } from './input.js';
 import { tr } from './i18n.js';
@@ -88,6 +88,7 @@ export class Editor {
         this.cursorScreen = null;
         this.cursorWorld = null;
         this.snap = null;
+        this.centerHint = null;
         this.hover = null;
         this.hoverGrip = null;
         this.activeGrip = null;
@@ -390,6 +391,7 @@ export class Editor {
             preview,
             rubber,
             snap: this.snap,
+            centerHint: this.centerHint && ['point', 'pointOrEntity'].includes(this.pending?.mode) && this.snap?.point !== this.centerHint.point ? this.centerHint.point : null,
             // A mira acompanha o mouse; ORTO/POLAR/snaps restringem apenas o ponto de construção.
             cursor: this.cursorWorld,
             window: this.window,
@@ -401,6 +403,7 @@ export class Editor {
             hoverGrip: this.hoverGrip,
             activeGrip: this.activeGrip,
             gripGhost: this.activeGrip ? this.gripOriginalEntity : null,
+            ghostIds: !inlineTextEntityId(this) && this.pending?.hide?.length ? new Set(this.pending.hide) : null,
             hiddenIds: inlineTextEntityId(this) ? new Set([inlineTextEntityId(this)]) : this.pending?.hide ? new Set(this.pending.hide) : (this.activeGrip ? new Set([this.activeGrip.entityId]) : null),
             collaborators: this.collaborators,
         });
@@ -629,6 +632,17 @@ export class Editor {
             : visibleEntities(this.doc);
         const reference = this.pending?.reference ?? (this.activeGrip ? this.activeGrip.point : null);
         let objectSnap = this.settings.osnap ? findSnap(entities, this.cursorWorld, tolerance, this.settings.snaps, { reference, exclude }) : null;
+        if (this.settings.osnap) {
+            // Passar pela borda de círculo/arco revela o centro; ele fica visível até tocar outra curva.
+            const hints = findCenterHints(entities, this.cursorWorld, tolerance, this.settings.snaps, { exclude });
+            if (hints.length > 0) this.centerHint = hints[0];
+            const hint = this.centerHint;
+            if (hint && (!objectSnap || objectSnap.mode === 'nea' || objectSnap.weak) && distance(hint.point, this.cursorWorld) <= tolerance * 3) {
+                objectSnap = { mode: 'cen', point: hint.point, entity: hint.entity };
+            }
+        } else {
+            this.centerHint = null;
+        }
         const ghostSnap = this.settings.osnap ? this.gripGhostSnap(tolerance, reference) : null;
         if (ghostSnap) objectSnap = mergeSnaps(objectSnap, ghostSnap);
         let trackingSnap = null;
@@ -719,6 +733,7 @@ export class Editor {
 
     clearTracking() {
         this.tracking = [];
+        this.centerHint = null;
         this.trackingLines = [];
         if (this.dwell.timer) clearTimeout(this.dwell.timer);
         this.dwell = { key: null, timer: null };
@@ -968,19 +983,15 @@ export class Editor {
             const world = this.viewport.screenToWorld(screen);
             if (this.window) {
                 const dragged = distance(screen, down) > CLICK_PIXELS;
-                if (this.window.overEntity && !this.window.armed) {
-                    if (dragged) {
-                        this.finishWindow(world, event.shiftKey);
-                    } else {
-                        this.window = null;
-                        this.onClick(world, event);
-                    }
+                if (this.window.overEntity && !this.window.armed && !dragged) {
+                    this.window = null;
+                    this.onClick(world, event);
                     return;
                 }
-                if (this.window.armed || dragged) {
+                if (this.window.armed) {
                     this.finishWindow(world, event.shiftKey);
                 } else {
-                    // Clique sem arrasto: mantém a janela aberta até o segundo clique (modo clique-clique).
+                    // Soltar o botão (com ou sem arrasto) mantém a janela aberta até o próximo clique, como no BricsCAD.
                     this.window.armed = true;
                 }
                 return;

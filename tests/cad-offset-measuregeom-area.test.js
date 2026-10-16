@@ -305,3 +305,15 @@ test('Comando MEASUREGEOM e ID: aliases e medição de raio e ângulo', async ()
     await COMMANDS.ID.run(editorId);
     assert.ok(logsId.some(m => m.includes('X = 12.345') && m.includes('Y = 67.89') && m.includes('Z = 0.000')));
 });
+
+test('Comando OFFSET: prévia mostra cota com a distância entre origem e cópia', async () => {
+    const { offsetPreviewDimension } = await import('../src/cad/commands.js');
+    const source = { type: 'line', start: { x: 0, y: 0 }, end: { x: 100, y: 0 } };
+    const result = { type: 'line', start: { x: 0, y: 15 }, end: { x: 100, y: 15 } };
+    const [dim] = offsetPreviewDimension(source, result, { x: 40, y: 30 });
+    assert.equal(dim.type, 'dimension');
+    assert.equal(dim.kind, 'aligned');
+    assert.equal(dim.dimGuide, true);
+    assert.ok(close(dim.p1.x, 40) && close(dim.p1.y, 0));
+    assert.ok(close(dim.p2.x, 40) && close(dim.p2.y, 15));
+});
