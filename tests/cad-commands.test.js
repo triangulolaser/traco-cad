@@ -382,3 +382,24 @@ test('fillet com clique entre o canto e a tangência mantém o trecho longo das 
     assert.deepEqual(r.second.start, { x: 80, y: -75 }, 'linha de baixo preserva a ponta longe do canto');
     assert.ok(r.arc.center.x > 0, 'arco dentro do canto');
 });
+
+test('fillet linha-arco com clique no arco perto do encontro mantém o arco longo', async () => {
+    const { filletCurves } = await import('../src/cad/commands.js');
+    const d = Math.PI / 180;
+    const P = (a) => ({ x: 10 * Math.cos(a * d), y: 10 * Math.sin(a * d) });
+    const line = { type: 'line', start: P(240), end: { x: -40, y: -20 } };
+    for (const [s, e] of [[-60, 240], [240, -60]]) {
+        const arc = { type: 'arc', center: { x: 0, y: 0 }, radius: 10, start: s * d, end: e * d };
+        for (const pa of [150, 230]) {
+            const r = filletCurves(line, { x: -25, y: -14 }, arc, P(pa), 2);
+            assert.ok(r && r.arc);
+            const sweep = (((r.second.end - r.second.start) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+            assert.ok(sweep > 200 * d, `arco ${s}..${e}, clique a ${pa}°: sobrou ${(sweep / d).toFixed(1)}°`);
+        }
+    }
+});
+
+test('suggestCommands: nome mais curto primeiro (ESC sugere ESCALA antes de ESCALACOTA)', async () => {
+    const { suggestCommands } = await import('../src/cad/commands.js');
+    assert.deepEqual(suggestCommands('esc').slice(0, 2).map((s) => s.name), ['SCALE', 'DIMSCALE']);
+});

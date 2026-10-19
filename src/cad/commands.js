@@ -1524,11 +1524,29 @@ function nearestOnEntity(p, entity) {
     return best;
 }
 
-export function offsetPreviewDimension(source, result, cursor) {
-    const p1 = nearestOnEntity(cursor, source);
+// Mesma cota do COPY (linhas vermelhas e campo junto ao cursor), aqui com a distância.
+// Valor digitado no campo trava a distância da prévia e do clique.
+export function offsetDynamicInput(source, cursor, dist, locked = {}, offset = 8) {
+    const d = Number.isFinite(locked.v) && locked.v > 0 ? locked.v : dist;
+    const result = d > 1e-6 ? offsetEntity(source, d, cursor) : null;
+    const p1 = result && nearestOnEntity(cursor, source);
     const p2 = p1 && nearestOnEntity(p1, result);
-    if (!p2 || distance(p1, p2) <= 1e-6) return [];
-    return [{ type: 'dimension', kind: 'aligned', p1, p2, linePoint: midpoint(p1, p2), layer: DIMENSION_LAYER, dimGuide: true }];
+    if (!p2 || distance(p1, p2) <= 1e-6) return { result, dist: d, values: { v: d }, anchors: {}, guides: [] };
+    const dyn = lineDynamicInput(p1, p2, {}, offset);
+    return { result, dist: d, values: { v: d }, anchors: { v: dyn.anchors.len }, guides: dyn.guides.slice(0, 3) };
+}
+
+function offsetDynSpec(editor, source, baseDist) {
+    const spec = {
+        fields: [{ key: 'v', label: 'Distância' }],
+        locked: {},
+        calc: (cursor) => offsetDynamicInput(source, cursor, baseDist(cursor), spec.locked, editor.viewport?.pixelsToWorld(22) ?? 8),
+        values: (cursor) => spec.calc(cursor).values,
+        anchors: (cursor) => spec.calc(cursor).anchors,
+        resolve: (cursor) => cursor,
+        guides: (cursor) => spec.calc(cursor).guides,
+    };
+    return spec;
 }
 
 async function offset(editor) {
@@ -1658,20 +1676,20 @@ async function offset(editor) {
         const sourceEntity = pick.entity;
 
         if (mode === 'through') {
+            const throughDyn = offsetDynSpec(editor, sourceEntity, (cursor) => distanceToEntity(cursor, sourceEntity));
             const throughRes = await editor.getPoint('Especifique o ponto através do qual passar:', {
                 allowEnter: true,
+                dynInput: throughDyn,
                 preview: (cursor) => {
-                    const d = distanceToEntity(cursor, sourceEntity);
-                    if (d <= 1e-6) return [];
-                    const r = offsetEntity(sourceEntity, d, cursor);
+                    const { result: r } = throughDyn.calc(cursor);
                     if (!r) return [];
                     const targetLayer = layerTarget === 'current' ? editor.doc.currentLayer : sourceEntity.layer;
-                    return [{ ...r, id: undefined, layer: targetLayer }, ...offsetPreviewDimension(sourceEntity, r, cursor)];
+                    return [{ ...r, id: undefined, layer: targetLayer }];
                 },
             });
             if (throughRes?.enter || !throughRes?.point) continue;
 
-            const d = distanceToEntity(throughRes.point, sourceEntity);
+            const d = throughDyn.calc(throughRes.point).dist;
             if (d <= 1e-6) {
                 editor.log('Ponto sobre a entidade.', 'warn');
                 continue;
@@ -1705,15 +1723,17 @@ async function offset(editor) {
                 ? `Especifique ponto no lado do deslocamento, nova distância <${fmt(dist)}> ou [Desfazer/Enter para sair]:`
                 : `Especifique ponto no lado do deslocamento, nova distância <${fmt(dist)}> ou [Sair/Múltiplo/Desfazer] <Sair>:`;
 
+            const sideDyn = offsetDynSpec(editor, sourceEntity, () => dist);
             const side = await editor.getPoint(sidePrompt, {
                 allowEnter: true,
                 allowNumber: true,
                 options: sideOptions,
+                dynInput: sideDyn,
                 preview: (cursor) => {
-                    const r = offsetEntity(sourceEntity, dist, cursor);
+                    const { result: r } = sideDyn.calc(cursor);
                     if (!r) return [];
                     const targetLayer = layerTarget === 'current' ? editor.doc.currentLayer : sourceEntity.layer;
-                    return [{ ...r, id: undefined, layer: targetLayer }, ...offsetPreviewDimension(sourceEntity, r, cursor)];
+                    return [{ ...r, id: undefined, layer: targetLayer }];
                 },
             });
 
@@ -1735,6 +1755,8 @@ async function offset(editor) {
             }
 
             if (side.point) {
+                const typed = sideDyn.locked.v;
+                if (typed > 0 && typed !== dist) setDist(typed);
                 const result = offsetEntity(sourceEntity, dist, side.point);
                 if (!result) {
                     editor.log('Offset impossível para esse objeto/distância.', 'error');
@@ -2087,6 +2109,14 @@ function trimToTangent(entity, tangent, pick, corner = null) {
         const aP = normalizeAngle(angleOf(entity.center, pick));
         // Se o clique está no trecho de aT até o fim (anti-horário), mantém esse trecho; senão, do início até aT.
         const sweepToEnd = sweepCCW(aT, entity.end);
+        // Clique entre a tangência e o canto (encontro com a outra curva): descarta o lado do canto.
+        if (corner) {
+            const aC = normalizeAngle(angleOf(entity.center, corner));
+            const cornerAhead = sweepCCW(aT, aC) <= sweepCCW(aC, aT);
+            const span = cornerAhead ? sweepCCW(aT, aC) : sweepCCW(aC, aT);
+            const pickSpan = cornerAhead ? sweepCCW(aT, aP) : sweepCCW(aP, aT);
+            if (pickSpan <= span + 1e-9) return cornerAhead ? { ...entity, end: aT } : { ...entity, start: aT };
+        }
         const pickAhead = sweepCCW(aT, aP) <= sweepToEnd + 1e-9;
         return pickAhead ? { ...entity, start: aT } : { ...entity, end: aT };
     }
@@ -2134,6 +2164,11 @@ function filletCurves(e1, p1, e2, p2, radius) {
         if (!best || r.score < best.score) best = { center, ...r };
     });
     const { center, t1, t2 } = best;
+    // Com arco envolvido, o canto é o encontro das curvas de apoio mais próximo da concordância.
+    if (!corner && radius > 1e-9 && (e1.type === 'arc' || e2.type === 'arc')) {
+        const meets = intersectCurves(c1, c2, { extend1: true, extend2: true });
+        corner = meets.sort((a, b) => distance(a, center) - distance(b, center))[0] ?? null;
+    }
     if (radius <= 1e-9) {
         // Canto vivo: as duas curvas encontram-se no ponto escolhido.
         return { first: trimToTangent(e1, center, p1, corner), second: trimToTangent(e2, center, p2, corner), arc: null };
@@ -4508,11 +4543,12 @@ export function suggestCommands(prefix, limit = 50) {
     const out = [];
     for (const [name, command] of Object.entries(COMMANDS)) {
         const aliases = command.aliases ?? [];
-        const hit = name.startsWith(upper) ? name : aliases.find((a) => a.startsWith(upper));
+        const hit = name.startsWith(upper) ? name : aliases.filter((a) => a.startsWith(upper)).sort((a, b) => a.length - b.length)[0];
         if (!hit) continue;
-        out.push({ name, label: aliases.length ? `${name} (${aliases.join(', ')})` : name, description: command.description ?? '', rank: name === upper || aliases.includes(upper) ? 0 : hit === name ? 1 : 2 });
+        out.push({ name, label: aliases.length ? `${name} (${aliases.join(', ')})` : name, description: command.description ?? '', rank: name === upper || aliases.includes(upper) ? 0 : hit === name ? 1 : 2, hitLength: hit.length });
     }
-    out.sort((a, b) => (a.rank - b.rank) || a.name.localeCompare(b.name));
+    // Entre os que começam igual, o nome mais curto vem antes (ESC: ESCALA antes de ESCALACOTA).
+    out.sort((a, b) => (a.rank - b.rank) || (a.hitLength - b.hitLength) || a.name.localeCompare(b.name));
     return out.slice(0, limit);
 }
 
