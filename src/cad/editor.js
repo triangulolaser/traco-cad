@@ -194,6 +194,7 @@ export class Editor {
     }
 
     loadDocument(doc) {
+        if (this.pending) this.cancel();
         doc = ensureEntityIds(doc);
         // Depois de fechar todas as abas, o workspace permanece vazio. Uma
         // importação precisa de uma aba real; só trocar o history mantém canvas
@@ -544,7 +545,9 @@ export class Editor {
             this.cancel();
             return;
         }
-        if (event.key !== 'Enter') {
+        // Os campos são numéricos: espaço confirma como Enter.
+        const confirm = event.key === 'Enter' || (event.key === ' ' && !event.ctrlKey && !event.metaKey && !event.altKey);
+        if (!confirm) {
             if (event.key.length === 1 || event.key === 'Backspace') dyn.typed.add(index);
             return;
         }
@@ -664,7 +667,7 @@ export class Editor {
             if (hints.length > 0) this.centerHint = hints[0];
             const hint = this.centerHint;
             if (hint && (!objectSnap || objectSnap.mode === 'nea' || objectSnap.weak) && distance(hint.point, this.cursorWorld) <= tolerance * 3) {
-                objectSnap = { mode: 'cen', point: hint.point, entity: hint.entity };
+                objectSnap = { mode: hint.mode ?? 'cen', point: hint.point, entity: hint.entity };
             }
         } else {
             this.centerHint = null;
@@ -736,7 +739,7 @@ export class Editor {
 
     // Aquisição por pausa do cursor: parar ~350ms sobre um snap de objeto o transforma em ponto de rastreio.
     scheduleAcquire(objectSnap, tolerance) {
-        const acquirable = this.settings.otrack && objectSnap && ['end', 'mid', 'cen', 'qua', 'int'].includes(objectSnap.mode);
+        const acquirable = this.settings.otrack && objectSnap && ['end', 'mid', 'cen', 'gcen', 'qua', 'int'].includes(objectSnap.mode);
         const key = acquirable ? `${objectSnap.mode}:${objectSnap.point.x.toFixed(6)}:${objectSnap.point.y.toFixed(6)}` : null;
         if (key === this.dwell.key) return;
         if (this.dwell.timer) clearTimeout(this.dwell.timer);
@@ -1119,6 +1122,9 @@ export class Editor {
             this.log('Formato não suportado pelo CAD.', 'warn');
             return;
         }
+        // Abrir arquivo encerra o comando em curso: com o desenho atual vazio o arquivo entra
+        // na mesma aba (sem setSession) e o retângulo pela metade seguia no desenho aberto.
+        if (this.pending) this.cancel();
         // Imagem raster entra no desenho atual como referência (IMAGEATTACH), como no BricsCAD,
         // e não abre aba nova.
         if (kindOf(file.name) === 'image' || (/^image\/(?:png|jpeg|jpg|gif|bmp|webp)/i.test(file.type) && !/\.(?:dwg|dxf|svg)$/i.test(file.name))) {
@@ -1667,7 +1673,7 @@ export class Editor {
 
     cycleSnapPriority() {
         // Tab alterna o snap ativo entre os candidatos do modo atual (versão simples: alterna END/MID/CEN/INT).
-        const order = ['end', 'mid', 'cen', 'int', 'per', 'qua', 'nea'];
+        const order = ['end', 'mid', 'cen', 'gcen', 'int', 'per', 'qua', 'nea'];
         const active = order.filter((k) => this.settings.snaps[k]);
         if (active.length <= 1) return;
         const current = this.snap?.mode ?? active[0];

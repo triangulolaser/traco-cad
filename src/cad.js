@@ -561,7 +561,8 @@ function renderProperties(editor, root) {
         layerSelect.value = sameLayer;
         layerSelect.addEventListener('change', () => {
             if (!layerSelect.value) return;
-            editor.commit('Layer dos objetos', updateEntities(editor.doc, [...editor.selection], (e) => ({ ...e, layer: layerSelect.value })));
+            // Trocar de layer volta cor e tipo de linha para ByLayer; ajuste próprio vem depois.
+            editor.commit('Layer dos objetos', updateEntities(editor.doc, [...editor.selection], (e) => ({ ...e, layer: layerSelect.value, color: 'bylayer', lineType: 'bylayer' })));
         });
     }
 

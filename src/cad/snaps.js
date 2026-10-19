@@ -26,6 +26,7 @@ export const SNAP_ICONS = {
     per: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"><path d="M 2.5,2.5 L 2.5,13.5 L 13.5,13.5 M 2.5,8 L 8,8 L 8,13.5" /></svg>',
     tan: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="2.2" y1="2.8" x2="13.8" y2="2.8" /><circle cx="8" cy="8.6" r="5.2" /></svg>',
     nea: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M 2.5,2.5 L 13.5,2.5 L 2.5,13.5 L 13.5,13.5 Z" /></svg>',
+    gcen: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><line x1="8" y1="4.6" x2="8" y2="11.4" /><line x1="4.6" y1="8" x2="11.4" y2="8" /></svg>',
     nod: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><line x1="4.2" y1="4.2" x2="11.8" y2="11.8" /><line x1="11.8" y1="4.2" x2="4.2" y2="11.8" /></svg>',
 };
 
@@ -37,6 +38,7 @@ export const SNAP_MODES = [
     { key: 'end', label: 'Ponto final', short: 'END', priority: 1, svg: SNAP_ICONS.end },
     { key: 'mid', label: 'Ponto médio', short: 'MID', priority: 2, svg: SNAP_ICONS.mid },
     { key: 'cen', label: 'Centro', short: 'CEN', priority: 3, svg: SNAP_ICONS.cen },
+    { key: 'gcen', label: 'Centro geométrico', short: 'GCEN', priority: 3, svg: SNAP_ICONS.gcen },
     { key: 'int', label: 'Interseção', short: 'INT', priority: 1, svg: SNAP_ICONS.int },
     { key: 'qua', label: 'Quadrante', short: 'QUA', priority: 3, svg: SNAP_ICONS.qua },
     { key: 'per', label: 'Perpendicular', short: 'PER', priority: 4, svg: SNAP_ICONS.per },
@@ -46,7 +48,7 @@ export const SNAP_MODES = [
 
 export function defaultSnapSettings() {
     // NEA, TAN e QUA ligados junto com os demais.
-    return { end: true, mid: true, cen: true, int: true, qua: true, per: true, tan: true, nea: true };
+    return { end: true, mid: true, cen: true, gcen: true, int: true, qua: true, per: true, tan: true, nea: true };
 }
 
 function within(p, cursor, tol) {
@@ -77,6 +79,11 @@ export function findSnap(entities, cursor, tolerance, settings, { reference = nu
             if (p && (settings.nod || settings.end) && within(p, cursor, tolerance)) {
                 candidates.push({ mode: 'nod', point: p, entity });
             }
+        }
+        if (settings.gcen) {
+            // GCEN (BricsCAD): centroide da área de polilinha fechada; vale com o cursor perto dele.
+            const g = geometricCenter(entity);
+            if (g && within(g, cursor, tolerance * 1.5)) candidates.push({ mode: 'gcen', point: g, entity });
         }
         entityCurves(entity).forEach((curve) => {
             const box = curveBox(curve);
@@ -147,12 +154,18 @@ export function findSnap(entities, cursor, tolerance, settings, { reference = nu
 // Centros de arcos/círculos/elipses sob o cursor: a borda não puxa o snap, mas o centro
 // passa a aparecer como referência para o usuário levar o cursor até ele.
 export function findCenterHints(entities, cursor, tolerance, settings, { exclude = new Set() } = {}) {
-    if (!settings?.cen) return [];
+    if (!settings?.cen && !settings?.gcen) return [];
     const hints = [];
     entities.forEach((entity) => {
         if (exclude.has(entity.id)) return;
         const curves = entityCurves(entity);
         if (!curves.some((curve) => distanceToCurve(cursor, curve) <= tolerance)) return;
+        if (settings.gcen) {
+            // Passar pela borda da polilinha fechada revela o centro geométrico, como no BricsCAD.
+            const g = geometricCenter(entity);
+            if (g) hints.push({ point: g, entity, mode: 'gcen' });
+        }
+        if (!settings.cen) return;
         const provider = entityProvider(entity.type);
         if (provider?.snapPoints) {
             provider.snapPoints(entity).forEach(({ mode, point }) => mode === 'cen' && hints.push({ point, entity }));
@@ -164,6 +177,45 @@ export function findCenterHints(entities, cursor, tolerance, settings, { exclude
         });
     });
     return hints;
+}
+
+// Centroide da área de uma polilinha fechada (com bulges). Null para aberta ou área nula.
+export function geometricCenter(entity) {
+    if (!entity || !['polyline', 'lwpolyline'].includes(entity.type) || !entity.closed) return null;
+    const v = entity.vertices || [];
+    if (v.length < 2) return null;
+    let area = 0;
+    let cx = 0;
+    let cy = 0;
+    for (let i = 0; i < v.length; i += 1) {
+        const a = v[i];
+        const b = v[(i + 1) % v.length];
+        const cross = a.x * b.y - b.x * a.y;
+        area += cross / 2;
+        cx += ((a.x + b.x) * cross) / 6;
+        cy += ((a.y + b.y) * cross) / 6;
+        const bulge = a.bulge ?? 0;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const chord = Math.hypot(dx, dy);
+        if (!bulge || chord < 1e-12) continue;
+        // Segmento circular entre a corda e o arco; bulge > 0 (anti-horário) fica à direita de a→b.
+        const theta = 4 * Math.atan(Math.abs(bulge));
+        const r = chord / (2 * Math.sin(theta / 2));
+        const segArea = (r * r * (theta - Math.sin(theta))) / 2;
+        const side = Math.sign(bulge);
+        const ux = (dy / chord) * side;
+        const uy = (-dx / chord) * side;
+        const sagitta = (Math.abs(bulge) * chord) / 2;
+        const center = { x: (a.x + b.x) / 2 + ux * (sagitta - r), y: (a.y + b.y) / 2 + uy * (sagitta - r) };
+        const d = (4 * r * Math.sin(theta / 2) ** 3) / (3 * (theta - Math.sin(theta)));
+        const signed = segArea * side;
+        area += signed;
+        cx += (center.x + ux * d) * signed;
+        cy += (center.y + uy * d) * signed;
+    }
+    if (Math.abs(area) < 1e-12) return null;
+    return { x: cx / area, y: cy / area };
 }
 
 // Orto: projeta o cursor no eixo dominante a partir do ponto de referência.

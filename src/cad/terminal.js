@@ -68,7 +68,8 @@ export class Terminal {
     }
 
     // Lista de comandos que começam com o texto digitado (estilo BricsCAD/AutoCAD).
-    // Enter/Espaço só usam a sugestão quando ela foi escolhida com as setas; senão vale o texto digitado.
+    // Enter/Espaço só usam a sugestão quando ela foi escolhida com Tab ou setas; senão vale o texto digitado.
+    // Esc apaga o texto digitado e fecha a lista, como em qualquer prompt.
     refreshSuggestions() {
         const value = this.input.value;
         const list = /\s/.test(value) ? [] : (this.getSuggestions(value) ?? []);
@@ -79,22 +80,13 @@ export class Terminal {
 
     handleSuggestionKey(event) {
         const n = this.suggestions.length;
-        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        // Tab/Shift+Tab alternam entre as sugestões como as setas; Espaço ou Enter confirma a destacada.
+        const tab = event.key === 'Tab' && !event.ctrlKey;
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || tab) {
             event.preventDefault();
-            const step = event.key === 'ArrowDown' ? 1 : -1;
+            const step = event.key === 'ArrowUp' || (tab && event.shiftKey) ? -1 : 1;
             this.suggestIndex = this.suggestIndex < 0 ? (step > 0 ? 0 : n - 1) : (this.suggestIndex + step + n) % n;
             this.renderSuggestions();
-            return true;
-        }
-        if (event.key === 'Tab' && !event.ctrlKey) {
-            event.preventDefault();
-            this.input.value = this.suggestions[Math.max(0, this.suggestIndex)].name;
-            this.hideSuggestions();
-            return true;
-        }
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            this.hideSuggestions();
             return true;
         }
         if ((event.key === 'Enter' || (event.key === ' ' && !event.ctrlKey && !event.metaKey && !event.altKey)) && this.suggestIndex >= 0) {

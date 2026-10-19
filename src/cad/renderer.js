@@ -1,4 +1,4 @@
-import {canvasFont} from './fonts.js';
+import {canvasFont,fontEm,LINE_SPACING} from './fonts.js';
 import {expandInsert} from './blocks.js';
 import { tr } from './i18n.js';
 // Renderer Canvas 2D do CAD.
@@ -671,7 +671,7 @@ export class Renderer {
         ctx.translate(p.x, p.y);
         ctx.rotate(-((entity.rotation ?? 0) * Math.PI) / 180);
         if (entity.mirrored) ctx.scale(-1, 1);
-        ctx.font = canvasFont(entity, px);
+        ctx.font = canvasFont(entity, fontEm(px));
         ctx.textBaseline = 'alphabetic';
         ctx.fillStyle = style.color;
 
@@ -706,10 +706,10 @@ export class Renderer {
 
         const halign = entity.halign ?? 'left';
         const valign = entity.valign ?? (entity.attachmentPoint ? 'top' : 'baseline');
-        const lineSpacing = px * 1.35;
+        const lineSpacing = px * LINE_SPACING;
         const totalHeight = px + (lines.length - 1) * lineSpacing;
 
-        const baselineOffset = px * 0.8;
+        const baselineOffset = px;
         let startY = 0;
         if (valign === 'top') {
             startY = baselineOffset;
@@ -956,6 +956,14 @@ export class Renderer {
                 break;
             case 'cen':
                 ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+                break;
+            case 'gcen':
+                // Centro geométrico: círculo com cruz, como o GCEN do BricsCAD.
+                ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+                ctx.moveTo(s.x, s.y - r * 0.6);
+                ctx.lineTo(s.x, s.y + r * 0.6);
+                ctx.moveTo(s.x - r * 0.6, s.y);
+                ctx.lineTo(s.x + r * 0.6, s.y);
                 break;
             case 'int':
                 ctx.moveTo(s.x - r, s.y - r);

@@ -13,7 +13,7 @@ function curvePath(c){
  return `M${n(a.x)} ${n(a.y)}A${n(c.radius)} ${n(c.radius)} 0 ${sweepCCW(c.start,c.end)>Math.PI?1:0} 1 ${n(b.x)} ${n(b.y)}`;
 }
 function textSvg(e){
- return `<g transform="translate(${n(e.position.x)} ${n(e.position.y)}) rotate(${n(e.rotation??0)}) scale(1 -1)"><text font-family="${escapeXml(fontFamily(e.fontFamily))}" font-size="${n(e.height)}" font-weight="${e.bold?700:400}" font-style="${e.italic?'italic':'normal'}" stroke="none">${String(e.text??'').split('\n').map((line,i)=>`<tspan x="0" y="${n(i*e.height*1.4)}">${escapeXml(line)}</tspan>`).join('')}</text></g>`;
+ return `<g transform="translate(${n(e.position.x)} ${n(e.position.y)}) rotate(${n(e.rotation??0)}) scale(1 -1)"><text font-family="${escapeXml(fontFamily(e.fontFamily))}" font-size="${n(fontEm(e.height))}" font-weight="${e.bold?700:400}" font-style="${e.italic?'italic':'normal'}" stroke="none">${String(e.text??'').split('\n').map((line,i)=>`<tspan x="0" y="${n(i*e.height*LINE_SPACING)}">${escapeXml(line)}</tspan>`).join('')}</text></g>`;
 }
 let patternId=0;
 function entitySvg(e,doc,k,mono){

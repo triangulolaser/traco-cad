@@ -112,10 +112,10 @@ function createMockElement(tagName = 'DIV') {
     return el;
 }
 
-test('snaps.js define ícones vetoriais SVG para todos os 8 modos de snap', () => {
-    const expectedKeys = ['end', 'mid', 'cen', 'int', 'qua', 'per', 'tan', 'nea'];
+test('snaps.js define ícones vetoriais SVG para todos os 9 modos de snap', () => {
+    const expectedKeys = ['end', 'mid', 'cen', 'gcen', 'int', 'qua', 'per', 'tan', 'nea'];
 
-    assert.equal(SNAP_MODES.length, 8, 'Devem existir 8 modos de snap em SNAP_MODES');
+    assert.equal(SNAP_MODES.length, 9, 'Devem existir 9 modos de snap em SNAP_MODES');
 
     expectedKeys.forEach((key) => {
         assert.ok(SNAP_ICONS[key], `SNAP_ICONS deve conter ícone para '${key}'`);
@@ -165,7 +165,7 @@ test('setupSnapMenu monta itens com checkbox, ícone vetorial e rótulo sem os c
         setupSnapMenu(mockEditor, root);
 
         const options = menuEl.querySelectorAll('.cad-snap-option');
-        assert.equal(options.length, 8, 'Menu deve renderizar 8 opções de snap');
+        assert.equal(options.length, 9, 'Menu deve renderizar 9 opções de snap');
 
         SNAP_MODES.forEach((mode, index) => {
             const option = options[index];

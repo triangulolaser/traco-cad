@@ -907,6 +907,7 @@ export default {
     "Ponto inicial do arco:": "Punto inicial del arco:",
     "Ponto inicial do raio:": "Punto inicial del rayo:",
     "Ponto interno": "Punto interior",
+    "Centro geométrico": "Centro geométrico",
     "Ponto médio": "Punto medio",
     "Ponto onde o arco vai passar:": "Punto por el que pasará el arco:",
     "Ponto sobre a entidade.": "Punto sobre la entidad.",

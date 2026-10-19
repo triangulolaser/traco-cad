@@ -2,6 +2,8 @@
 // Tudo em coordenadas de mundo (unidades de desenho, eixo Y para cima).
 // Funções puras, sem dependência de DOM, para permitir teste em Node.
 
+import { fontEm, LINE_SPACING } from './fonts.js';
+
 export const EPS = 1e-9;
 export const TWO_PI = Math.PI * 2;
 
@@ -325,7 +327,7 @@ export function joinCurveGroups(entities, tol = 1e-6) {
 export function textBox(entity) {
     const rawLines = String(entity.text ?? '').split('\n');
     let lines = rawLines;
-    const approxCharW = entity.boxWidth > 0 ? entity.height * 0.52 : entity.height * 0.6;
+    const approxCharW = fontEm(entity.height) * (entity.boxWidth > 0 ? 0.52 : 0.6);
     if (entity.boxWidth && entity.boxWidth > 0) {
         lines = [];
         for (const rawLine of rawLines) {
@@ -352,8 +354,8 @@ export function textBox(entity) {
     const maxLen = Math.max(...lines.map((l) => l.length), 1);
     const width = entity.boxWidth && entity.boxWidth > 0
         ? Math.min(entity.boxWidth, Math.max(maxLen * approxCharW, entity.boxWidth * 0.6))
-        : maxLen * entity.height * 0.7;
-    const lineSpacing = entity.height * 1.35;
+        : maxLen * fontEm(entity.height) * 0.556;
+    const lineSpacing = entity.height * LINE_SPACING;
     const height = entity.height + (lines.length - 1) * lineSpacing;
     const halign = entity.halign ?? 'left';
     const valign = entity.valign ?? (entity.attachmentPoint ? 'top' : 'baseline');

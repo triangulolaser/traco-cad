@@ -23,7 +23,7 @@ import {
 export const TRACK_LIMIT = 4;
 
 // Prioridades compartilhadas com os object snaps (menor vence).
-export const SNAP_PRIORITY = { end: 1, int: 1, mid: 2, cen: 3, qua: 3, trkint: 3.5, per: 4, tan: 4, ext: 5, trk: 5, nea: 6 };
+export const SNAP_PRIORITY = { end: 1, int: 1, mid: 2, cen: 3, gcen: 3, qua: 3, trkint: 3.5, per: 4, tan: 4, ext: 5, trk: 5, nea: 6 };
 
 function orthoAngles(polarOn, increment) {
     const set = new Set([0, 90, 180, 270]);
@@ -36,7 +36,7 @@ function orthoAngles(polarOn, increment) {
 // Cria um ponto de rastreio a partir de um snap adquirido. Para END de linha/arco, guarda
 // também a extensão (direção para fora da linha ou o círculo do arco).
 export function trackingPointFromSnap(snap) {
-    if (!snap || !['end', 'mid', 'cen', 'qua', 'int'].includes(snap.mode)) return null;
+    if (!snap || !['end', 'mid', 'cen', 'gcen', 'qua', 'int'].includes(snap.mode)) return null;
     const tp = { point: snap.point, mode: snap.mode, ext: null };
     const entity = snap.entity;
     if (snap.mode === 'end' && entity) {

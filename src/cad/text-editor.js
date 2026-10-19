@@ -1,4 +1,4 @@
-import { FONT_FAMILIES, canvasFont } from './fonts.js';
+import { FONT_FAMILIES, canvasFont, fontEm, LINE_SPACING } from './fonts.js';
 import { replaceEntities, isEntityEditable } from './document.js';
 
 function escapeHtml(text) {
@@ -327,12 +327,12 @@ export function openInlineTextEditor(editor, entity) {
         const px = next.height * editor.viewport.scale;
         const context = editor.canvas.getContext('2d');
         context.save();
-        context.font = canvasFont(next, px);
+        context.font = canvasFont(next, fontEm(px));
         const width = next.boxWidth > 0 ? next.boxWidth * editor.viewport.scale : Math.max(px, ...next.text.split('\n').map(line => context.measureText(line || ' ').width));
         context.restore();
         // CSS textarea scrollHeight includes word wrapping for MText.
-        Object.assign(textarea.style, { fontFamily: next.fontFamily, fontSize: `${px}px`, fontWeight: bold ? 'bold' : 'normal', fontStyle: italic ? 'italic' : 'normal', textAlign: next.halign || 'left', width: `${width + 2}px`, height: '0px', whiteSpace: next.boxWidth ? 'pre-wrap' : 'pre' });
-        const lineCount = Math.max(next.text.split('\n').length, Math.round(textarea.scrollHeight / (px * 1.35)));
+        Object.assign(textarea.style, { fontFamily: next.fontFamily, fontSize: `${fontEm(px)}px`, lineHeight: `${px * LINE_SPACING}px`, fontWeight: bold ? 'bold' : 'normal', fontStyle: italic ? 'italic' : 'normal', textAlign: next.halign || 'left', width: `${width + 2}px`, height: '0px', whiteSpace: next.boxWidth ? 'pre-wrap' : 'pre' });
+        const lineCount = Math.max(next.text.split('\n').length, Math.round(textarea.scrollHeight / (px * LINE_SPACING)));
         const g = inlineTextGeometry(next, editor.viewport, width, lineCount);
         const canvasRect = editor.canvas.getBoundingClientRect();
         const stageRect = editor.stage.getBoundingClientRect();

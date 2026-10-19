@@ -52,8 +52,26 @@ test('suggestions: arrows pick, Enter submits picked name; typed text wins when 
     assert.equal(terminal.suggestions.length, 0);
     input.value = 'EX'; terminal.refreshSuggestions(); press('Enter');
     assert.deepEqual(submitted, ['EXPLODE', 'EX']);
-    input.value = 'EX'; terminal.refreshSuggestions(); press('Tab');
-    assert.equal(input.value, 'EXTEND');
+});
+test('suggestions: Tab cycles forward, Shift+Tab back, space confirms the highlighted command', () => {
+    const { terminal, input, submitted, press } = setup();
+    terminal.getSuggestions = () => [{ name: 'SCALE', label: 'SCALE' }, { name: 'SCALETEXT', label: 'SCALETEXT' }, { name: 'SCRIPT', label: 'SCRIPT' }];
+    input.value = 'SC'; terminal.refreshSuggestions();
+    assert.equal(press('Tab').prevented, true); assert.equal(terminal.suggestIndex, 0);
+    press('Tab'); press('Tab'); press('Tab'); assert.equal(terminal.suggestIndex, 0);
+    press('Tab', { shiftKey: true }); assert.equal(terminal.suggestIndex, 2);
+    press('Tab'); press('Tab'); press(' ');
+    assert.deepEqual(submitted, ['SCALETEXT']);
+});
+test('Esc with suggestions open clears the typed text and cancels', () => {
+    const { terminal, input, submitted, press } = setup();
+    let cancels = 0;
+    terminal.onCancel = () => { cancels += 1; };
+    terminal.getSuggestions = () => [{ name: 'SCALE', label: 'SCALE' }];
+    input.value = 'sc'; terminal.refreshSuggestions();
+    assert.equal(press('Escape').prevented, true);
+    assert.equal(input.value, ''); assert.equal(terminal.suggestions.length, 0); assert.equal(cancels, 1);
+    press(' '); assert.deepEqual(submitted, ['']);
 });
 
 test('space outside the terminal repeats the last command like Enter', async () => {
