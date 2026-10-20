@@ -394,13 +394,13 @@ function renderProperties(editor, root) {
             + section('Cotas')
             + `<div class="cad-prop-row"><span class="cad-prop-key">Altura do texto</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-global-prop="dimTextHeight" value="${fmt(doc.dimStyle?.textHeight ?? 2.5)}" title="Altura padrão de texto para novas cotas"></span></div>`
             + `<div class="cad-prop-row"><span class="cad-prop-key">Tamanho da seta</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-global-prop="dimArrowSize" value="${fmt(doc.dimStyle?.arrowSize ?? 2.5)}" title="Tamanho padrão das setas das cotas"></span></div>`
-            + row('Escala', fmt(doc.dimStyle?.scale ?? 1))
+            + `<div class="cad-prop-row"><span class="cad-prop-key">Escala geral</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-global-prop="dimOverallScale" value="${fmt(doc.dimStyle?.scale ?? 1)}" title="Multiplica texto e setas das novas cotas (DIMSCALE)"></span></div>`
             + row('Casas decimais', String(doc.dimStyle?.precision ?? 2))
             + section('Vista')
             + row('Escala', `${fmt(editor.viewport.scale, 3)} px/un`)
             + row('Orto / Polar', `${editor.settings.ortho ? 'ligado' : 'desligado'} / ${editor.settings.polar ? 'ligado' : 'desligado'}`);
 
-        for (const [prop, field] of [['dimTextHeight', 'textHeight'], ['dimArrowSize', 'arrowSize']]) {
+        for (const [prop, field] of [['dimTextHeight', 'textHeight'], ['dimArrowSize', 'arrowSize'], ['dimOverallScale', 'scale']]) {
             const input = box.querySelector(`[data-global-prop="${prop}"]`);
             if (!input) continue;
             const apply = () => {
@@ -489,6 +489,9 @@ function renderProperties(editor, root) {
         const arrowOf = (e) => e.style?.arrowSize ?? editor.doc.dimStyle?.arrowSize ?? 2.5;
         const sameArrow = dims.every((e) => Math.abs(arrowOf(e) - arrowOf(dims[0])) < 1e-4) ? arrowOf(dims[0]) : '';
         html += `<div class="cad-prop-row"><span class="cad-prop-key">Tam. seta</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-prop="dim-arrow" value="${sameArrow !== '' ? fmt(sameArrow) : ''}" placeholder="${sameArrow !== '' ? '' : '(varia)'}" title="Tamanho das setas em milímetros"></span></div>`;
+        const overallOf = (e) => e.scale ?? e.style?.scale ?? editor.doc.dimStyle?.scale ?? 1;
+        const sameOverall = dims.every((e) => Math.abs(overallOf(e) - overallOf(dims[0])) < 1e-6) ? overallOf(dims[0]) : '';
+        html += `<div class="cad-prop-row"><span class="cad-prop-key">Escala geral</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-prop="dim-overall" value="${sameOverall !== '' ? fmt(sameOverall, 4) : ''}" placeholder="${sameOverall !== '' ? '' : '(varia)'}" title="DIMSCALE: multiplica texto e setas. Texto e seta na tela = valor × escala geral"></span></div>`;
         const options = Array.from({ length: 9 }, (_, n) => `<option value="${n}" ${samePrecision === n ? 'selected' : ''}>${n ? `0.${'0'.repeat(n)}` : '0'}</option>`).join('');
         html += `<div class="cad-prop-row"><span class="cad-prop-key">Precisão dim</span><span class="cad-prop-value"><select data-prop="dim-precision">${samePrecision === '' ? '<option value="">(varia)</option>' : ''}${options}</select></span></div>`;
     }
@@ -681,6 +684,28 @@ function renderProperties(editor, root) {
             else if (event.key === 'Escape') { event.preventDefault(); renderProperties(editor, root); dimArrowInput.blur(); }
         });
         dimArrowInput.addEventListener('change', applyDimArrow);
+    }
+
+    const dimOverallInput = box.querySelector('[data-prop="dim-overall"]');
+    if (dimOverallInput) {
+        const applyDimOverall = () => {
+            const val = parseDecimalInput(dimOverallInput.value);
+            if (!Number.isFinite(val) || val <= 0) {
+                renderProperties(editor, root);
+                return;
+            }
+            editor.commit('Escala geral da cota', updateEntities(editor.doc, [...editor.selection], (e) => {
+                if (e.type !== 'dimension' || !isEntityEditable(editor.doc, e)) return e;
+                const { scale: _old, ...rest } = e;
+                return { ...rest, style: { ...(e.style ?? {}), scale: val } };
+            }));
+        };
+        dimOverallInput.addEventListener('keydown', (event) => {
+            event.stopPropagation();
+            if (event.key === 'Enter') { event.preventDefault(); applyDimOverall(); dimOverallInput.blur(); }
+            else if (event.key === 'Escape') { event.preventDefault(); renderProperties(editor, root); dimOverallInput.blur(); }
+        });
+        dimOverallInput.addEventListener('change', applyDimOverall);
     }
 
     const dimScaleInput = box.querySelector('[data-prop="dim-scale"]');
