@@ -68,13 +68,14 @@ export class Terminal {
     }
 
     // Lista de comandos que começam com o texto digitado (estilo BricsCAD/AutoCAD).
-    // Enter/Espaço só usam a sugestão quando ela foi escolhida com Tab ou setas; senão vale o texto digitado.
+    // Enter/Espaço usam a sugestão destacada (a primeira, ou a escolhida com Tab/setas).
     // Esc apaga o texto digitado e fecha a lista, como em qualquer prompt.
     refreshSuggestions() {
         const value = this.input.value;
         const list = /\s/.test(value) ? [] : (this.getSuggestions(value) ?? []);
         this.suggestions = list;
-        this.suggestIndex = -1;
+        // A mais próxima já vem destacada: Espaço/Enter executa "conc" como CONCORDAR (FILLET).
+        this.suggestIndex = list.length ? 0 : -1;
         this.renderSuggestions();
     }
 

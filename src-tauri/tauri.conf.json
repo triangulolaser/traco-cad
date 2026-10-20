@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Traço CAD",
-  "version": "0.3.31",
+  "version": "0.3.32",
   "identifier": "br.com.trls.traco.cad",
   "build": {
     "frontendDist": "../dist",
