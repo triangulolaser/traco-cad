@@ -318,3 +318,30 @@ test('editor.js: onKeyDown não rouba foco nem dispara comandos do CAD quando us
         globalThis.document = originalDoc;
     }
 });
+
+test('MATCHPROP: cota já selecionada vira referência e o primeiro clique é o destino', async () => {
+    let doc = addEntities(createDocument(), [
+        { id: 'src', type: 'dimension', layer: 'COTAS', color: 1, textHeight: 5 },
+        { id: 'dst', type: 'dimension', layer: '0', color: 7, textHeight: 2.5 },
+    ]);
+    const prompts = [];
+    let step = 0;
+    const editor = {
+        get doc() { return doc; },
+        selection: new Set(['src']),
+        canvas: { classList: { add() {}, remove() {} } },
+        log() {},
+        async getEntity(prompt) {
+            prompts.push(prompt);
+            step++;
+            return step === 1 ? { entity: doc.entities.find(x => x.id === 'dst') } : null;
+        },
+        commit(label, next) { doc = next; },
+    };
+    await EDIT_COMMANDS.MATCHPROP.run(editor);
+    assert.ok(!prompts.includes('Objeto de referência'), 'não deve pedir a referência de novo');
+    const dst = doc.entities.find(x => x.id === 'dst');
+    assert.equal(dst.layer, 'COTAS');
+    assert.equal(dst.color, 1);
+    assert.equal(dst.textHeight, 5);
+});

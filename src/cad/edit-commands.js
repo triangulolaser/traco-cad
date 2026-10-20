@@ -995,15 +995,16 @@ export const EDIT_COMMANDS = {
         },
     },
     MATCHPROP:{aliases:['MA','COPIARPROP'],description:'Copiar layer, cor, tipo, espessura e propriedades de texto/cota',async run(e){
-        const src=await e.getEntity('Objeto de referência');if(!src)return;
+        // Com um objeto já selecionado (como no BricsCAD), ele é a referência e o comando vai direto ao pincel.
+        const pre=e.selection?.size===1?e.doc.entities.find(x=>e.selection.has(x.id)):null;
+        const src=pre?{entity:pre}:await e.getEntity('Objeto de referência');if(!src)return;
         const source=structuredClone(src.entity);
-        if(e.doc.layers.find(l=>l.name===source.layer)?.locked)throw new Error('Layer de destino bloqueado.');
         e.canvas.classList.add('cad-property-brush');
         try {
             for(;;){
                 const hit=await e.getEntity('Pincel: clique no destino; Enter/Esc encerra',{allowEnter:true});
                 if(!hit)break;
-                if(!isEntityEditable(e.doc,hit.entity))continue;
+                if(!isEntityEditable(e.doc,hit.entity)){e.log('Destino em layer bloqueado ou oculto.');continue;}
                 const target={
                     ...hit.entity,
                     layer:source.layer,

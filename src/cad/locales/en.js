@@ -255,6 +255,7 @@ export default {
     "Copiar objetos": "Copy objects",
     "Copiar prop.": "Match prop.",
     "Copiar propriedades": "Match properties",
+    "Destino em layer bloqueado ou oculto.": "Target is on a locked or hidden layer.",
     "Copiar propriedades (MA / COPIARPROP)": "Match properties (MA / COPIARPROP)",
     "Copiar seleção para clipboard do desenho": "Copy selection to the drawing clipboard",
     "Vermelho": "Red",

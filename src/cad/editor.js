@@ -238,6 +238,15 @@ export class Editor {
 
     setSession(session) {
         if (this.pending) this.cancel();
+        // Caixa de seleção, grip arrastado e prévias pertencem à aba que se deixa;
+        // sem limpar, o segundo clique completaria a caixa no desenho da outra aba.
+        if (this.activeGrip) this.cancelGripDrag();
+        this.window = null;
+        this.rubber = null;
+        this.snap = null;
+        this.hover = null;
+        this.hoverGrip = null;
+        this.preview = [];
         this.history = session.history;
         if (session.viewport) Object.assign(this.viewport, session.viewport);
         this.selection = new Set();
@@ -361,11 +370,17 @@ export class Editor {
             const w = Math.max(200, Math.floor(rect.width));
             const h = Math.max(200, Math.floor(rect.height));
             if (w !== this.viewport.width || h !== this.viewport.height) this.resize();
-            if (this.dirty) {
-                this.dirty = false;
-                this.render();
+            // Erro num quadro não pode matar o laço: sem o próximo requestAnimationFrame a tela congela.
+            try {
+                if (this.dirty) {
+                    this.dirty = false;
+                    this.render();
+                }
+            } catch (error) {
+                console.error(error);
+            } finally {
+                requestAnimationFrame(frame);
             }
-            requestAnimationFrame(frame);
         };
         requestAnimationFrame(frame);
     }
@@ -574,7 +589,11 @@ export class Editor {
                 }
             }
             input.classList.toggle('is-active', index === dyn.active);
-            const screen = clampDynFieldPosition(this.viewport.worldToScreen(anchors[field.key]),
+            // Sem âncora (ex.: cursor sobre a própria origem no Deslocamento Através), o campo some até ter onde ficar.
+            const anchor = anchors?.[field.key];
+            input.hidden = !anchor;
+            if (!anchor) return;
+            const screen = clampDynFieldPosition(this.viewport.worldToScreen(anchor),
                 this.stage?.clientWidth, this.stage?.clientHeight, input.offsetWidth || 64, input.offsetHeight || 20);
             input.style.left = `${Math.round(screen.x)}px`;
             input.style.top = `${Math.round(screen.y)}px`;

@@ -243,3 +243,20 @@ test('ctrl (ou cmd) alterna: tira o selecionado e põe o não selecionado; shift
     editor.finishWindow({ x: 11, y: 51 }, { ctrlKey: true });
     assert.deepEqual([...editor.selection], ['l2']);
 });
+
+test('trocar de aba com a caixa clique-clique armada descarta a caixa', () => {
+    const { editor, listeners } = createMockEditor([
+        { id: 'l1', type: 'line', start: { x: 10, y: 10 }, end: { x: 50, y: 10 } },
+    ]);
+    listeners.pointerdown({ button: 0, clientX: 300, clientY: 300, pointerId: 1 });
+    listeners.pointerup({ button: 0, clientX: 300, clientY: 300, pointerId: 1 });
+    assert.equal(editor.window?.armed, true);
+
+    Editor.prototype.setSession.call(editor, { history: { present: editor.doc }, viewport: null });
+    assert.equal(editor.window, null);
+
+    // O clique seguinte na outra aba volta a abrir uma caixa nova, não fecha a antiga.
+    listeners.pointerdown({ button: 0, clientX: 500, clientY: 500, pointerId: 1 });
+    assert.equal(editor.window?.armed, false);
+    assert.deepEqual(editor.selection, new Set());
+});

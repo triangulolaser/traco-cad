@@ -255,6 +255,7 @@ export default {
     "Copiar objetos": "Copiar objetos",
     "Copiar prop.": "Igualar prop.",
     "Copiar propriedades": "Igualar propiedades",
+    "Destino em layer bloqueado ou oculto.": "El destino está en una capa bloqueada u oculta.",
     "Copiar propriedades (MA / COPIARPROP)": "Igualar propiedades (MA / COPIARPROP)",
     "Copiar seleção para clipboard do desenho": "Copiar la selección al portapapeles del dibujo",
     "Vermelho": "Rojo",
