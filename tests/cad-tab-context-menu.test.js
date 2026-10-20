@@ -246,6 +246,21 @@ test('close(id) fecha uma aba específica e ativa vizinho remanescente', () => {
     assert.equal(manager.tabs.some((t) => t.id === tab3.id), false);
 });
 
+test('close(id) de aba inativa redesenha a barra e mantém a aba ativa', () => {
+    const { manager } = createTabManagerFixture();
+    const first = manager.tabs[0];
+    const active = manager.add({ ...createDocument(), name: 'Sem título.dxf' });
+    let renders = 0;
+    const render = manager.render.bind(manager);
+    manager.render = () => { renders += 1; render(); };
+
+    manager.close(first.id);
+
+    assert.equal(manager.activeId, active.id);
+    assert.deepEqual(manager.tabs.map((t) => t.id), [active.id]);
+    assert.ok(renders > 0, 'a barra de abas precisa ser redesenhada sem a aba fechada');
+});
+
 test('closeToTheRight(targetId) fecha apenas as abas localizadas à direita do alvo', () => {
     const { manager } = createTabManagerFixture();
     const tab1 = manager.tabs[0];

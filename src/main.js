@@ -130,5 +130,23 @@ getCurrentWindow()
     })
     .catch((err) => console.warn('[Tauri] Interceptação do fechamento indisponível:', err));
 
-// 5. Atualização automática: checa ao abrir e pelo botão da barra superior.
+// 5. Trava dos arquivos abertos: enquanto houver aba com o arquivo, o Windows
+// não deixa apagar, mover nem renomear pelo Explorer e avisa que está aberto no
+// Traço. Conferido a cada segundo para pegar abrir, fechar e Salvar como.
+let lockedPathsKey = null;
+function syncFileLocks() {
+    const tabs = window.tracoCad?.tabs;
+    if (!tabs?.tabs) return;
+    const paths = [...new Set(tabs.tabs.map((tab) => tabs.getTabDoc(tab)?.filePath).filter(Boolean))].sort();
+    const key = paths.join('\n');
+    if (key === lockedPathsKey) return;
+    lockedPathsKey = key;
+    invoke('sync_file_locks', { paths }).catch((err) => {
+        lockedPathsKey = null;
+        console.warn('[Tauri] Falha ao travar arquivos abertos:', err);
+    });
+}
+setInterval(syncFileLocks, 1000);
+
+// 6. Atualização automática: checa ao abrir e pelo botão da barra superior.
 initDesktopUpdates();

@@ -15,6 +15,42 @@ pub struct OpenedFile {
 #[derive(Default)]
 pub struct PendingFilesState(pub Mutex<Vec<OpenedFile>>);
 
+/// Arquivos abertos em abas ficam com um handle de leitura sem
+/// FILE_SHARE_DELETE: no Windows o Explorer não consegue apagar, mover nem
+/// renomear e avisa que o arquivo está aberto no Traço. Salvar continua
+/// funcionando porque o handle compartilha leitura e escrita.
+#[derive(Default)]
+pub struct FileLocksState(pub Mutex<std::collections::HashMap<String, std::fs::File>>);
+
+fn open_lock_handle(path: &str) -> std::io::Result<std::fs::File> {
+    let mut opts = std::fs::OpenOptions::new();
+    opts.read(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // FILE_SHARE_READ | FILE_SHARE_WRITE, sem FILE_SHARE_DELETE.
+        opts.share_mode(0x1 | 0x2);
+    }
+    opts.open(path)
+}
+
+/// Recebe a lista completa de caminhos das abas abertas: trava os novos e
+/// solta os que saíram (aba fechada, Salvar como para outro caminho).
+#[tauri::command]
+fn sync_file_locks(paths: Vec<String>, state: tauri::State<'_, FileLocksState>) {
+    let mut locks = state.0.lock().unwrap();
+    let wanted: std::collections::HashSet<String> = paths.into_iter().filter(|p| !p.is_empty()).collect();
+    locks.retain(|p, _| wanted.contains(p));
+    for p in wanted {
+        if locks.contains_key(&p) {
+            continue;
+        }
+        if let Ok(f) = open_lock_handle(&p) {
+            locks.insert(p, f);
+        }
+    }
+}
+
 #[tauri::command]
 fn get_pending_open_files(state: tauri::State<'_, PendingFilesState>) -> Vec<OpenedFile> {
     let mut lock = state.0.lock().unwrap();
@@ -255,8 +291,9 @@ pub fn run() {
 
     let app = builder
         .manage(PendingFilesState::default())
+        .manage(FileLocksState::default())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_pending_open_files, write_file, write_file_binary, read_file_text, read_file_binary, convert_dwg_to_dxf, read_cad_clipboard, read_cad_clipboard_seq])
+        .invoke_handler(tauri::generate_handler![get_pending_open_files, write_file, write_file_binary, read_file_text, read_file_binary, convert_dwg_to_dxf, read_cad_clipboard, read_cad_clipboard_seq, sync_file_locks])
         .setup(|app| {
             #[cfg(desktop)]
             {

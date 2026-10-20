@@ -393,36 +393,38 @@ function renderProperties(editor, root) {
             + row('Layer atual', escapeHtml(doc.currentLayer))
             + section('Cotas')
             + `<div class="cad-prop-row"><span class="cad-prop-key">Altura do texto</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-global-prop="dimTextHeight" value="${fmt(doc.dimStyle?.textHeight ?? 2.5)}" title="Altura padrão de texto para novas cotas"></span></div>`
+            + `<div class="cad-prop-row"><span class="cad-prop-key">Tamanho da seta</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-global-prop="dimArrowSize" value="${fmt(doc.dimStyle?.arrowSize ?? 2.5)}" title="Tamanho padrão das setas das cotas"></span></div>`
             + row('Escala', fmt(doc.dimStyle?.scale ?? 1))
             + row('Casas decimais', String(doc.dimStyle?.precision ?? 2))
             + section('Vista')
             + row('Escala', `${fmt(editor.viewport.scale, 3)} px/un`)
             + row('Orto / Polar', `${editor.settings.ortho ? 'ligado' : 'desligado'} / ${editor.settings.polar ? 'ligado' : 'desligado'}`);
 
-        const globalTextHeightInput = box.querySelector('[data-global-prop="dimTextHeight"]');
-        if (globalTextHeightInput) {
-            const applyGlobalHeight = () => {
-                const val = parseDecimalInput(globalTextHeightInput.value);
+        for (const [prop, field] of [['dimTextHeight', 'textHeight'], ['dimArrowSize', 'arrowSize']]) {
+            const input = box.querySelector(`[data-global-prop="${prop}"]`);
+            if (!input) continue;
+            const apply = () => {
+                const val = parseDecimalInput(input.value);
                 if (Number.isFinite(val) && val > 0) {
-                    editor.doc = { ...editor.doc, dimStyle: { ...(editor.doc.dimStyle ?? {}), textHeight: val } };
+                    editor.doc = { ...editor.doc, dimStyle: { ...(editor.doc.dimStyle ?? {}), [field]: val } };
                     editor.requestRender();
                 } else {
                     renderProperties(editor, root);
                 }
             };
-            globalTextHeightInput.addEventListener('keydown', (event) => {
+            input.addEventListener('keydown', (event) => {
                 event.stopPropagation();
                 if (event.key === 'Enter') {
                     event.preventDefault();
-                    applyGlobalHeight();
-                    globalTextHeightInput.blur();
+                    apply();
+                    input.blur();
                 } else if (event.key === 'Escape') {
                     event.preventDefault();
                     renderProperties(editor, root);
-                    globalTextHeightInput.blur();
+                    input.blur();
                 }
             });
-            globalTextHeightInput.addEventListener('change', applyGlobalHeight);
+            input.addEventListener('change', apply);
         }
         return;
     }
@@ -484,6 +486,9 @@ function renderProperties(editor, root) {
     }
 
     if (dims.length) {
+        const arrowOf = (e) => e.style?.arrowSize ?? editor.doc.dimStyle?.arrowSize ?? 2.5;
+        const sameArrow = dims.every((e) => Math.abs(arrowOf(e) - arrowOf(dims[0])) < 1e-4) ? arrowOf(dims[0]) : '';
+        html += `<div class="cad-prop-row"><span class="cad-prop-key">Tam. seta</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-prop="dim-arrow" value="${sameArrow !== '' ? fmt(sameArrow) : ''}" placeholder="${sameArrow !== '' ? '' : '(varia)'}" title="Tamanho das setas em milímetros"></span></div>`;
         const options = Array.from({ length: 9 }, (_, n) => `<option value="${n}" ${samePrecision === n ? 'selected' : ''}>${n ? `0.${'0'.repeat(n)}` : '0'}</option>`).join('');
         html += `<div class="cad-prop-row"><span class="cad-prop-key">Precisão dim</span><span class="cad-prop-value"><select data-prop="dim-precision">${samePrecision === '' ? '<option value="">(varia)</option>' : ''}${options}</select></span></div>`;
     }
@@ -658,6 +663,24 @@ function renderProperties(editor, root) {
             }
         });
         textHeightInput.addEventListener('change', applyTextHeight);
+    }
+
+    const dimArrowInput = box.querySelector('[data-prop="dim-arrow"]');
+    if (dimArrowInput) {
+        const applyDimArrow = () => {
+            const val = parseDecimalInput(dimArrowInput.value);
+            if (!Number.isFinite(val) || val <= 0) {
+                renderProperties(editor, root);
+                return;
+            }
+            editor.commit('Tamanho da seta', updateEntities(editor.doc, [...editor.selection], (e) => (e.type === 'dimension' && isEntityEditable(editor.doc, e) ? { ...e, style: { ...(e.style ?? {}), arrowSize: val } } : e)));
+        };
+        dimArrowInput.addEventListener('keydown', (event) => {
+            event.stopPropagation();
+            if (event.key === 'Enter') { event.preventDefault(); applyDimArrow(); dimArrowInput.blur(); }
+            else if (event.key === 'Escape') { event.preventDefault(); renderProperties(editor, root); dimArrowInput.blur(); }
+        });
+        dimArrowInput.addEventListener('change', applyDimArrow);
     }
 
     const dimScaleInput = box.querySelector('[data-prop="dim-scale"]');
@@ -1380,7 +1403,9 @@ class TabManager {
             this.activeId = null;
             this.activate(nextTab.id);
         } else {
-            if (targetActiveId && this.tabs.some((t) => t.id === targetActiveId)) {
+            // Fechar uma aba inativa costuma apontar para a própria aba ativa; activate() sai cedo
+            // nesse caso e a barra ficava com a aba fechada desenhada até o próximo clique.
+            if (targetActiveId && targetActiveId !== this.activeId && this.tabs.some((t) => t.id === targetActiveId)) {
                 this.activate(targetActiveId);
             } else {
                 this.render();
