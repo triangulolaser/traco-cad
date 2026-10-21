@@ -1579,7 +1579,8 @@ class TabManager {
             const title = document.createElement('span');
             title.className = 'cad-tab-title';
             title.textContent = doc.name || 'Sem título.dxf';
-            title.title = `${doc.entities.length} entidades${dirty ? ' · alterações não salvas' : ''}`;
+            title.title = [title.textContent, `${doc.entities.length} entidades${dirty ? ' · alterações não salvas' : ''}`].join(String.fromCharCode(10));
+            el.title = title.title;
             const closeBtn = document.createElement('button');
             closeBtn.type = 'button';
             closeBtn.className = 'cad-tab-close';

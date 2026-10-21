@@ -508,3 +508,15 @@ test('Ctrl+F4 fecha todas as abas e a janela; Cancelar não fecha nada', async (
         delete globalThis.window.desktopBridge;
     }
 });
+
+test('tooltip das guias preserva nome completo e nome atualizado', () => {
+    const { manager, editor, list } = createTabManagerFixture();
+    for (const name of ['Peça muito longa — fabricação <especial> & revisão 123456789.dxf', 'Renomeado.dwg', '']) {
+        editor.doc.name = name;
+        manager.render();
+        const tab = list.children[0];
+        assert.equal(tab.title.split(String.fromCharCode(10))[0], name || 'Sem título.dxf');
+        assert.equal(tab.children[0].title, tab.title);
+        assert.match(tab.title, /entidades/);
+    }
+});

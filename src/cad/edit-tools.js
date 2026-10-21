@@ -996,8 +996,8 @@ export function polylineFillet(entity, radius) {
         const p1 = add(curr, scale(u1, t));
         const p2 = add(curr, scale(u2, t));
         const sweep = Math.PI - angle;
-        const cp = cross(u1, u2);
-        const bulgeSign = cp >= 0 ? 1 : -1;
+        // u1 aponta para trás (curr→prev): a curva é à esquerda quando cross(u1, u2) < 0.
+        const bulgeSign = cross(u1, u2) < 0 ? 1 : -1;
         const bulge = bulgeSign * Math.tan(sweep / 4);
 
         newVerts.push({ ...p1, bulge });

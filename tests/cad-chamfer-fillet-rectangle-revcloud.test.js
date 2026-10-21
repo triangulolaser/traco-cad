@@ -129,6 +129,25 @@ test('polylineFillet: aplica concordância em todos os cantos de uma polilinha f
     });
 });
 
+test('polylineFillet: arco convexo (centro para dentro) nos dois sentidos', () => {
+    const square = [
+        { x: 0, y: 0, bulge: 0 },
+        { x: 100, y: 0, bulge: 0 },
+        { x: 100, y: 100, bulge: 0 },
+        { x: 0, y: 100, bulge: 0 },
+    ];
+    for (const vertices of [square, [...square].reverse()]) {
+        const filleted = polylineFillet({ type: 'polyline', closed: true, vertices }, 10);
+        const arcs = polylineCurves(filleted.vertices, true).filter((c) => c.kind === 'arc');
+        assert.equal(arcs.length, 4);
+        for (const arc of arcs) {
+            const cx = arc.center.x, cy = arc.center.y;
+            assert.ok([10, 90].some((v) => Math.abs(cx - v) < 1e-4) && [10, 90].some((v) => Math.abs(cy - v) < 1e-4),
+                `centro deve ficar dentro do quadrado, veio (${cx}, ${cy})`);
+        }
+    }
+});
+
 test('polylineChamfer: aplica chanfro em todos os cantos de uma polilinha fechada', () => {
     const pline = {
         type: 'polyline',

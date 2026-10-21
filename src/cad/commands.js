@@ -4299,7 +4299,8 @@ async function pdfImport(editor) {
         if (!(pageNumber >= 1 && pageNumber <= doc.numPages)) { usage('import_failure'); return editor.log('Página inválida.', 'error'); }
         const mode = await editor.getKeyword('Importar como', [{ key: 'v', label: 'Vetor' }, { key: 'i', label: 'Imagem' }], editor.memory.pdfMode ?? 'v');
         editor.memory.pdfMode = mode.key;
-        const position = (await editor.getPoint('Ponto de inserção (canto inferior esquerdo):')).point;
+        // Enter sem clicar devolve resposta sem ponto: insere na origem em vez de quebrar.
+        const position = (await editor.getPoint('Ponto de inserção (canto inferior esquerdo):'))?.point ?? { x: 0, y: 0 };
         if (mode.key === 'i') {
             const img = await pdfPageToImage(doc, pageNumber);
             editor.commit('PDF', addEntities(editor.doc, [{ type: 'image', position, width: img.widthMm, height: img.heightMm, rotation: 0, src: img.src, opacity: 1, name: `${file.name}#${pageNumber}` }]));
