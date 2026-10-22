@@ -28,3 +28,14 @@ test('fechamento e inclusão recalculam limites', () => {
  const tm=manager(3,2);tm.tabs.pop();tm.activeId=2;tm.updateNavigation();assert.ok(tm.navigation[3].disabled);
  tm.tabs.push({id:4});tm.updateNavigation();assert.equal(tm.navigation[3].disabled,false);tm.navigate('last');assert.equal(tm.activeId,4);
 });
+
+test('desktop tem as mesmas setas de guias da versão web', async (t) => {
+ const { readFileSync, existsSync } = await import('node:fs');
+ // Fora da árvore com as duas telas (web e desktop) não há o que comparar.
+ if (!existsSync(new URL(['..','..','resources','views','cad'].join('/'), import.meta.url))) return t.skip('sem cad-desktop neste repositório');
+ const block = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
+  .match(/<div class="cad-tabs-navigation"[\s\S]*?<\/div>/)?.[0].replace(/\s+/g, ' ');
+ const web = block('index.html');
+ assert.ok(web);
+ assert.equal(block('index.html'), web);
+});
