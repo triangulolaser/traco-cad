@@ -469,7 +469,7 @@ function parseEntitiesSection(cursor, stopAt, preserveDimensions = false, dimens
             // Cota associativa importada pela geometria do bloco anônimo (não associativa no Traço).
             // Importação para corte pede dimensionGraphics=false: setas e linhas de chamada não são contorno.
             const blockName = dimensionGraphics ? first(groups, 2, '') : '';
-            if (blockName) entities.push({ type: '__insert', name: blockName, position: { x: 0, y: 0 }, scaleX: 1, scaleY: 1, rotation: 0, layer: first(groups, 8, DEFAULT_LAYER) });
+            if (blockName) entities.push({ type: '__insert', __dimensionGraphics: true, name: blockName, position: { x: 0, y: 0 }, scaleX: 1, scaleY: 1, rotation: 0, layer: first(groups, 8, DEFAULT_LAYER) });
             continue;
         }
         if (p.value === 'INSERT') {
@@ -841,7 +841,7 @@ function resolveLeader(entity, dimStyles = {}) {
     return out;
 }
 
-export function parseDxf(text, { preserveBlocks = false, preserveDimensions = false, dimensionGraphics = true } = {}) {
+export function parseDxf(text, { preserveBlocks = false, preserveDimensions = false, dimensionGraphics = true, dimensionColor = null } = {}) {
     const cursor = new Cursor(readPairs(text));
     let layers = [];
     let blocks = new Map();
@@ -890,6 +890,22 @@ export function parseDxf(text, { preserveBlocks = false, preserveDimensions = fa
     const resolveMeasurement=resolveMeasurementScale(header,layers.dimStyles??{},blocks);
     entities=entities.map(resolveMeasurement);
     for(const b of blocks.values())b.entities=b.entities.map(resolveMeasurement);
+    // Opt-in for CAD opening, never the shared cutting/PDF parsers.
+    // Expand only DIMENSION graphics, not INSERTs sharing their block.
+    const recolorDimensions = items => items.flatMap(entity => {
+        const { __dimensionGraphics, ...clean } = entity;
+        if (dimensionColor === null) return [clean];
+        if (entity.type === 'dimension') return [{ ...clean, color: dimensionColor }];
+        if (__dimensionGraphics) return flattenInserts([clean], blocks).map(child => {
+            const { __dimensionGraphics: ignored, ...graphic } = child;
+            return { ...graphic, color: dimensionColor };
+        });
+        return [clean];
+    });
+    // Read original definitions before replacing any shared/nested blocks.
+    const coloredBlocks = [...blocks].map(([name, block]) => [name, { ...block, entities: recolorDimensions(block.entities) }]);
+    entities = recolorDimensions(entities);
+    blocks = new Map(coloredBlocks);
     const blockDefinitions=Object.fromEntries(blocks);
     if(preserveBlocks) entities=entities.map(e=>e.type==='__insert'?hydrateInsert(e,blockDefinitions):e);
     else entities = flattenInserts(entities, blocks);

@@ -72,7 +72,7 @@ export async function dwgToDxfText(buffer) {
  */
 export async function dwgToDocument(buffer, { name = 'desenho.dwg', filePath = null } = {}) {
     const dxfText = await dwgToDxfText(buffer);
-    const parsed = parseDxf(dxfText, { preserveBlocks: true, preserveDimensions: true });
+    const parsed = parseDxf(dxfText, { preserveBlocks: true, preserveDimensions: true, dimensionColor: 1 });
 
     // addEntities normaliza e dá id a cada entidade, como na abertura de DXF.
     return addEntities({

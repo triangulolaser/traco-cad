@@ -2,8 +2,9 @@
 // Permite selecionar entidades e puxar alças para esticar linhas, redimensionar
 // círculos e arcos, mover vértices de polilinhas e reposicionar cotas.
 
-import { distance, sub, add, midpoint, polar, angleOf, normalizeAngle, sweepCCW, scale, perpendicular } from './geometry.js';
+import { distance, sub, add, midpoint, polar, angleOf, normalizeAngle, sweepCCW, scale, perpendicular, dot } from './geometry.js';
 import { ensureSplineGeometry } from './extra-entities.js';
+import { LINEAR_DIMENSION_KINDS, linearDimensionEnds } from './dimensions.js';
 
 /**
  * Retorna lista de alças (grips) disponíveis para a entidade.
@@ -81,6 +82,12 @@ export function getEntityGrips(entity) {
             break;
 
         case 'dimension':
+            // Alças das setas vêm antes: findGripAt prefere a última em empate, então linePoint continua ganhando quando coincide.
+            if (LINEAR_DIMENSION_KINDS.includes(entity.kind) && entity.p1 && entity.p2 && entity.linePoint) {
+                const { d1, d2 } = linearDimensionEnds(entity);
+                grips.push({ id: `${entity.id}:arrow1`, entityId: entity.id, type: 'arrow', index: 0, point: d1 });
+                grips.push({ id: `${entity.id}:arrow2`, entityId: entity.id, type: 'arrow', index: 1, point: d2 });
+            }
             if (entity.linePoint) {
                 grips.push({ id: `${entity.id}:linePoint`, entityId: entity.id, type: 'linePoint', point: entity.linePoint });
             }
@@ -230,6 +237,15 @@ export function applyGripMove(entity, grip, targetPoint) {
                 const normal = dimensionLineNormal(entity);
                 const shift = normal ? scale(normal, delta.x * normal.x + delta.y * normal.y) : delta;
                 return { ...entity, textPosition, linePoint: add(entity.linePoint, shift) };
+            }
+            if (grip.type === 'arrow') {
+                // Puxar a seta para fora da linha de chamada põe as setas por fora; para dentro, por dentro.
+                if (distance(p, grip.point) < 1e-9) return entity;
+                const { d1, d2, lineDir } = linearDimensionEnds(entity);
+                const len = dot(sub(d2, d1), lineDir);
+                const t = dot(sub(p, d1), lineDir);
+                const outside = grip.index === 0 ? t < 0 : t > len;
+                return { ...entity, arrowPlacement: outside ? 'outside' : 'inside' };
             }
             if (grip.type === 'p1') {
                 return { ...entity, p1: { x: p.x, y: p.y } };

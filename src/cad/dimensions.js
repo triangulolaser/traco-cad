@@ -226,7 +226,13 @@ function textEntityAt(center, angle, text, style, id) {
     return { type: 'text', fontFamily:style.fontFamily,bold:style.bold,italic:style.italic, position, height: style.textHeight, rotation: radToDeg(angle), text, id: id ? `${id}-text` : undefined };
 }
 
-function linearGeometry(entity, style) {
+export const LINEAR_DIMENSION_KINDS = ['horizontal', 'vertical', 'rotated', 'aligned'];
+
+/**
+ * Pontas da linha de cota linear (onde ficam as setas).
+ * @returns {{d1: {x:number,y:number}, d2: {x:number,y:number}, lineDir: {x:number,y:number}, measurement: number, n: {x:number,y:number}, offsetOf: Function}}
+ */
+export function linearDimensionEnds(entity) {
     const { p1, p2, linePoint } = entity;
     let dir;
     let measurement;
@@ -251,6 +257,14 @@ function linearGeometry(entity, style) {
     const offsetOf = (p) => dot(sub(linePoint, p), n);
     const d1 = add(p1, scale(n, offsetOf(p1)));
     const d2 = add(p2, scale(n, offsetOf(p2)));
+    const along = normalize(sub(d2, d1));
+    const lineDir = along.x === 0 && along.y === 0 ? dir : along;
+    return { d1, d2, lineDir, measurement, n, offsetOf };
+}
+
+function linearGeometry(entity, style) {
+    const { p1, p2 } = entity;
+    const { d1, d2, lineDir, measurement, n, offsetOf } = linearDimensionEnds(entity);
     const ext = (origin, target) => {
         const offset = offsetOf(origin);
         const sign = offset >= 0 ? 1 : -1;
@@ -263,10 +277,11 @@ function linearGeometry(entity, style) {
     const e2 = ext(p2, d2);
     if (e1) segments.push(e1);
     if (e2) segments.push(e2);
-    const along = normalize(sub(d2, d1));
-    const lineDir = along.x === 0 && along.y === 0 ? dir : along;
     const arrows = [];
-    const inside = measurement >= style.arrowSize * 3;
+    // arrowPlacement vem da alça da seta (como o "Inverter seta" do BricsCAD); sem ele, decide pelo espaço.
+    const inside = entity.arrowPlacement === 'inside' ? true
+        : entity.arrowPlacement === 'outside' ? false
+        : measurement >= style.arrowSize * 3;
     if (inside) {
         arrows.push(arrowAt(d1, scale(lineDir, -1), style.arrowSize));
         arrows.push(arrowAt(d2, lineDir, style.arrowSize));

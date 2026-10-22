@@ -21,8 +21,11 @@ import { LOCALES, detectLocale, getLocale, saveLocale, setLocale, t, tr, transla
 const STANDARD_ACI = [[1, 'Vermelho'], [2, 'Amarelo'], [3, 'Verde'], [4, 'Ciano'], [5, 'Azul'], [6, 'Magenta'], [7, 'Branco']];
 
 
-function setupToolbar(editor, root) {
+export function setupToolbar(editor, root) {
     root.querySelectorAll('[data-cad-command]').forEach((button) => {
+        // Itens do menu dos botões divididos são tratados em setupSplitButtons;
+        // ligar aqui também rodava o comando duas vezes e o segundo cancelava o primeiro.
+        if (button.classList?.contains('cad-ribbon-dropdown-item')) return;
         button.addEventListener('click', () => {
             if (!editor.tabs?.tabs?.length) {
                 editor.tabs?.add();
@@ -64,7 +67,7 @@ function setupRibbon(editor, root) {
     if (saved && root.querySelector(`[data-cad-ribbon-tab="${saved}"]`)) activate(saved);
 }
 
-function setupSplitButtons(editor, root) {
+export function setupSplitButtons(editor, root) {
     const splits = root.querySelectorAll('[data-cad-split]');
     if (!splits.length) return;
 
@@ -1035,6 +1038,8 @@ class TabManager {
         this.root = root;
         this.list = root.querySelector('[data-cad-tabs-list]');
         this.status = root.querySelector('[data-cad-save-status]');
+        this.navigation = [...(root.querySelectorAll?.('[data-cad-tab-nav]') || [])];
+        this.navigation.forEach((button) => button.addEventListener('click', () => this.navigate(button.dataset.cadTabNav)));
         this.scope = root.dataset.storageScope || 'default';
         this.tabs = [];
         this.activeId = null;
@@ -1071,6 +1076,29 @@ class TabManager {
         }
         this.render();
         refreshUi(this.editor, this.root);
+    }
+
+    navigate(direction) {
+        const index = this.tabs.findIndex((tab) => tab.id === this.activeId);
+        if (index < 0) return false;
+        const target = { first: 0, previous: index - 1, next: index + 1, last: this.tabs.length - 1 }[direction];
+        if (!Number.isInteger(target) || target < 0 || target >= this.tabs.length || target === index) return false;
+        this.activate(this.tabs[target].id);
+        return true;
+    }
+
+    updateNavigation() {
+        const index = this.tabs.findIndex((tab) => tab.id === this.activeId);
+        (this.navigation || []).forEach((button) => {
+            const backward = ['first', 'previous'].includes(button.dataset.cadTabNav);
+            button.disabled = index < 0 || (backward ? index === 0 : index === this.tabs.length - 1);
+        });
+        const active = this.list?.querySelector?.('.is-active');
+        if (!active || !this.list.getBoundingClientRect) return;
+        const bounds = this.list.getBoundingClientRect();
+        const tabBounds = active.getBoundingClientRect();
+        if (tabBounds.left < bounds.left) this.list.scrollLeft -= bounds.left - tabBounds.left;
+        else if (tabBounds.right > bounds.right) this.list.scrollLeft += tabBounds.right - bounds.right;
     }
 
     current() {
@@ -1561,7 +1589,7 @@ class TabManager {
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') this.closeContextMenu();
             });
-            window.addEventListener('resize', () => this.closeContextMenu());
+            window.addEventListener('resize', () => { this.closeContextMenu(); this.updateNavigation(); });
         }
         this.list?.addEventListener('scroll', () => this.closeContextMenu(), { passive: true });
     }
@@ -1598,6 +1626,7 @@ class TabManager {
             });
             this.list.appendChild(el);
         });
+        this.updateNavigation();
         refreshUi(this.editor, this.root);
     }
 
@@ -1701,7 +1730,14 @@ function askSaveBeforeClose(root, docName) {
             resolve(choice);
         };
         const onKey = (event) => {
-            if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish('cancel'); }
+            if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish('cancel'); return; }
+            // ENTER confirma o botão focado (Salvar por padrão); a linha de comando do CAD não pode engolir a tecla.
+            if (event.key === 'Enter' || event.key === 'NumpadEnter') {
+                event.preventDefault();
+                event.stopPropagation();
+                const focused = document.activeElement?.closest?.('[data-cad-confirm-action]');
+                finish(focused && overlay.contains(focused) ? focused.dataset.cadConfirmAction : 'save');
+            }
         };
         overlay.querySelectorAll('[data-cad-confirm-action]').forEach((button) => {
             button.addEventListener('click', () => finish(button.dataset.cadConfirmAction));

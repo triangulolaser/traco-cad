@@ -520,3 +520,52 @@ test('tooltip das guias preserva nome completo e nome atualizado', () => {
         assert.match(tab.title, /entidades/);
     }
 });
+
+test('ENTER no diálogo de alterações não salvas confirma Salvar (ou o botão focado)', async () => {
+    const run = async (focusAction) => {
+        const oldDoc = globalThis.document;
+        const keyListeners = [];
+        const buttons = ['cancel', 'discard', 'save'].map((action) => {
+            const btn = createMockElement('button', { cadConfirmAction: action });
+            btn.closest = () => btn;
+            btn.focus = () => {};
+            return btn;
+        });
+        const fakeDoc = {
+            activeElement: null,
+            addEventListener: (type, fn) => { if (type === 'keydown') keyListeners.push(fn); },
+            removeEventListener: (type, fn) => { const i = keyListeners.indexOf(fn); if (i >= 0) keyListeners.splice(i, 1); },
+            createElement: () => {
+                const overlay = createMockElement('div');
+                overlay.remove = () => {};
+                overlay.querySelectorAll = (sel) => (sel === '[data-cad-confirm-action]' ? buttons : []);
+                overlay.querySelector = (sel) => buttons.find((b) => sel.includes(`"${b.dataset.cadConfirmAction}"`)) ?? null;
+                overlay.contains = (el) => buttons.includes(el);
+                return overlay;
+            },
+        };
+        globalThis.document = fakeDoc;
+        try {
+            const { manager, editor } = dirtyFixture();
+            manager.root = createMockElement('div');
+            manager.root.querySelectorAll = () => [];
+            const commands = [];
+            editor.runCommand = async (name) => { commands.push(name); };
+            const pending = manager.closeCurrent();
+            await new Promise((r) => setImmediate(r));
+            if (focusAction) fakeDoc.activeElement = buttons.find((b) => b.dataset.cadConfirmAction === focusAction);
+            assert.equal(keyListeners.length, 1);
+            keyListeners[0]({ key: 'Enter', preventDefault() {}, stopPropagation() {} });
+            const closed = await pending;
+            return { closed, commands, tabs: manager.tabs.length, listeners: keyListeners.length };
+        } finally {
+            globalThis.document = oldDoc;
+        }
+    };
+    const save = await run(null);
+    assert.deepEqual(save.commands, ['SAVE']);
+    assert.equal(save.listeners, 0);
+    const discard = await run('discard');
+    assert.deepEqual(discard.commands, []);
+    assert.equal(discard.closed, true);
+});

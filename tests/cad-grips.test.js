@@ -176,3 +176,31 @@ test('texto da cota encaixa no centro da medida mantendo o afastamento', () => {
     assert.equal(dimensionTextCenterSnap(dim, { x: 150, y: 230 }, 2), null);
     assert.equal(dimensionTextCenterSnap({ ...dim, kind: 'radius' }, { x: 150, y: 207 }, 2), null);
 });
+
+test('cota linear: alça da seta põe as setas por fora ou por dentro', async () => {
+    const { dimensionGeometry, defaultDimStyle } = await import('../src/cad/dimensions.js');
+    const dim = { id: 'd9', type: 'dimension', kind: 'horizontal', p1: { x: 0, y: 0 }, p2: { x: 35.49, y: 0 }, linePoint: { x: 10, y: 10 } };
+    const grips = getEntityGrips(dim);
+    const a1 = grips.find((g) => g.id === 'd9:arrow1');
+    const a2 = grips.find((g) => g.id === 'd9:arrow2');
+    assert.deepEqual(a1.point, { x: 0, y: 10 });
+    assert.deepEqual(a2.point, { x: 35.49, y: 10 });
+    // linePoint coincidente com a seta continua sendo a alça escolhida.
+    const onLine = { ...dim, linePoint: { x: 35.49, y: 10 } };
+    assert.equal(findGripAt(getEntityGrips(onLine), { x: 35.49, y: 10 }, (p) => p, 8).type, 'linePoint');
+
+    const out = applyGripMove(dim, a1, { x: -5, y: 10 });
+    assert.equal(out.arrowPlacement, 'outside');
+    assert.equal(applyGripMove(dim, a2, { x: 40, y: 12 }).arrowPlacement, 'outside');
+    assert.equal(applyGripMove(out, a2, { x: 30, y: 10 }).arrowPlacement, 'inside');
+    assert.equal(applyGripMove(dim, a1, a1.point), dim);
+
+    const style = defaultDimStyle();
+    const tipX = (g) => g.arrows.map((tri) => Math.min(...tri.map((p) => p.x)));
+    // Por dentro o corpo da 1ª seta fica à direita da ponta (x ≥ 0); por fora, à esquerda.
+    assert.ok(tipX(dimensionGeometry(dim, style))[0] >= 0);
+    assert.ok(tipX(dimensionGeometry(out, style))[0] < 0);
+    const short = { ...dim, p2: { x: 5, y: 0 } };
+    assert.ok(tipX(dimensionGeometry(short, style))[0] < 0);
+    assert.ok(tipX(dimensionGeometry({ ...short, arrowPlacement: 'inside' }, style))[0] >= 0);
+});

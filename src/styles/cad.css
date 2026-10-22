@@ -399,8 +399,13 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 
 /* ---------------------------------------------------------------- abas */
 .cad-tabs { display: flex; align-items: center; gap: 4px; padding: 3px 10px 0; background: var(--cad-panel-2); border-bottom: 1px solid var(--cad-border); min-height: 28px; }
-.cad-tabs-list { display: flex; gap: 2px; overflow-x: auto; flex: 1; }
+.cad-tabs-list { display: flex; gap: 2px; overflow: hidden; min-width: 0; flex: 1; }
+.cad-tabs-navigation { display: flex; flex-shrink: 0; gap: 2px; }
+.cad-tab-nav { border: 0; border-radius: 3px; background: transparent; color: var(--cad-text); cursor: pointer; min-width: 25px; height: 26px; padding: 2px; }
+.cad-tab-nav:hover:not(:disabled) { background: var(--cad-bg); }
+.cad-tab-nav:disabled { opacity: .35; cursor: default; }
 .cad-tab {
+    flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     gap: 8px;

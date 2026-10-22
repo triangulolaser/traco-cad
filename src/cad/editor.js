@@ -2081,7 +2081,7 @@ export class Editor {
         }
         let parsed;
         try {
-            parsed = parseDxf(text,{preserveBlocks:true,preserveDimensions:true});
+            parsed = parseDxf(text,{preserveBlocks:true,preserveDimensions:true,dimensionColor:1});
         } catch (error) {
             usage('import_failure');
             this.log(`Falha ao ler DXF: ${error.message}`, 'error');
