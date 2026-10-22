@@ -204,3 +204,20 @@ test('cota linear: alça da seta põe as setas por fora ou por dentro', async ()
     assert.ok(tipX(dimensionGeometry(short, style))[0] < 0);
     assert.ok(tipX(dimensionGeometry({ ...short, arrowPlacement: 'inside' }, style))[0] >= 0);
 });
+
+test('cota linear: alça no meio da linha sob o número arrasta o texto para o outro lado', async () => {
+    const { dimensionGeometry, defaultDimStyle } = await import('../src/cad/dimensions.js');
+    const style = defaultDimStyle();
+    const dim = { id: 'd8', type: 'dimension', kind: 'horizontal', p1: { x: 0, y: 0 }, p2: { x: 40, y: 0 }, linePoint: { x: 0, y: 10 } };
+    const g = getEntityGrips(dim, style).find((x) => x.type === 'textAlong');
+    assert.ok(Math.abs(g.point.x - 20) < 1e-9 && Math.abs(g.point.y - 10) < 1e-9);
+    const moved = applyGripMove(dim, g, { x: -15, y: 10 });
+    const t = dimensionGeometry(moved, style).texts[0];
+    const before = dimensionGeometry(dim, style).texts[0];
+    assert.ok(Math.abs(t.position.y - before.position.y) < 1e-6);
+    assert.ok(t.position.x < 0);
+    assert.equal(moved.linePoint.y, 10);
+    const g2 = getEntityGrips(moved, style).find((x) => x.type === 'textAlong');
+    assert.ok(Math.abs(g2.point.x + 15) < 1e-6 && Math.abs(g2.point.y - 10) < 1e-6);
+    assert.equal(applyGripMove(dim, g, { x: 20, y: 18 }).linePoint.y, 18);
+});

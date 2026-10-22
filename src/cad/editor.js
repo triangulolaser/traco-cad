@@ -840,7 +840,7 @@ export class Editor {
         for (const id of this.selection) {
             const entity = this.doc.entities.find((e) => e.id === id);
             if (entity && isEntityEditable(this.doc, entity)) {
-                grips.push(...getEntityGrips(entity));
+                grips.push(...getEntityGrips(entity, this.doc.dimStyle));
             }
         }
         return grips;

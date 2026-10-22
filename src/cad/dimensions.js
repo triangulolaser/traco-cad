@@ -180,7 +180,7 @@ export function formatMeasurement(value, style, prefix = '', suffix = '') {
     return formatted;
 }
 
-function effectiveStyle(style, entity) {
+export function effectiveStyle(style, entity) {
     const base = {
         ...defaultDimStyle(),
         ...(style ?? {}),
@@ -319,7 +319,15 @@ function linearGeometry(entity, style) {
         if (t > len) segments.push({ a: d2, b: add(d1, scale(lineDir, t + width / 2)) });
         else if (t < 0) segments.push({ a: d1, b: add(d1, scale(lineDir, t - width / 2)) });
     }
-    return { segments, arrows, texts: [textEntityAt(textCenter, angle, text, style, entity.id)], measurement, text };
+    const textAnchor = add(d1, scale(lineDir, dot(sub(textCenter, d1), lineDir)));
+    return { segments, arrows, texts: [textEntityAt(textCenter, angle, text, style, entity.id)], measurement, text, textAnchor, textNormal };
+}
+
+/** Ponto da linha de cota logo abaixo do texto (alça que arrasta o texto ao longo da linha). */
+export function linearTextHandle(entity, style) {
+    const s = effectiveStyle(style, entity);
+    const g = linearGeometry(entity, s);
+    return { point: g.textAnchor, normal: g.textNormal, lift: s.textGap + s.textHeight / 2 };
 }
 
 function radialGeometry(entity, style) {

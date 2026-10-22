@@ -4,7 +4,7 @@
 
 import { distance, sub, add, midpoint, polar, angleOf, normalizeAngle, sweepCCW, scale, perpendicular, dot } from './geometry.js';
 import { ensureSplineGeometry } from './extra-entities.js';
-import { LINEAR_DIMENSION_KINDS, linearDimensionEnds } from './dimensions.js';
+import { LINEAR_DIMENSION_KINDS, linearDimensionEnds, linearTextHandle } from './dimensions.js';
 
 /**
  * Retorna lista de alças (grips) disponíveis para a entidade.
@@ -45,7 +45,7 @@ export function gripsVisible(selectionSize) {
     return selectionSize > 0 && selectionSize <= GRIP_OBJECT_LIMIT;
 }
 
-export function getEntityGrips(entity) {
+export function getEntityGrips(entity, dimStyle) {
     if (!entity || !entity.id) return [];
     const grips = [];
 
@@ -87,6 +87,9 @@ export function getEntityGrips(entity) {
                 const { d1, d2 } = linearDimensionEnds(entity);
                 grips.push({ id: `${entity.id}:arrow1`, entityId: entity.id, type: 'arrow', index: 0, point: d1 });
                 grips.push({ id: `${entity.id}:arrow2`, entityId: entity.id, type: 'arrow', index: 1, point: d2 });
+                // Alça no meio da linha sob o número: arrasta o texto para qualquer lado, como no BricsCAD.
+                const h = linearTextHandle(entity, dimStyle);
+                grips.push({ id: `${entity.id}:textAlong`, entityId: entity.id, type: 'textAlong', point: h.point, normal: h.normal, lift: h.lift });
             }
             if (entity.linePoint) {
                 grips.push({ id: `${entity.id}:linePoint`, entityId: entity.id, type: 'linePoint', point: entity.linePoint });
@@ -236,6 +239,14 @@ export function applyGripMove(entity, grip, targetPoint) {
                 const delta = sub(textPosition, entity.textPosition);
                 const normal = dimensionLineNormal(entity);
                 const shift = normal ? scale(normal, delta.x * normal.x + delta.y * normal.y) : delta;
+                return { ...entity, textPosition, linePoint: add(entity.linePoint, shift) };
+            }
+            if (grip.type === 'textAlong') {
+                // O número acompanha a alça; afastar da linha leva a linha de cota junto.
+                const textPosition = add(p, scale(grip.normal, grip.lift));
+                const delta = sub(p, grip.point);
+                const normal = dimensionLineNormal(entity);
+                const shift = normal ? scale(normal, delta.x * normal.x + delta.y * normal.y) : { x: 0, y: 0 };
                 return { ...entity, textPosition, linePoint: add(entity.linePoint, shift) };
             }
             if (grip.type === 'arrow') {

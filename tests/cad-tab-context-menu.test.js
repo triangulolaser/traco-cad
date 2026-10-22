@@ -521,8 +521,8 @@ test('tooltip das guias preserva nome completo e nome atualizado', () => {
     }
 });
 
-test('ENTER no diálogo de alterações não salvas confirma Salvar (ou o botão focado)', async () => {
-    const run = async (focusAction) => {
+test('ENTER no diálogo de alterações não salvas confirma Salvar; setas trocam a opção destacada', async () => {
+    const run = async (keys = [], selectedAfter = null) => {
         const oldDoc = globalThis.document;
         const keyListeners = [];
         const buttons = ['cancel', 'discard', 'save'].map((action) => {
@@ -553,8 +553,10 @@ test('ENTER no diálogo de alterações não salvas confirma Salvar (ou o botão
             editor.runCommand = async (name) => { commands.push(name); };
             const pending = manager.closeCurrent();
             await new Promise((r) => setImmediate(r));
-            if (focusAction) fakeDoc.activeElement = buttons.find((b) => b.dataset.cadConfirmAction === focusAction);
             assert.equal(keyListeners.length, 1);
+            assert.ok(buttons[2].classList.contains('is-selected'), 'Salvar vem pré-selecionado');
+            for (const key of keys) keyListeners[0]({ key, preventDefault() {}, stopPropagation() {} });
+            if (selectedAfter) assert.ok(buttons.find((b) => b.dataset.cadConfirmAction === selectedAfter).classList.contains('is-selected'));
             keyListeners[0]({ key: 'Enter', preventDefault() {}, stopPropagation() {} });
             const closed = await pending;
             return { closed, commands, tabs: manager.tabs.length, listeners: keyListeners.length };
@@ -562,10 +564,15 @@ test('ENTER no diálogo de alterações não salvas confirma Salvar (ou o botão
             globalThis.document = oldDoc;
         }
     };
-    const save = await run(null);
+    const save = await run();
     assert.deepEqual(save.commands, ['SAVE']);
     assert.equal(save.listeners, 0);
-    const discard = await run('discard');
+    const discard = await run(['ArrowLeft'], 'discard');
     assert.deepEqual(discard.commands, []);
     assert.equal(discard.closed, true);
+    const cancel = await run(['ArrowLeft', 'ArrowLeft'], 'cancel');
+    assert.equal(cancel.closed, false);
+    assert.equal(cancel.tabs, 1);
+    const wrap = await run(['Tab'], 'cancel');
+    assert.equal(wrap.closed, false);
 });

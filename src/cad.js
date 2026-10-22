@@ -1729,22 +1729,31 @@ function askSaveBeforeClose(root, docName) {
             document.removeEventListener('keydown', onKey, true);
             resolve(choice);
         };
-        const onKey = (event) => {
-            if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish('cancel'); return; }
-            // ENTER confirma o botão focado (Salvar por padrão); a linha de comando do CAD não pode engolir a tecla.
-            if (event.key === 'Enter' || event.key === 'NumpadEnter') {
-                event.preventDefault();
-                event.stopPropagation();
-                const focused = document.activeElement?.closest?.('[data-cad-confirm-action]');
-                finish(focused && overlay.contains(focused) ? focused.dataset.cadConfirmAction : 'save');
-            }
+        // A seleção fica no diálogo, não no foco do navegador: o CAD devolve o foco à linha de comando.
+        const buttons = Array.from(overlay.querySelectorAll('[data-cad-confirm-action]'));
+        let selected = Math.max(0, buttons.findIndex((b) => b.dataset.cadConfirmAction === 'save'));
+        const select = (index) => {
+            selected = (index + buttons.length) % buttons.length;
+            buttons.forEach((b, i) => {
+                b.classList.toggle('is-selected', i === selected);
+                b.setAttribute('aria-selected', i === selected ? 'true' : 'false');
+            });
+            buttons[selected]?.focus?.();
         };
-        overlay.querySelectorAll('[data-cad-confirm-action]').forEach((button) => {
+        const onKey = (event) => {
+            const stop = () => { event.preventDefault(); event.stopPropagation(); };
+            if (event.key === 'Escape') { stop(); finish('cancel'); return; }
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowUp' || (event.key === 'Tab' && event.shiftKey)) { stop(); select(selected - 1); return; }
+            if (event.key === 'ArrowRight' || event.key === 'ArrowDown' || event.key === 'Tab') { stop(); select(selected + 1); return; }
+            if (event.key === 'Enter' || event.key === 'NumpadEnter') { stop(); finish(buttons[selected]?.dataset.cadConfirmAction ?? 'save'); }
+        };
+        buttons.forEach((button, i) => {
             button.addEventListener('click', () => finish(button.dataset.cadConfirmAction));
+            button.addEventListener('mouseenter', () => select(i));
         });
         document.addEventListener('keydown', onKey, true);
         root.appendChild(overlay);
-        overlay.querySelector('[data-cad-confirm-action="save"]')?.focus?.();
+        select(selected);
     });
 }
 

@@ -1207,6 +1207,16 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-confirm-modal {
     border-color: rgba(245, 158, 11, 0.4);
 }
+/* Opção escolhida pelo teclado (setas/TAB) e confirmada com ENTER. */
+.cad-confirm-modal .cad-btn.is-selected {
+    outline: 2px solid #fbbf24;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.25);
+}
+.cad-app[data-cad-theme="light"] .cad-confirm-modal .cad-btn.is-selected {
+    outline-color: #d97706;
+    box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.2);
+}
 .cad-error-badge.cad-error-badge-warning,
 .cad-error-badge-warning {
     background: rgba(245, 158, 11, 0.15);

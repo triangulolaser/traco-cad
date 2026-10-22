@@ -769,7 +769,7 @@ export class Renderer {
 
     drawGrips(entity, hoverGrip, activeGrip) {
         const { ctx, viewport } = this;
-        const grips = getEntityGrips(entity);
+        const grips = getEntityGrips(entity, this.currentDimStyle);
         ctx.save();
         ctx.setLineDash([]);
         ctx.lineWidth = 1;
