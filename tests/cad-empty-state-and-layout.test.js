@@ -228,3 +228,11 @@ test('cad.css: estado vazio .cad-app.is-empty oculta workspace contents, termina
         '.cad-statusbar deve ser display: none !important quando is-empty'
     );
 });
+
+test('cad.css: destaque do botão escolhido no aviso de fechar guia vence o reset de :focus', () => {
+    const css = readFileSync(resolve('src/styles/cad.css'), 'utf8');
+    const rule = css.match(/\.cad-app \.cad-confirm-modal \.cad-btn\.is-selected\s*\{([^}]*)\}/);
+    assert.ok(rule, 'regra do botão selecionado ausente');
+    assert.match(rule[1], /outline:[^;]*!important/);
+    assert.match(rule[1], /box-shadow:[^;]*!important/);
+});

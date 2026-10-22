@@ -1207,15 +1207,17 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-confirm-modal {
     border-color: rgba(245, 158, 11, 0.4);
 }
-/* Opção escolhida pelo teclado (setas/TAB) e confirmada com ENTER. */
-.cad-confirm-modal .cad-btn.is-selected {
-    outline: 2px solid #fbbf24;
+/* Opção escolhida pelo teclado (setas/TAB) e confirmada com ENTER.
+   !important vence o reset `.cad-app *:focus`, que apagava o destaque do botão focado
+   até a janela perder o foco (Traço desktop, 22/10). */
+.cad-app .cad-confirm-modal .cad-btn.is-selected {
+    outline: 2px solid #fbbf24 !important;
     outline-offset: 2px;
-    box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.25);
+    box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.25) !important;
 }
 .cad-app[data-cad-theme="light"] .cad-confirm-modal .cad-btn.is-selected {
-    outline-color: #d97706;
-    box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.2);
+    outline-color: #d97706 !important;
+    box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.2) !important;
 }
 .cad-error-badge.cad-error-badge-warning,
 .cad-error-badge-warning {
