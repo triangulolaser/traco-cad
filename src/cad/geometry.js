@@ -599,6 +599,80 @@ export function arcFromStartEndRadius(start, end, radius) {
 }
 
 // Círculo Tangente, Tangente, Raio (TTR) entre 2 linhas
+// Círculo tangente a três objetos (AI_CIRCTAN do BricsCAD): linhas tomadas como infinitas,
+// arcos como o círculo de apoio. Resolve cada combinação de lados por Newton e fica com a
+// solução cujos pontos de tangência caem mais perto dos cliques.
+export function circleTangentToThree(picks) {
+    if (!Array.isArray(picks) || picks.length !== 3) return null;
+    const objs = picks.map(({ entity, point }) => {
+        if (entity?.type === 'line') {
+            const d = sub(entity.end, entity.start);
+            const len = Math.hypot(d.x, d.y);
+            if (len < EPS) return null;
+            return { kind: 'line', p0: entity.start, n: { x: -d.y / len, y: d.x / len }, pick: point };
+        }
+        if ((entity?.type === 'circle' || entity?.type === 'arc') && entity.radius > EPS) {
+            return { kind: 'circle', c: entity.center, R: entity.radius, pick: point };
+        }
+        return null;
+    });
+    if (objs.some((o) => !o)) return null;
+    // Linha: s=±1 é o lado. Círculo: 1 = por fora, -1 = dentro dele, 0 = envolvendo-o.
+    const modes = (o) => (o.kind === 'line' ? [1, -1] : [1, -1, 0]);
+    const residual = (o, s, x, y, r) => {
+        if (o.kind === 'line') return o.n.x * (x - o.p0.x) + o.n.y * (y - o.p0.y) - s * r;
+        const dist = Math.hypot(x - o.c.x, y - o.c.y);
+        return s === 1 ? dist - o.R - r : s === -1 ? dist - o.R + r : dist + o.R - r;
+    };
+    const touch = (o, s, c, r) => {
+        if (o.kind === 'line') return { x: c.x - s * r * o.n.x, y: c.y - s * r * o.n.y };
+        const v = sub(c, o.c);
+        const len = Math.hypot(v.x, v.y);
+        if (len < EPS) return null;
+        return { x: o.c.x + (v.x / len) * o.R, y: o.c.y + (v.y / len) * o.R };
+    };
+    const pts = objs.map((o) => o.pick);
+    const cx = (pts[0].x + pts[1].x + pts[2].x) / 3;
+    const cy = (pts[0].y + pts[1].y + pts[2].y) / 3;
+    const spread = Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy)), ...objs.map((o) => o.R ?? 0), 1e-3);
+    const seeds = [];
+    for (const k of [0.25, 1, 4]) {
+        seeds.push([cx, cy, spread * k]);
+        for (const p of pts) seeds.push([(p.x + cx) / 2, (p.y + cy) / 2, spread * k]);
+    }
+    let best = null;
+    for (const s0 of modes(objs[0])) for (const s1 of modes(objs[1])) for (const s2 of modes(objs[2])) {
+        const ss = [s0, s1, s2];
+        for (const seed of seeds) {
+            let [x, y, r] = seed;
+            let ok = false;
+            for (let it = 0; it < 60; it++) {
+                const f = objs.map((o, i) => residual(o, ss[i], x, y, r));
+                if (Math.max(...f.map(Math.abs)) < 1e-10 * Math.max(1, spread)) { ok = true; break; }
+                const h = 1e-7 * Math.max(1, spread);
+                const J = objs.map((o, i) => [
+                    (residual(o, ss[i], x + h, y, r) - f[i]) / h,
+                    (residual(o, ss[i], x, y + h, r) - f[i]) / h,
+                    (residual(o, ss[i], x, y, r + h) - f[i]) / h,
+                ]);
+                const det3 = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+                const D = det3(J);
+                if (!Number.isFinite(D) || Math.abs(D) < 1e-14) break;
+                const col = (k) => J.map((row, i) => row.map((v, j) => (j === k ? -f[i] : v)));
+                x += det3(col(0)) / D; y += det3(col(1)) / D; r += det3(col(2)) / D;
+                if (!Number.isFinite(x + y + r)) break;
+            }
+            if (!ok || !(r > EPS)) continue;
+            const c = { x, y };
+            const touches = objs.map((o, i) => touch(o, ss[i], c, r));
+            if (touches.some((t) => !t)) continue;
+            const score = touches.reduce((acc, t, i) => acc + Math.hypot(t.x - pts[i].x, t.y - pts[i].y), 0);
+            if (!best || score < best.score - 1e-9) best = { center: c, radius: r, touches, score };
+        }
+    }
+    return best ? { center: best.center, radius: best.radius, tangentPoints: best.touches } : null;
+}
+
 export function circleFromTangentsAndRadius(line1, pick1, line2, pick2, radius) {
     if (!line1 || !line2 || radius <= 0) return null;
     const l1x = line1.end.x - line1.start.x;

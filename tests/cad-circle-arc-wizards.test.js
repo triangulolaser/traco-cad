@@ -273,3 +273,65 @@ test('Comando ARC 3p: segue sequência 1-Ponto inicial, 2-Ponto final, 3-Passage
 });
 
 
+
+function createPolygonEditor(points, keyword) {
+    const editor = createMockEditor();
+    editor.memory = {};
+    editor.keywords = [];
+    editor.getNumber = async () => 6;
+    editor.getKeyword = async (prompt, options, def) => { editor.keywords.push(prompt); return { key: keyword ?? def }; };
+    editor.pointQueue.push(...points.map((p) => (p.keyword ? p : { point: p })));
+    return editor;
+}
+
+const polygonVertices = (editor) => editor.commits[0].doc.entities.find((e) => e.type === 'polyline').vertices;
+
+test('POLYGON i (ribbon Centro-Vértice): vértice no ponto clicado, sem perguntar inscrito/circunscrito', async () => {
+    const editor = createPolygonEditor([{ x: 0, y: 0 }, { x: 10, y: 0 }]);
+    await resolveCommand('POLYGON').run(editor, ['i']);
+    assert.equal(editor.keywords.length, 0);
+    assert.equal(editor.prompts[0].options.options, undefined, 'sem a opção Aresta no centro');
+    const v = polygonVertices(editor);
+    assert.equal(v.length, 6);
+    assert.ok(Math.abs(v[0].x - 10) < 1e-9 && Math.abs(v[0].y) < 1e-9);
+});
+
+test('POLYGON c (ribbon Centro-Lado): meio do lado no ponto clicado', async () => {
+    const editor = createPolygonEditor([{ x: 0, y: 0 }, { x: 10, y: 0 }]);
+    await resolveCommand('POLYGON').run(editor, ['c']);
+    assert.equal(editor.keywords.length, 0);
+    const v = polygonVertices(editor);
+    const mids = v.map((p, i) => ({ x: (p.x + v[(i + 1) % 6].x) / 2, y: (p.y + v[(i + 1) % 6].y) / 2 }));
+    assert.ok(mids.some((m) => Math.abs(m.x - 10) < 1e-9 && Math.abs(m.y) < 1e-9), 'um lado tangencia (10,0)');
+});
+
+test('POLYGON e (ribbon Borda): lado entre os dois pontos, sem pedir centro', async () => {
+    const editor = createPolygonEditor([{ x: 0, y: 0 }, { x: 10, y: 0 }]);
+    await resolveCommand('POLYGON').run(editor, ['e']);
+    assert.match(editor.prompts[0].prompt, /Primeiro ponto da aresta/);
+    const v = polygonVertices(editor);
+    assert.deepEqual([v[0].x, v[0].y, v[1].x, v[1].y], [0, 0, 10, 0]);
+    assert.equal(v.length, 6);
+});
+
+test('POLYGON sem modo (terminal): mantém Aresta e a pergunta inscrito/circunscrito', async () => {
+    const editor = createPolygonEditor([{ x: 0, y: 0 }, { x: 10, y: 0 }], 'i');
+    await resolveCommand('POLYGON').run(editor, []);
+    assert.equal(editor.prompts[0].options.options[0].key, 'a');
+    assert.equal(editor.keywords.length, 1);
+    const edge = createPolygonEditor([{ keyword: 'a' }, { x: 0, y: 0 }, { x: 10, y: 0 }]);
+    await resolveCommand('POLYGON').run(edge, []);
+    assert.deepEqual([polygonVertices(edge)[1].x, polygonVertices(edge)[1].y], [10, 0]);
+});
+
+// O HTML do desktop existe nas duas árvores (o template web não); a paridade de comandos
+// entre os dois fica no cad-ribbon.test.js.
+test('Ribbon: Retângulo virou botão com seta e os três polígonos', () => {
+    const html = readFileSync(resolve('index.html'), 'utf8');
+    const block = html.slice(html.indexOf('data-cad-split="rectangle"'), html.indexOf('data-cad-command="HATCH"'));
+    assert.ok(block.length > 0, 'split do retângulo');
+    for (const [args, text] of [['i', 'Polígono, Centro-Vértice'], ['c', 'Polígono, Centro-Lado'], ['e', 'Polígono, Borda']]) {
+        assert.ok(block.includes(`data-cad-command="POLYGON" data-cad-args="${args}" data-cad-label="${text}"`), text);
+    }
+    assert.ok(block.includes('data-cad-command="RECTANG" data-cad-label="Retângulo"'));
+});

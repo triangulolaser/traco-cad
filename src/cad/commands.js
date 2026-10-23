@@ -31,6 +31,7 @@ import {
     arcFromStartEndDirection,
     arcFromStartEndRadius,
     circleFromTangentsAndRadius,
+    circleTangentToThree,
     midpoint,
     translateEntity,
     transformEntity,
@@ -64,7 +65,7 @@ import {
 } from './geometry.js';
 import { addEntities, removeEntities, replaceEntities, updateEntities, editableEntities, setCurrentLayer, updateLayer, layerOf, createDocument, documentStats, hexToAci, aciToHex, BYLAYER } from './document.js';
 import { parseDxf, writeDxf } from './dxf.js';
-import { chooseLinearKind, autoDimensionFor, dimensionGeometry, DIMENSION_LAYER, ensureDimensionSetup, computeAutoDimScale, getDrawingContentBox, resolveAngularQuadrant } from './dimensions.js';
+import { chooseLinearKind, autoDimensionFor, dimensionGeometry, DIMENSION_LAYER, ensureDimensionSetup, computeAutoDimScale, getDrawingContentBox, resolveAngularQuadrant, placeDimensionText } from './dimensions.js';
 import { interpolateSpline, sampleSpline } from './splines.js';
 import { ellipsePoint, imageLocalPoint, ensureSplineGeometry } from './extra-entities.js';
 import { autoDimensionPart } from './autodim.js';
@@ -2377,19 +2378,28 @@ async function join(editor) {
 // ---------------------------------------------------------------------------
 // Polígono, elipse, spline
 
-async function polygon(editor) {
+// A ribbon passa o modo como no BricsCAD: i = Centro-Vértice (inscrito), c = Centro-Lado
+// (circunscrito), e = Borda. Sem modo, o terminal pergunta como no AutoCAD.
+async function polygon(editor, args = []) {
+    const preset = String((Array.isArray(args) ? args[0] : args) || '').toLowerCase();
     const sides = await editor.getNumber('Número de lados', { defaultValue: editor.memory.polygonSides ?? 6 });
     if (!Number.isInteger(sides) || sides < 3 || sides > 1024) return editor.log('Informe um inteiro entre 3 e 1024.', 'error');
     editor.memory.polygonSides = sides;
-    const centerRes = await editor.getPoint('Centro do polígono', { options: [{ key: 'a', label: 'Aresta' }] });
-    if (centerRes.keyword === 'a') {
-        const a = (await editor.getPoint('Primeiro ponto da aresta:')).point;
+    const byEdgePreset = preset === 'e' || preset === 'a';
+    const centerRes = byEdgePreset ? null
+        : await editor.getPoint('Centro do polígono', preset ? {} : { options: [{ key: 'a', label: 'Aresta' }] });
+    if (byEdgePreset || centerRes?.keyword === 'a') {
+        const a = (await editor.getPoint('Primeiro ponto da aresta:'))?.point;
+        if (!a) return null;
         const b = await editor.getPoint('Segundo ponto da aresta', { reference: a, preview: (cursor) => [polygonFromEdge(sides, a, cursor)] });
-        if (!b.point) return null;
+        if (!b?.point) return null;
         return editor.commit('Polígono', addEntities(editor.doc, [polygonFromEdge(sides, a, b.point)]));
     }
-    const center = centerRes.point;
-    const mode = await editor.getKeyword('Inscrito no círculo ou Circunscrito ao círculo?', [{ key: 'i', label: 'Inscrito' }, { key: 'c', label: 'Circunscrito' }], editor.memory.polygonMode ?? 'i');
+    const center = centerRes?.point;
+    if (!center) return null;
+    const mode = preset === 'i' || preset === 'c'
+        ? { key: preset }
+        : await editor.getKeyword('Inscrito no círculo ou Circunscrito ao círculo?', [{ key: 'i', label: 'Inscrito' }, { key: 'c', label: 'Circunscrito' }], editor.memory.polygonMode ?? 'i');
     editor.memory.polygonMode = mode.key;
     const build = (radius, angle) => {
         const r = mode.key === 'c' ? radius / Math.cos(Math.PI / sides) : radius;
@@ -4339,6 +4349,50 @@ async function importDxf(editor) {
     } catch (error) { usage('import_failure'); throw error; }
 }
 
+// Comandos AI_* do BricsCAD.
+const TANGENT_TYPES = new Set(['line', 'circle', 'arc']);
+
+async function aiCircTan(editor) {
+    const prompts = ['Selecione o primeiro objeto tangente:', 'Selecione o segundo objeto tangente:', 'Selecione o terceiro objeto tangente:'];
+    const picks = [];
+    for (const prompt of prompts) {
+        const used = new Set(picks.map((p) => p.entity.id));
+        const pick = await editor.getEntity(prompt, { filter: (e) => TANGENT_TYPES.has(e.type) && !used.has(e.id) });
+        if (!pick) return;
+        picks.push({ entity: pick.entity, point: pick.point });
+    }
+    const c = circleTangentToThree(picks);
+    if (!c) return editor.log('Não existe círculo tangente aos três objetos.', 'error');
+    editor.commit('Círculo tangente', addEntities(editor.doc, [{ type: 'circle', center: c.center, radius: c.radius }]));
+    editor.log(`Círculo tangente: raio ${fmt(c.radius)}  diâmetro ${fmt(c.radius * 2)}`);
+}
+
+async function aiDeselect(editor) {
+    editor.clearSelection();
+}
+
+async function aiMolc(editor) {
+    const pick = await editor.getEntity('Selecione o objeto cujo layer será o atual:');
+    if (!pick) return;
+    editor.setCurrentLayer(pick.entity.layer);
+    editor.log(`Layer atual: ${pick.entity.layer}`);
+}
+
+async function aiDimText(editor, mode) {
+    const preselected = editor.selectedEntities?.().filter((e) => e.type === 'dimension').map((e) => e.id) ?? [];
+    const ids = preselected.length ? preselected : await editor.getSelection('Selecione as cotas:');
+    if (!ids?.length) return;
+    const dims = editor.entitiesById(ids).filter((e) => e.type === 'dimension');
+    const replacements = new Map();
+    for (const e of dims) {
+        const next = placeDimensionText(e, editor.doc.dimStyle, mode);
+        if (next) replacements.set(e.id, next);
+    }
+    if (!replacements.size) return editor.log('Nenhuma cota linear selecionada.', 'error');
+    editor.commit('Texto da cota', replaceEntities(editor.doc, replacements));
+    if (replacements.size < dims.length) editor.log(`${dims.length - replacements.size} cota(s) não linear(es) ignorada(s).`);
+}
+
 async function selectAll(editor) {
     editor.selectAll();
 }
@@ -4529,6 +4583,15 @@ export const COMMANDS = {
     GRID: { aliases: [], run: (editor) => toggle(editor, 'grid'), description: 'Alternar grade (F7)' },
     STATS: { aliases: [], run: stats, description: 'Contagem de entidades' },
     HELP: { aliases: ['?'], run: help, description: 'Lista de comandos' },
+    AI_CIRCTAN: { aliases: ['CIRCTAN', 'TTT'], run: aiCircTan, description: 'Círculo tangente a três objetos (linhas, arcos ou círculos)' },
+    AI_DESELECT: { aliases: [], run: aiDeselect, description: 'Limpar a seleção' },
+    AI_SELALL: { aliases: [], run: selectAll, description: 'Selecionar tudo' },
+    AI_DRAWORDER: { aliases: [], run: drawOrder, description: 'Ordem de desenho (como DRAWORDER)' },
+    AI_MOLC: { aliases: ['MOLC'], run: aiMolc, description: 'Tornar atual o layer do objeto selecionado' },
+    AI_PROPCHK: { aliases: [], run: list, description: 'Propriedades dos objetos (como LIST)' },
+    AI_DIM_TEXTHOME: { aliases: [], run: (editor) => aiDimText(editor, 'home'), description: 'Texto da cota de volta à posição padrão' },
+    AI_DIM_TEXTCENTER: { aliases: [], run: (editor) => aiDimText(editor, 'center'), description: 'Texto da cota no meio, sobre a linha de cota' },
+    AI_DIM_TEXTABOVE: { aliases: [], run: (editor) => aiDimText(editor, 'above'), description: 'Texto da cota no meio, acima da linha de cota' },
 };
 
 // Todo comando aceita o nome em inglês e em português.

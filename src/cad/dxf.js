@@ -1249,7 +1249,10 @@ export function writeDxf(doc, { view = doc.view } = {}) {
     let out = '';
     out += pair(0, 'SECTION') + pair(2, 'HEADER');
     out += pair(9, '$ACADVER') + pair(1, 'AC1015');
-    out += pair(9, '$INSUNITS') + pair(70, doc.units === 'in' ? 1 : 4);
+    const insUnits = doc.units === 'in' ? 1 : 4;
+    out += pair(9, '$INSUNITS') + pair(70, insUnits);
+    // Sem $MEASUREMENT o DXF é imperial por padrão e o SolidWorks abre o mm como polegada (×25,4).
+    out += pair(9, '$MEASUREMENT') + pair(70, doc.units === 'in' ? 0 : 1);
     if (doc.insBase) out += pair(9, '$INSBASE') + pair(10, fmt(doc.insBase.x)) + pair(20, fmt(doc.insBase.y)) + pair(30, 0);
     out += pair(9, '$TEXTSTYLE') + pair(7, 'STANDARD');
     out += pair(9, '$DIMSTYLE') + pair(2, 'STANDARD');

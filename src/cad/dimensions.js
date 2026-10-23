@@ -103,7 +103,8 @@ export function ensureDimensionSetup(editor, referencePoints = []) {
     const hasDimensions = doc.entities.some((e) => e.type === 'dimension' && !e.dimStyleName);
     const currentScale = doc.dimStyle?.scale ?? 1;
 
-    if (!hasDimensions && currentScale === 1) {
+    // Escala digitada no painel vale mesmo se for 1; só a escala nunca tocada é ajustada sozinha.
+    if (!hasDimensions && currentScale === 1 && !doc.dimStyle?.scaleManual) {
         const box = getDrawingContentBox(doc);
         let maxDim = 0;
         if (!boxIsEmpty(box)) {
@@ -297,7 +298,7 @@ function linearGeometry(entity, style) {
     const width = textWidth({ text, height: style.textHeight, fontFamily: style.fontFamily, bold: style.bold, italic: style.italic });
     let textCenter;
     const offLine = entity.textPosition ? dot(sub(entity.textPosition, d1), textNormal) : 0;
-    if (entity.textPosition && style.textAbove && Math.abs(offLine) < style.textHeight / 2) {
+    if (entity.textPosition && style.textAbove && !entity.textInLine && Math.abs(offLine) < style.textHeight / 2) {
         // DIMTAD=1 (SolidWorks/BricsCAD): o código 11 vem sobre a linha de cota; o texto fica acima dela.
         textCenter = add(sub(entity.textPosition, scale(textNormal, offLine)), scale(textNormal, style.textGap));
     } else if (entity.textPosition) {
@@ -324,6 +325,21 @@ function linearGeometry(entity, style) {
 }
 
 /** Ponto da linha de cota logo abaixo do texto (alça que arrasta o texto ao longo da linha). */
+// AI_DIM_TEXTHOME / TEXTCENTER / TEXTABOVE do BricsCAD: devolve a cota com o texto na
+// posição padrão, no meio sobre a linha ou no meio acima dela. Cotas não lineares só voltam ao padrão.
+export function placeDimensionText(entity, style, mode) {
+    const { textPosition, textInLine, ...home } = entity;
+    if (mode === 'home') return home;
+    if (!['horizontal', 'vertical', 'rotated', 'aligned', undefined].includes(entity.kind) || !entity.p1 || !entity.p2) return null;
+    const s = effectiveStyle(style, entity);
+    const { d1, d2 } = linearDimensionEnds(entity);
+    const angle = readableAngle(angleOf(d1, d2));
+    const normal = perpendicular({ x: Math.cos(angle), y: Math.sin(angle) });
+    const mid = midpoint(d1, d2);
+    if (mode === 'center') return { ...home, textPosition: mid, textInLine: true };
+    return { ...home, textPosition: add(mid, scale(normal, s.textGap + s.textHeight / 2)) };
+}
+
 export function linearTextHandle(entity, style) {
     const s = effectiveStyle(style, entity);
     const g = linearGeometry(entity, s);

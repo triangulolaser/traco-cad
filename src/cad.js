@@ -134,7 +134,7 @@ export function setupSplitButtons(editor, root) {
                     else delete main.dataset.cadArgs;
                     if (label) main.title = label;
                     if (labelSlot && label) {
-                        const shortName = cmd === 'CIRCLE' ? 'Círculo' : (cmd === 'ARC' ? 'Arco' : label);
+                        const shortName = { CIRCLE: 'Círculo', ARC: 'Arco', POLYGON: 'Polígono' }[cmd] ?? label;
                         labelSlot.textContent = shortName;
                     }
                     if (iconSlot && itemIcon) {
@@ -409,8 +409,8 @@ function renderProperties(editor, root) {
             const apply = () => {
                 const val = parseDecimalInput(input.value);
                 if (Number.isFinite(val) && val > 0) {
-                    editor.doc = { ...editor.doc, dimStyle: { ...(editor.doc.dimStyle ?? {}), [field]: val } };
-                    editor.requestRender();
+                    // editor.doc só tem getter: atribuir lançava TypeError e o campo não fazia nada.
+                    if (editor.doc.dimStyle?.[field] !== val) editor.commit('Estilo de cota', { ...editor.doc, dimStyle: { ...(editor.doc.dimStyle ?? {}), [field]: val, ...(field === 'scale' ? { scaleManual: true } : {}) } });
                 } else {
                     renderProperties(editor, root);
                 }
