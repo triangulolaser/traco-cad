@@ -1406,5 +1406,11 @@ export default {
     "EPS sem contornos legíveis. Suportado: EPS exportado pelo CorelDRAW com curvas (texto convertido em curvas).": "EPS has no readable outlines. Supported: EPS exported by CorelDRAW with curves (text converted to curves).",
     "Arquivo SVG inválido.": "Invalid SVG file.",
     "Arquivo SVG sem elemento": "SVG file without element",
-    "SVG sem contornos (path, rect, circle, ellipse, polygon, polyline ou line).": "SVG has no outlines (path, rect, circle, ellipse, polygon, polyline or line)."
+    "SVG sem contornos (path, rect, circle, ellipse, polygon, polyline ou line).": "SVG has no outlines (path, rect, circle, ellipse, polygon, polyline or line).",
+    "Layer atual dos novos objetos": "Current layer for new objects",
+    "Cor dos próximos objetos desenhados": "Color of the next drawn objects",
+    "Tipo de linha dos próximos objetos": "Linetype of the next objects",
+    "Espessura dos próximos objetos": "Lineweight of the next objects",
+    "Novo objeto": "New object",
+    "Novos objetos": "New objects"
 };

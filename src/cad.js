@@ -369,6 +369,62 @@ const geometryLabel = (field) => GEOMETRY_LABELS[field.key] ?? (field.key === 's
 
 const TYPE_LABELS = { line: 'Linha', circle: 'Círculo', arc: 'Arco', polyline: 'Polilinha', ellipse: 'Elipse', spline: 'Spline', text: 'Texto', dimension: 'Cota', image: 'Imagem' };
 
+// Cor, tipo de linha e espessura dos próximos objetos desenhados. Ficam valendo
+// até serem trocados, como CECOLOR/CELTYPE/CELWEIGHT.
+function drawPropsHtml(editor) {
+    const props = editor.drawProps;
+    const colorKey = String(props.color);
+    const colorOptions = [['bylayer', 'ByLayer'], ...STANDARD_ACI.map(([n, name]) => [String(n), name])];
+    if (!colorOptions.some(([v]) => v === colorKey)) colorOptions.push([colorKey, colorKey.startsWith('#') ? colorKey.toUpperCase() : colorKey]);
+    const shown = editor.colorOf({ type: 'line', layer: editor.doc.currentLayer, color: props.color });
+    const swatchHex = String(shown).startsWith('#') ? shown : '#ffffff';
+    const lineType = props.lineType === 'bylayer' ? 'bylayer' : String(props.lineType).toUpperCase();
+    const layerOptions = editor.doc.layers.map((l) => `<option value="${escapeHtml(l.name)}" ${l.name === editor.doc.currentLayer ? 'selected' : ''}>${escapeHtml(l.name)}</option>`).join('');
+    const row = (label, control) => `<div class="cad-prop-row"><span class="cad-prop-key">${label}</span><span class="cad-prop-value">${control}</span></div>`;
+    return row('Layer', `<select data-draw-prop="layer" title="Layer atual dos novos objetos">${layerOptions}</select>`)
+        + row('Cor', `<span class="cad-prop-swatch" style="background:${swatchHex}" title="Escolher cor"><input type="color" data-draw-prop="color-picker" value="${swatchHex}" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;"></span><select data-draw-prop="color" title="Cor dos próximos objetos desenhados">${colorOptions.map(([v, label]) => `<option value="${escapeHtml(v)}" ${v === colorKey ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}<option value="__pick">Selecionar cor...</option></select>`)
+        + row('Tipo de linha', `<select data-draw-prop="lineType" title="Tipo de linha dos próximos objetos"><option value="bylayer" ${lineType === 'bylayer' ? 'selected' : ''}>ByLayer</option>${Object.keys(LINETYPES).map((lt) => `<option value="${lt}" ${lineType === lt ? 'selected' : ''}>${lt}</option>`).join('')}</select>`)
+        + row('Espessura', `<select data-draw-prop="lineWeight" title="Espessura dos próximos objetos"><option value="bylayer" ${props.lineWeight === 'bylayer' ? 'selected' : ''}>ByLayer</option>${LINEWEIGHTS.map((w) => `<option value="${w}" ${props.lineWeight === w ? 'selected' : ''}>${w === 0 ? 'Padrão (0.00 mm)' : `${(w / 100).toFixed(2)} mm`}</option>`).join('')}</select>`);
+}
+
+function bindDrawProps(editor, root, box) {
+    // Depois da escolha o foco volta à linha de comando para seguir digitando pontos.
+    const done = () => editor.terminal?.focus?.();
+    box.querySelector('[data-draw-prop="layer"]')?.addEventListener('change', (event) => {
+        editor.setCurrentLayer(event.target.value);
+        done();
+    });
+    const picker = box.querySelector('[data-draw-prop="color-picker"]');
+    const swatch = picker?.parentElement;
+    const openPicker = () => {
+        try {
+            if (typeof picker.showPicker === 'function') picker.showPicker();
+            else picker.click();
+        } catch (e) {
+            picker.click();
+        }
+    };
+    swatch?.addEventListener('click', openPicker);
+    picker?.addEventListener('input', () => { swatch.style.background = picker.value; });
+    picker?.addEventListener('change', () => { editor.setDrawProp('color', picker.value); done(); });
+    box.querySelector('[data-draw-prop="color"]')?.addEventListener('change', (event) => {
+        const raw = event.target.value;
+        if (raw === '__pick') {
+            event.target.value = String(editor.drawProps.color);
+            if (picker) openPicker();
+            return;
+        }
+        editor.setDrawProp('color', raw === 'bylayer' || raw.startsWith('#') ? raw : Number(raw));
+        done();
+    });
+    box.querySelector('[data-draw-prop="lineType"]')?.addEventListener('change', (event) => { editor.setDrawProp('lineType', event.target.value); done(); });
+    box.querySelector('[data-draw-prop="lineWeight"]')?.addEventListener('change', (event) => {
+        const raw = event.target.value;
+        editor.setDrawProp('lineWeight', raw === 'bylayer' ? 'bylayer' : Number(raw));
+        done();
+    });
+}
+
 function renderProperties(editor, root) {
     const box = root.querySelector('[data-cad-properties]');
     const title = root.querySelector('[data-cad-properties-title]');
@@ -385,6 +441,12 @@ function renderProperties(editor, root) {
     const layerOptions = editor.doc.layers.map((l) => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`).join('');
     const section = (label) => `<div class="cad-prop-section">${escapeHtml(label)}</div>`;
     const row = (k, v) => `<div class="cad-prop-row"><span class="cad-prop-key">${escapeHtml(k)}</span><span class="cad-prop-value" title="${escapeHtml(String(v))}">${v}</span></div>`;
+    if (editor.drawing) {
+        title.textContent = `Desenhando: ${editor.running}`;
+        box.innerHTML = section('Novo objeto') + drawPropsHtml(editor);
+        bindDrawProps(editor, root, box);
+        return;
+    }
     if (selected.length === 0) {
         title.textContent = 'Sem seleção';
         const doc = editor.doc;
@@ -399,10 +461,13 @@ function renderProperties(editor, root) {
             + `<div class="cad-prop-row"><span class="cad-prop-key">Tamanho da seta</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-global-prop="dimArrowSize" value="${fmt(doc.dimStyle?.arrowSize ?? 2.5)}" title="Tamanho padrão das setas das cotas"></span></div>`
             + `<div class="cad-prop-row"><span class="cad-prop-key">Escala geral</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-global-prop="dimOverallScale" value="${fmt(doc.dimStyle?.scale ?? 1)}" title="Multiplica texto e setas das novas cotas (DIMSCALE)"></span></div>`
             + row('Casas decimais', String(doc.dimStyle?.precision ?? 2))
+            + section('Novos objetos')
+            + drawPropsHtml(editor)
             + section('Vista')
             + row('Escala', `${fmt(editor.viewport.scale, 3)} px/un`)
             + row('Orto / Polar', `${editor.settings.ortho ? 'ligado' : 'desligado'} / ${editor.settings.polar ? 'ligado' : 'desligado'}`);
 
+        bindDrawProps(editor, root, box);
         for (const [prop, field] of [['dimTextHeight', 'textHeight'], ['dimArrowSize', 'arrowSize'], ['dimOverallScale', 'scale']]) {
             const input = box.querySelector(`[data-global-prop="${prop}"]`);
             if (!input) continue;

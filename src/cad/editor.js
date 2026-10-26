@@ -82,6 +82,29 @@ function crosshairMode(pending) {
 // Alternar a seleção é com Ctrl (Cmd no Mac); Shift fica para ortho e para TRIM↔EXTEND.
 const toggleKey = (event) => event.ctrlKey || event.metaKey;
 
+
+// Comandos que criam objetos novos: recebem a cor, o tipo de linha e a espessura
+// escolhidos no painel Propriedades antes de desenhar (CECOLOR/CELTYPE/CELWEIGHT).
+// Edições (COPY, OFFSET, MIRROR...) preservam as propriedades da origem.
+export const DRAW_COMMANDS = new Set([
+    'POINT', 'DONUT', 'LINE', 'CIRCLE', 'ARC', 'PLINE', 'RECTANG', 'REVCLOUD', 'TEXT', 'POLYGON', 'ELLIPSE', 'SPLINE',
+    'BOUNDARY', 'HATCH', 'RAY', 'XLINE', 'LEADER', 'AI_CIRCTAN',
+    'DIM', 'DIMENSION', 'DIMLINEAR', 'DIMHORIZONTAL', 'DIMVERTICAL', 'DIMALIGNED', 'DIMBASELINE', 'DIMCONTINUE',
+    'DIMCENTER', 'DIMANGULAR', 'DIMRADIUS', 'DIMDIAMETER',
+]);
+
+const isByLayer = (value) => value === undefined || value === null || value === 'bylayer';
+
+// Aplica as propriedades de desenho às entidades que não têm valor próprio.
+export function withDrawProps(entity, props) {
+    if (!props) return entity;
+    let next = entity;
+    for (const field of ['color', 'lineType', 'lineWeight']) {
+        if (!isByLayer(props[field]) && isByLayer(entity[field])) next = { ...next, [field]: props[field] };
+    }
+    return next;
+}
+
 export class Editor {
     constructor(root, options = {}) {
         this.root = root;
@@ -98,6 +121,7 @@ export class Editor {
         this.preview = [];
         this.pending = null;
         this.running = null;
+        this.drawProps = { color: 'bylayer', lineType: 'bylayer', lineWeight: 'bylayer' };
         this.lastCommand = null;
         this.cursorScreen = null;
         this.cursorWorld = null;
@@ -157,7 +181,31 @@ export class Editor {
         return this.history.present;
     }
 
+    get drawing() {
+        return Boolean(this.running && DRAW_COMMANDS.has(this.running));
+    }
+
+    setDrawProp(field, value) {
+        this.drawProps = { ...this.drawProps, [field]: value };
+        this.invalidate();
+        this.onChange(this);
+    }
+
+    applyDrawProps(doc) {
+        if (!this.drawing || !doc?.entities) return doc;
+        const before = new Set(this.doc.entities.map((e) => e.id));
+        let changed = false;
+        const entities = doc.entities.map((e) => {
+            if (before.has(e.id)) return e;
+            const next = withDrawProps(e, this.drawProps);
+            if (next !== e) changed = true;
+            return next;
+        });
+        return changed ? { ...doc, entities } : doc;
+    }
+
     commit(label, doc) {
+        doc = this.applyDrawProps(doc);
         this.history.commit(label, doc);
         usage('edit');
         setEntityContext({ dimStyle: doc.dimStyle });
@@ -411,6 +459,7 @@ export class Editor {
 
     render() {
         let preview = this.pending?.preview && this.cursorWorld ? safePreview(this.pending.preview, this.effectiveCursor()) : this.preview;
+        if (this.drawing) preview = preview.map((e) => (e.dimGuide ? e : withDrawProps(e, this.drawProps)));
         // Cota provisória (vermelha) da entrada dinâmica junto ao que está sendo desenhado.
         if (this.dyn?.spec.guides && this.cursorWorld) preview = [...preview, ...safePreview(this.dyn.spec.guides, this.effectiveCursor())];
         const rubber = this.activeGrip ? this.rubber : (this.pending?.reference && this.cursorWorld && ['point', 'pointOrEntity'].includes(this.pending.mode) ? { from: this.pending.reference, to: this.effectiveCursor() } : null);
@@ -1727,6 +1776,8 @@ export class Editor {
         this.terminal.log(`Comando: ${command.name}`, 'command');
         this.lastCommand = command.name;
         this.running = command.name;
+        // Painel Propriedades passa a mostrar cor/tipo/espessura do objeto a desenhar.
+        if (DRAW_COMMANDS.has(command.name)) this.onChange(this);
         try {
             await command.run(this, args);
         } catch (error) {

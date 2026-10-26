@@ -1036,34 +1036,73 @@ export class Renderer {
 
     // Mira no padrão do BricsCAD: eixos X vermelho e Y verde; mode 'select' (sem comando) = cruz + quadrado,
     // 'point' = só a cruz, 'pick' (pedindo objeto) = só o quadrado.
+    // A cor segue o que está de fato sob o cursor (imagem raster, hachura), não só o tema:
+    // fundo escuro usa as cores do tema escuro e fundo claro as do tema claro.
     drawCrosshair(cursor, snapped, mode = 'select') {
         const { ctx, viewport } = this;
         const s = viewport.worldToScreen(cursor);
+        const dark = this.crosshairOnDark(s);
+        const palette = dark === (this.theme.name === 'dark') ? this.theme : THEMES[dark ? 'dark' : 'light'];
         ctx.save();
         ctx.lineWidth = 1;
         ctx.setLineDash([]);
         if (mode === 'pick') {
-            ctx.strokeStyle = this.theme.crosshair;
+            ctx.strokeStyle = palette.crosshair;
             ctx.strokeRect(s.x - 4.5, s.y - 4.5, 9, 9);
             ctx.restore();
             return;
         }
         const size = 32;
-        ctx.strokeStyle = this.theme.crosshairX;
+        ctx.strokeStyle = palette.crosshairX;
         ctx.beginPath();
         ctx.moveTo(s.x - size, s.y + 0.5);
         ctx.lineTo(s.x + size, s.y + 0.5);
         ctx.stroke();
-        ctx.strokeStyle = this.theme.crosshairY;
+        ctx.strokeStyle = palette.crosshairY;
         ctx.beginPath();
         ctx.moveTo(s.x + 0.5, s.y - size);
         ctx.lineTo(s.x + 0.5, s.y + size);
         ctx.stroke();
         if (!snapped && mode !== 'point') {
-            ctx.strokeStyle = this.theme.crosshair;
+            ctx.strokeStyle = palette.crosshair;
             ctx.strokeRect(s.x - 4.5, s.y - 4.5, 9, 9);
         }
         ctx.restore();
+    }
+
+    // Luminância média do que já foi desenhado em volta do cursor, com histerese para não piscar
+    // ao passar por textura. Sem leitura de pixels (canvas sem getImageData), vale o tema.
+    crosshairOnDark(s) {
+        const fallback = this.theme.name === 'dark';
+        const { ctx } = this;
+        const dpr = this.dpr || 1;
+        const half = 12;
+        const x = Math.max(0, Math.round((s.x - half) * dpr));
+        const y = Math.max(0, Math.round((s.y - half) * dpr));
+        const w = Math.min(Math.round(half * 2 * dpr), (this.canvas?.width ?? 0) - x);
+        const h = Math.min(Math.round(half * 2 * dpr), (this.canvas?.height ?? 0) - y);
+        if (!(w > 0 && h > 0) || typeof ctx.getImageData !== 'function') return (this.lastCrosshairDark = fallback);
+        let data;
+        try {
+            data = ctx.getImageData(x, y, w, h)?.data;
+        } catch {
+            data = null;
+        }
+        if (!data?.length) return (this.lastCrosshairDark = fallback);
+        let sum = 0;
+        let count = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            const a = data[i + 3] / 255;
+            const bg = fallback ? 0.11 : 0.98;
+            const lum = (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
+            sum += lum * a + bg * (1 - a);
+            count += 1;
+        }
+        const lum = sum / count;
+        const previous = this.lastCrosshairDark ?? fallback;
+        const dark = previous ? lum < 0.55 : lum < 0.4;
+        this.lastCrosshairDark = dark;
+        return dark;
     }
 
     drawLxdsBackgroundWatermark() {
