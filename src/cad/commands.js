@@ -3804,7 +3804,7 @@ async function open(editor) {
         const selected = await bridge.showOpenDialog({
             multiple: true,
             filters: [
-                { name: 'Desenhos, projetos CAD e imagens', extensions: ['dxf', 'dwg', 'lxds', 'svg', 'cdr', 'elmt', 'qet', 'jpg', 'jpeg', 'png', 'bmp'] },
+                { name: 'Desenhos, projetos CAD e imagens', extensions: ['dxf', 'dwg', 'lxds', 'svg', 'eps', 'cdr', 'elmt', 'qet', 'jpg', 'jpeg', 'png', 'bmp'] },
                 { name: 'Imagens (JPG, PNG, BMP)', extensions: ['jpg', 'jpeg', 'png', 'bmp'] },
                 { name: 'Todos os arquivos', extensions: ['*'] },
             ],
@@ -3867,6 +3867,10 @@ async function openSingle(editor, file, filePath) {
     }
     if (kind === 'cdr') {
         await editor.importCdrBuffer(await file.arrayBuffer(), file.name);
+        return;
+    }
+    if (kind === 'eps') {
+        await editor.importEpsBuffer(await file.arrayBuffer(), file.name, { filePath });
         return;
     }
     const text = await file.text();

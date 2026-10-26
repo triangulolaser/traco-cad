@@ -518,6 +518,7 @@ export default {
     "Falha ao atualizar: {0}": "Error al actualizar: {0}",
     "Falha ao descompactar pacote do CorelDRAW: {0}": "Error al descomprimir el paquete de CorelDRAW: {0}",
     "Falha ao importar SVG: {0}": "Error al importar SVG: {0}",
+    "Falha ao importar EPS: {0}": "Error al importar EPS: {0}",
     "Falha ao iniciar abas": "Error al iniciar las pestañas",
     "Falha ao ler .lxds: {0}": "Error al leer .lxds: {0}",
     "{0} mm em {1}": "{0} mm en {1}",
@@ -1240,6 +1241,7 @@ export default {
     "da Raytools.": "de Raytools.",
     "de {1} até {2} comprimento {3} ângulo {4}°": "de {1} a {2} longitud {3} ángulo {4}°",
     "desenho.cdr": "dibujo.cdr",
+    "desenho.eps": "dibujo.eps",
     "desenho.lxds": "dibujo.lxds",
     "desenho.nsp": "dibujo.nsp",
     "desligado": "desactivado",
@@ -1399,5 +1401,10 @@ export default {
     "Polígono inscrito: centro e um vértice (POL)": "Polígono inscrito: centro y un vértice (POL)",
     "Polígono circunscrito: centro e o meio de um lado (POL)": "Polígono circunscrito: centro y el punto medio de un lado (POL)",
     "Polígono pelos dois pontos de um lado (POL)": "Polígono por los dos extremos de un lado (POL)",
-    "Estilo de cota": "Estilo de cota"
+    "Estilo de cota": "Estilo de cota",
+    "Arquivo EPS inválido.": "Archivo EPS no válido.",
+    "EPS sem contornos legíveis. Suportado: EPS exportado pelo CorelDRAW com curvas (texto convertido em curvas).": "EPS sin contornos legibles. Compatible: EPS exportado por CorelDRAW con curvas (texto convertido en curvas).",
+    "Arquivo SVG inválido.": "Archivo SVG no válido.",
+    "Arquivo SVG sem elemento": "Archivo SVG sin elemento",
+    "SVG sem contornos (path, rect, circle, ellipse, polygon, polyline ou line).": "SVG sin contornos (path, rect, circle, ellipse, polygon, polyline o line)."
 };

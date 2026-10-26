@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Traço CAD",
-  "version": "0.3.41",
+  "version": "0.3.42",
   "identifier": "br.com.trls.traco.cad",
   "build": {
     "frontendDist": "../dist",
@@ -61,6 +61,12 @@
         "ext": ["cdr", "CDR"],
         "name": "CorelDRAW Drawing",
         "description": "CorelDRAW Drawing",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["eps", "EPS"],
+        "name": "Encapsulated PostScript",
+        "description": "Encapsulated PostScript",
         "role": "Viewer"
       },
       {

@@ -78,6 +78,29 @@ test('getEntityGrips and applyGripMove for arc', () => {
     assert.ok(Math.abs(radiusAdjusted.radius - Math.hypot(15, 15)) < 1e-4);
 });
 
+test('alça da ponta do arco aumenta e diminui o raio passando pela outra ponta e pelo meio', () => {
+    const arc = { id: 'a2', type: 'arc', center: { x: 0, y: 0 }, radius: 10, start: 0, end: Math.PI / 2 };
+    const grips = getEntityGrips(arc);
+    const endGrip = grips.find((g) => g.type === 'end');
+    const startPt = grips.find((g) => g.type === 'start').point;
+    const midPt = grips.find((g) => g.type === 'mid').point;
+    const onArc = (a, pt) => Math.abs(Math.hypot(pt.x - a.center.x, pt.y - a.center.y) - a.radius) < 1e-6;
+
+    // Puxar a ponta para longe da corda abre o arco: raio maior.
+    const bigger = applyGripMove(arc, endGrip, { x: -12, y: 4 });
+    assert.ok(bigger.radius > arc.radius, `raio ${bigger.radius}`);
+    assert.ok(onArc(bigger, startPt) && onArc(bigger, midPt) && onArc(bigger, { x: -12, y: 4 }));
+
+    // Puxar para dentro fecha o arco: raio menor.
+    const smaller = applyGripMove(arc, endGrip, { x: 1, y: 8 });
+    assert.ok(smaller.radius < arc.radius, `raio ${smaller.radius}`);
+    assert.ok(onArc(smaller, startPt) && onArc(smaller, midPt));
+
+    // Ponta alinhada com a outra ponta e o meio: mantém o raio e só gira o ângulo.
+    const aligned = applyGripMove(arc, endGrip, { x: 10 + (midPt.x - 10) * 2, y: midPt.y * 2 });
+    assert.equal(aligned.radius, arc.radius);
+});
+
 test('getEntityGrips and applyGripMove for polyline', () => {
     const poly = {
         id: 'p1',

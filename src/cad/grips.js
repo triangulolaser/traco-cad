@@ -2,7 +2,7 @@
 // Permite selecionar entidades e puxar alças para esticar linhas, redimensionar
 // círculos e arcos, mover vértices de polilinhas e reposicionar cotas.
 
-import { distance, sub, add, midpoint, polar, angleOf, normalizeAngle, sweepCCW, scale, perpendicular, dot } from './geometry.js';
+import { distance, sub, add, midpoint, polar, angleOf, normalizeAngle, sweepCCW, scale, perpendicular, dot, arcFromThreePoints } from './geometry.js';
 import { ensureSplineGeometry } from './extra-entities.js';
 import { LINEAR_DIMENSION_KINDS, linearDimensionEnds, linearTextHandle } from './dimensions.js';
 
@@ -198,13 +198,16 @@ export function applyGripMove(entity, grip, targetPoint) {
             if (grip.type === 'center') {
                 return { ...entity, center: { x: p.x, y: p.y } };
             }
-            if (grip.type === 'start') {
-                const newStart = normalizeAngle(angleOf(entity.center, p));
-                return { ...entity, start: newStart };
-            }
-            if (grip.type === 'end') {
-                const newEnd = normalizeAngle(angleOf(entity.center, p));
-                return { ...entity, end: newEnd };
+            if (grip.type === 'start' || grip.type === 'end') {
+                // Como no AutoCAD/BricsCAD: a ponta estica o arco pela outra ponta e pelo meio,
+                // então o raio cresce ou diminui com o cursor. Pontos alinhados mantêm o raio.
+                const sweep = sweepCCW(entity.start, entity.end);
+                const mid = polar(entity.center, normalizeAngle(entity.start + sweep / 2), entity.radius);
+                const other = polar(entity.center, grip.type === 'start' ? entity.end : entity.start, entity.radius);
+                const fit = grip.type === 'start' ? arcFromThreePoints(p, mid, other) : arcFromThreePoints(other, mid, p);
+                if (fit && Number.isFinite(fit.radius)) return { ...entity, ...fit };
+                const angle = normalizeAngle(angleOf(entity.center, p));
+                return { ...entity, [grip.type]: angle };
             }
             if (grip.type === 'mid') {
                 const newRadius = Math.max(distance(entity.center, p), 1e-4);

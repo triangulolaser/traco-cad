@@ -5,7 +5,7 @@ import { FILE_TYPES, OPENABLE_EXTENSIONS, DRAWING_ACCEPT, DRAWING_KINDS, kindOf,
 import { COMMANDS } from '../src/cad/commands.js';
 
 test('toda extensão conhecida abre, tem ícone e tem tipo válido', () => {
-    const tipos = new Set(['dwg', 'dxf', 'lxds', 'pdf', 'image', 'svg', 'cdr', 'elmt', 'qet']);
+    const tipos = new Set(['dwg', 'dxf', 'lxds', 'pdf', 'image', 'svg', 'eps', 'cdr', 'elmt', 'qet']);
     Object.entries(FILE_TYPES).forEach(([ext, t]) => {
         assert.ok(tipos.has(t.kind), `${ext} com tipo desconhecido: ${t.kind}`);
         assert.ok(t.icon && t.icon.length > 0, `${ext} sem ícone`);
@@ -23,13 +23,14 @@ test('formatos de desenho entram no accept do seletor', () => {
     });
     // Imagem e PDF têm comando próprio e não entram no seletor de desenho.
     assert.ok(!noAccept.includes('.png') && !noAccept.includes('.pdf'));
-    assert.ok(noAccept.includes('.dxf') && noAccept.includes('.lxds') && noAccept.includes('.svg') && noAccept.includes('.elmt') && noAccept.includes('.qet'));
+    assert.ok(noAccept.includes('.dxf') && noAccept.includes('.lxds') && noAccept.includes('.svg') && noAccept.includes('.eps') && noAccept.includes('.elmt') && noAccept.includes('.qet'));
 });
 
 test('kindOf aceita extensão nua e nome de arquivo, em qualquer caixa', () => {
     assert.equal(kindOf('lxds'), 'lxds');
     assert.equal(kindOf('MS 1,20 mm - #41297.LXDS'), 'lxds');
     assert.equal(kindOf('peça.dxf'), 'dxf');
+    assert.equal(kindOf('FACA TEDSIGN.EPS'), 'eps');
     assert.equal(kindOf('programa.CNC'), null);
     assert.equal(kindOf('foto.jpeg'), 'image');
     assert.equal(kindOf('planilha.xlsx'), null);

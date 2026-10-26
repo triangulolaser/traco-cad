@@ -1189,6 +1189,10 @@ export class Editor {
             if (resolvedPath && this.doc) this.doc.filePath = resolvedPath;
             return;
         }
+        if (kind === 'eps' || /\.eps$/i.test(file.name)) {
+            await this.importEpsBuffer(await file.arrayBuffer(), file.name, { filePath: resolvedPath });
+            return;
+        }
         if (kind === 'cdr' || /\.cdr$/i.test(file.name)) {
             await this.importCdrBuffer(await file.arrayBuffer(), file.name);
             if (resolvedPath && this.doc) this.doc.filePath = resolvedPath;
@@ -1996,6 +2000,21 @@ export class Editor {
         this.resize();
         this.zoomExtents();
         this.log(`Importado SVG ${name}: ${result.entities.length} entidades vetoriais prontas para edição.`);
+    }
+
+    // EPS do CorelDRAW: import-eps.js converte o corpo da página em DXF (LINE/ARC,
+    // Bézier em biarcos) e o resto segue o caminho do DXF.
+    async importEpsBuffer(buffer, name = 'desenho.eps', { filePath = null } = {}) {
+        let dxf;
+        try {
+            const { epsToDxfText } = await import('./import-eps.js');
+            dxf = epsToDxfText(buffer);
+        } catch (error) {
+            usage('import_failure');
+            this.log(`Falha ao importar EPS: ${error.message}`, 'error');
+            return;
+        }
+        await this.importDxfText(dxf, name.replace(/\.eps$/i, '.dxf'), { filePath });
     }
 
     async importCdrBuffer(buffer, name = 'desenho.cdr') {
