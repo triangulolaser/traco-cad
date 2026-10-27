@@ -442,3 +442,83 @@ test('TabManager.saveAllDirty: para na aba cujo salvamento foi cancelado', async
     assert.equal(calls, 2, 'Não deve tentar salvar depois da falha');
     assert.equal(tabs.isTabDirty(b), true);
 });
+
+// Diálogo de fechar com alterações: nome e tipo escolhidos ali chegam ao SAVEAS como [{ name, format }].
+function saveTargetEditor(initial, extra = {}) {
+    const history = new History(initial);
+    history.commit('Círculo', addEntities(initial, [{ type: 'circle', center: { x: 5, y: 5 }, radius: 2 }]));
+    const editor = {
+        get doc() { return history.present; },
+        history,
+        tabs: { render: () => {}, save: () => {} },
+        viewport: null,
+        setDocumentName: (name, filePath) => {
+            const next = { ...history.present, name };
+            if (filePath !== undefined) next.filePath = filePath;
+            history.replace(next);
+        },
+        getString: async () => { throw new Error('não deve perguntar o nome de novo'); },
+        log: () => {},
+        ...extra,
+    };
+    return editor;
+}
+
+test('SAVEAS com nome e tipo do diálogo no Desktop: abre o seletor na mesma pasta com o nome novo', async () => {
+    let dialogOptions = null;
+    let savedPath = null;
+    globalThis.window = {
+        desktopBridge: {
+            saveFile: async (path) => { savedPath = path; },
+            showSaveDialog: async (options) => { dialogOptions = options; return '/Users/usuario/Desenhos/flange-02.dxf'; },
+        },
+    };
+    try {
+        const editor = saveTargetEditor({ ...createDocument(), name: 'flange.dxf', filePath: '/Users/usuario/Desenhos/flange.dxf' });
+        await COMMANDS.SAVEAS.run(editor, [{ name: 'flange-02', format: 'dxf' }]);
+        assert.equal(dialogOptions.defaultPath, '/Users/usuario/Desenhos/flange-02.dxf');
+        assert.deepEqual(dialogOptions.filters[0].extensions, ['dxf']);
+        assert.equal(savedPath, '/Users/usuario/Desenhos/flange-02.dxf');
+        assert.equal(editor.doc.name, 'flange-02.dxf');
+        assert.equal(editor.history.isDirty(), false);
+    } finally {
+        delete globalThis.window;
+    }
+});
+
+test('SAVEAS com tipo DWG escolhido no diálogo: grava DWG e o próximo SAVE continua em DWG', async () => {
+    let dialogOptions = null;
+    let saved = null;
+    globalThis.window = {
+        desktopBridge: {
+            saveFile: async (path, content) => { saved = { path, content }; },
+            showSaveDialog: async (options) => { dialogOptions = options; return 'peca.dwg'; },
+        },
+    };
+    try {
+        const editor = saveTargetEditor({ ...createDocument(), name: 'Sem título.dxf', filePath: null });
+        await COMMANDS.SAVEAS.run(editor, [{ name: 'peca', format: 'dwg' }]);
+        assert.equal(dialogOptions.defaultPath, 'peca.dwg');
+        assert.deepEqual(dialogOptions.filters[0].extensions, ['dwg']);
+        assert.ok(saved.content instanceof Uint8Array, 'conteúdo DWG binário');
+        assert.equal(editor.doc.name, 'peca.dwg');
+        assert.equal(editor.doc.sourceFormat, 'dwg');
+    } finally {
+        delete globalThis.window;
+    }
+});
+
+test('SAVEAS com nome e tipo do diálogo na Web: baixa direto, sem perguntar o nome', async () => {
+    const downloads = [];
+    const editor = saveTargetEditor(
+        { ...createDocument(), name: 'chapa.dwg', sourceFormat: 'dwg', filePath: null },
+        { downloadText: (content, name) => downloads.push({ content, name }) },
+    );
+    await COMMANDS.SAVEAS.run(editor, [{ name: 'chapa final.dwg', format: 'dxf' }]);
+    assert.equal(downloads.length, 1);
+    assert.equal(downloads[0].name, 'chapa final.dxf');
+    assert.ok(downloads[0].content.includes('SECTION'));
+    assert.equal(editor.doc.name, 'chapa final.dxf');
+    assert.equal(editor.doc.sourceFormat, 'dxf');
+    assert.equal(editor.history.isDirty(), false);
+});

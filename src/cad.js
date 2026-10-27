@@ -16,6 +16,7 @@ import { saveWorkspace, loadWorkspace, serializeDocument, debounce, popPendingIm
 import { StartScreen, recordRecent, readRecentFile, forgetRecent, showOnStart } from './cad/start-screen.js';
 import { showCadErrorModal, hideCadErrorModal } from './cad/error-modal.js';
 import { snapIconSvg } from './cad/snaps.js';
+import { saveFormatOf } from './cad/commands.js';
 import { LOCALES, detectLocale, getLocale, saveLocale, setLocale, t, tr, translateDom } from './cad/i18n.js';
 
 const STANDARD_ACI = [[1, 'Vermelho'], [2, 'Amarelo'], [3, 'Verde'], [4, 'Ciano'], [5, 'Azul'], [6, 'Magenta'], [7, 'Branco']];
@@ -1431,10 +1432,13 @@ class TabManager {
             if (!this.tabs.includes(tab)) continue;
             if (this.isTabDirty(tab)) {
                 this.activate(tab.id);
-                const choice = await askSaveBeforeClose(this.root, this.getTabDoc(tab)?.name || 'Sem título.dxf');
-                if (choice === 'cancel') return false;
-                if (choice === 'save') {
-                    await this.editor.runCommand('SAVE');
+                const doc = this.getTabDoc(tab);
+                const choice = await askSaveBeforeClose(this.root, doc?.name || 'Sem título.dxf', saveFormatOf(doc));
+                if (choice.action === 'cancel') return false;
+                if (choice.action === 'save') {
+                    // Nome ou tipo trocado no diálogo vira Salvar Como com esses dados.
+                    if (choice.target) await this.editor.runCommand('SAVEAS', [choice.target]);
+                    else await this.editor.runCommand('SAVE');
                     this.syncCurrent();
                     if (this.isTabDirty(tab)) return false;
                 }
@@ -1756,13 +1760,19 @@ function closeBlankLaunchTab(tabs) {
     tabs.closeTabs([tab], null, { force: true });
 }
 
-function askSaveBeforeClose(root, docName) {
+const SAVE_FORMAT_LABELS = { dxf: 'DXF', dwg: 'DWG', elmt: 'ELMT (QElectroTech)', qet: 'QET (QElectroTech)' };
+
+// Pergunta Salvar / Não salvar / Cancelar, com nome e tipo do arquivo editáveis.
+// Devolve { action }, e em Salvar com nome ou tipo trocado também target: { name, format }.
+function askSaveBeforeClose(root, docName, format = 'dxf') {
     const name = String(docName ?? 'desenho');
     if (!root || typeof document === 'undefined') {
-        if (typeof window === 'undefined' || typeof window.confirm !== 'function') return Promise.resolve('discard');
-        if (window.confirm(t('Salvar as alterações em "{name}"?', { name }))) return Promise.resolve('save');
-        return Promise.resolve(window.confirm(t('Fechar "{name}" sem salvar?', { name })) ? 'discard' : 'cancel');
+        if (typeof window === 'undefined' || typeof window.confirm !== 'function') return Promise.resolve({ action: 'discard' });
+        if (window.confirm(t('Salvar as alterações em "{name}"?', { name }))) return Promise.resolve({ action: 'save' });
+        return Promise.resolve({ action: window.confirm(t('Fechar "{name}" sem salvar?', { name })) ? 'discard' : 'cancel' });
     }
+    const stem = name.replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '');
+    const formats = ['dxf', 'dwg', ...(['elmt', 'qet'].includes(format) ? [format] : [])];
     root.querySelectorAll('[data-cad-confirm-modal]').forEach((el) => el.remove());
     const cleanName = name.replace(/[&<>"']/g, (c) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -1781,6 +1791,12 @@ function askSaveBeforeClose(root, docName) {
                 </div>
                 <h2 class="cad-error-title" style="margin-top: 8px; font-size: 16px;">${t('Salvar as alterações em "{name}"?', { name: cleanName })}</h2>
             </div>
+            <div class="cad-save-target">
+                <label class="cad-save-target-name"><span>${tr('Nome')}</span><input type="text" data-cad-save-name spellcheck="false" autocomplete="off"></label>
+                <label class="cad-save-target-format"><span>${tr('Tipo')}</span><select data-cad-save-format>
+                    ${formats.map((f) => `<option value="${f}"${f === format ? ' selected' : ''}>${SAVE_FORMAT_LABELS[f]}</option>`).join('')}
+                </select></label>
+            </div>
             <div class="cad-error-footer" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px;">
                 <button type="button" class="cad-btn cad-btn-secondary" data-cad-confirm-action="cancel">${tr('Cancelar')}</button>
                 <button type="button" class="cad-btn cad-btn-secondary" data-cad-confirm-action="discard">${tr('Não salvar')}</button>
@@ -1788,33 +1804,49 @@ function askSaveBeforeClose(root, docName) {
             </div>
         </div>
     `;
+    const nameInput = overlay.querySelector('[data-cad-save-name]');
+    const formatSelect = overlay.querySelector('[data-cad-save-format]');
+    if (nameInput) nameInput.value = stem;
     return new Promise((resolve) => {
-        const finish = (choice) => {
+        const finish = (action) => {
             overlay.remove();
             document.removeEventListener('keydown', onKey, true);
-            resolve(choice);
+            const nextName = String(nameInput?.value ?? '').trim().replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '') || stem;
+            const nextFormat = formatSelect?.value || format;
+            const target = action === 'save' && (nextName !== stem || nextFormat !== format)
+                ? { name: nextName, format: nextFormat } : null;
+            resolve(target ? { action, target } : { action });
         };
         // A seleção fica no diálogo, não no foco do navegador: o CAD devolve o foco à linha de comando.
         const buttons = Array.from(overlay.querySelectorAll('[data-cad-confirm-action]'));
+        const fields = [nameInput, formatSelect].filter(Boolean);
         let selected = Math.max(0, buttons.findIndex((b) => b.dataset.cadConfirmAction === 'save'));
-        const select = (index) => {
+        const select = (index, { focus = true } = {}) => {
             selected = (index + buttons.length) % buttons.length;
             buttons.forEach((b, i) => {
                 b.classList.toggle('is-selected', i === selected);
                 b.setAttribute('aria-selected', i === selected ? 'true' : 'false');
             });
-            buttons[selected]?.focus?.();
+            if (focus) buttons[selected]?.focus?.();
         };
         const onKey = (event) => {
             const stop = () => { event.preventDefault(); event.stopPropagation(); };
             if (event.key === 'Escape') { stop(); finish('cancel'); return; }
+            // Digitando no nome ou escolhendo o tipo: ENTER salva, o resto fica com o campo
+            // e não chega aos atalhos do CAD.
+            if (fields.includes(event.target)) {
+                if (event.key === 'Enter' || event.key === 'NumpadEnter') { stop(); finish('save'); return; }
+                event.stopPropagation();
+                return;
+            }
             if (event.key === 'ArrowLeft' || event.key === 'ArrowUp' || (event.key === 'Tab' && event.shiftKey)) { stop(); select(selected - 1); return; }
             if (event.key === 'ArrowRight' || event.key === 'ArrowDown' || event.key === 'Tab') { stop(); select(selected + 1); return; }
             if (event.key === 'Enter' || event.key === 'NumpadEnter') { stop(); finish(buttons[selected]?.dataset.cadConfirmAction ?? 'save'); }
         };
         buttons.forEach((button, i) => {
             button.addEventListener('click', () => finish(button.dataset.cadConfirmAction));
-            button.addEventListener('mouseenter', () => select(i));
+            // Passar o mouse nos botões não tira o foco de quem está digitando o nome.
+            button.addEventListener('mouseenter', () => select(i, { focus: !fields.includes(document.activeElement) }));
         });
         document.addEventListener('keydown', onKey, true);
         root.appendChild(overlay);

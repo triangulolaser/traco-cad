@@ -1207,6 +1207,48 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-confirm-modal {
     border-color: rgba(245, 158, 11, 0.4);
 }
+/* Nome e tipo do arquivo no diálogo de fechar com alterações não salvas. */
+.cad-save-target {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+}
+.cad-save-target label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--cad-muted, #94a3b8);
+}
+.cad-save-target-name {
+    flex: 1;
+    min-width: 0;
+}
+.cad-save-target input,
+.cad-save-target select {
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 8px;
+    border: 1px solid var(--cad-border, rgba(255, 255, 255, 0.12));
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--cad-text, #f1f5f9);
+    font: inherit;
+    font-size: 13px;
+}
+.cad-save-target input:focus,
+.cad-save-target select:focus {
+    outline: 2px solid var(--cad-accent, #0a84ff) !important;
+    outline-offset: 0;
+}
+.cad-app[data-cad-theme="light"] .cad-save-target label {
+    color: #475569;
+}
+.cad-app[data-cad-theme="light"] .cad-save-target input,
+.cad-app[data-cad-theme="light"] .cad-save-target select {
+    background: #ffffff;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
 /* Opção escolhida pelo teclado (setas/TAB) e confirmada com ENTER.
    !important vence o reset `.cad-app *:focus`, que apagava o destaque do botão focado
    até a janela perder o foco (Traço desktop, 22/10). */

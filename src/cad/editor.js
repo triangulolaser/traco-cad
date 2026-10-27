@@ -1538,7 +1538,8 @@ export class Editor {
         const toggle = toggleKey(event);
         const { a, idle } = this.window;
         // Em TRIM/EXTEND a janela é sempre crossing: basta o objeto atravessar o retângulo.
-        const crossing = world.x < a.x || this.pending?.mode === 'entityOrWindow';
+        // Com `directional` (MATCHPROP) vale a regra comum: esquerda→direita janela, direita→esquerda crossing.
+        const crossing = world.x < a.x || (this.pending?.mode === 'entityOrWindow' && !this.pending.directional);
         const found = this.entitiesInWindow(a, world, crossing);
         this.window = null;
         if (idle || !this.pending) {

@@ -576,3 +576,61 @@ test('ENTER no diálogo de alterações não salvas confirma Salvar; setas troca
     const wrap = await run(['Tab'], 'cancel');
     assert.equal(wrap.closed, false);
 });
+
+test('diálogo de alterações não salvas: trocar nome ou tipo salva com SAVEAS nesses dados', async () => {
+    const run = async ({ name, format, enterOn = 'button' }) => {
+        const oldDoc = globalThis.document;
+        const keyListeners = [];
+        const buttons = ['cancel', 'discard', 'save'].map((action) => {
+            const btn = createMockElement('button', { cadConfirmAction: action });
+            btn.focus = () => {};
+            return btn;
+        });
+        const nameInput = { tagName: 'INPUT', value: '' };
+        const formatSelect = { tagName: 'SELECT', value: 'dxf' };
+        let html = '';
+        const fakeDoc = {
+            activeElement: null,
+            addEventListener: (type, fn) => { if (type === 'keydown') keyListeners.push(fn); },
+            removeEventListener: (type, fn) => { const i = keyListeners.indexOf(fn); if (i >= 0) keyListeners.splice(i, 1); },
+            createElement: () => {
+                const overlay = createMockElement('div');
+                Object.defineProperty(overlay, 'innerHTML', { set(v) { html = v; }, get() { return html; } });
+                overlay.remove = () => {};
+                overlay.querySelectorAll = (sel) => (sel === '[data-cad-confirm-action]' ? buttons : []);
+                overlay.querySelector = (sel) => ({ '[data-cad-save-name]': nameInput, '[data-cad-save-format]': formatSelect }[sel] ?? null);
+                return overlay;
+            },
+        };
+        globalThis.document = fakeDoc;
+        try {
+            const { manager, editor } = dirtyFixture();
+            manager.root = createMockElement('div');
+            manager.root.querySelectorAll = () => [];
+            const commands = [];
+            editor.runCommand = async (cmd, args) => { commands.push([cmd, args]); };
+            const pending = manager.closeCurrent();
+            await new Promise((r) => setImmediate(r));
+            assert.match(html, /<option value="dxf" selected>DXF<\/option>/);
+            assert.match(html, /<option value="dwg">DWG<\/option>/);
+            const stem = nameInput.value;
+            if (name !== undefined) nameInput.value = name;
+            if (format !== undefined) formatSelect.value = format;
+            // Letras digitadas no nome não chegam aos atalhos do CAD.
+            let stopped = false;
+            keyListeners[0]({ key: 'l', target: nameInput, preventDefault() { throw new Error('não bloquear a digitação'); }, stopPropagation() { stopped = true; } });
+            assert.equal(stopped, true);
+            keyListeners[0]({ key: 'Enter', target: enterOn === 'input' ? nameInput : buttons[2], preventDefault() {}, stopPropagation() {} });
+            await pending;
+            return { stem, commands };
+        } finally {
+            globalThis.document = oldDoc;
+        }
+    };
+    const same = await run({});
+    assert.deepEqual(same.commands, [['SAVE', undefined]], 'sem troca continua no SAVE');
+    const renamed = await run({ name: 'Flange 3mm', enterOn: 'input' });
+    assert.deepEqual(renamed.commands, [['SAVEAS', [{ name: 'Flange 3mm', format: 'dxf' }]]]);
+    const dwg = await run({ format: 'dwg' });
+    assert.deepEqual(dwg.commands, [['SAVEAS', [{ name: dwg.stem, format: 'dwg' }]]]);
+});

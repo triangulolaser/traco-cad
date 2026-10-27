@@ -75,6 +75,7 @@ test('MATCHPROP: copia layer, cor, linetype, lineweight e tamanho de texto entre
     const mockEditor = {
         doc,
         canvas: { classList: { add() {}, remove() {} } },
+        getEntityOrWindow(prompt, opts) { return this.getEntity(prompt, opts); },
         async getEntity(prompt, opts) {
             queryStep++;
             if (queryStep === 1) {
@@ -150,6 +151,7 @@ test('MATCHPROP: copia propriedades e textHeight entre texto e cota de forma bid
     let mockEditor = {
         doc,
         canvas: { classList: { add() {}, remove() {} } },
+        getEntityOrWindow(prompt, opts) { return this.getEntity(prompt, opts); },
         async getEntity() {
             queryStep++;
             if (queryStep === 1) return { entity: doc.entities.find(e => e.id === 'txt-src') };
@@ -189,6 +191,7 @@ test('MATCHPROP: copia propriedades e textHeight entre texto e cota de forma bid
     mockEditor = {
         doc,
         canvas: { classList: { add() {}, remove() {} } },
+        getEntityOrWindow(prompt, opts) { return this.getEntity(prompt, opts); },
         async getEntity() {
             queryStep++;
             if (queryStep === 1) return { entity: doc.entities.find(e => e.id === 'dim-target') };
@@ -331,6 +334,7 @@ test('MATCHPROP: cota já selecionada vira referência e o primeiro clique é o 
         selection: new Set(['src']),
         canvas: { classList: { add() {}, remove() {} } },
         log() {},
+        getEntityOrWindow(prompt, opts) { return this.getEntity(prompt, opts); },
         async getEntity(prompt) {
             prompts.push(prompt);
             step++;
@@ -344,4 +348,63 @@ test('MATCHPROP: cota já selecionada vira referência e o primeiro clique é o 
     assert.equal(dst.layer, 'COTAS');
     assert.equal(dst.color, 1);
     assert.equal(dst.textHeight, 5);
+});
+
+test('MATCHPROP: caixa de seleção aplica a referência a vários destinos de uma vez', async () => {
+    let doc = addEntities(createDocument(), [
+        { id: 'src', type: 'line', a: { x: 0, y: 0 }, b: { x: 1, y: 0 }, layer: 'CORTE', color: 1, lineType: 'DASHED', lineWeight: 35 },
+        { id: 'l1', type: 'line', a: { x: 0, y: 5 }, b: { x: 1, y: 5 }, layer: '0', color: 7 },
+        { id: 'l2', type: 'line', a: { x: 0, y: 9 }, b: { x: 1, y: 9 }, layer: '0', color: 3 },
+        { id: 'fora', type: 'line', a: { x: 50, y: 50 }, b: { x: 51, y: 50 }, layer: '0', color: 3 },
+    ]);
+    doc.layers.push({ name: 'CORTE', color: 1, visible: true, locked: false });
+    let step = 0;
+    let commits = 0;
+    let lastOpts = null;
+    const editor = {
+        get doc() { return doc; },
+        selection: new Set(),
+        canvas: { classList: { add() {}, remove() {} } },
+        log() {},
+        async getEntity() { return { entity: doc.entities.find((x) => x.id === 'src') }; },
+        async getEntityOrWindow(prompt, opts) {
+            lastOpts = opts;
+            step++;
+            // A caixa pega também a própria referência: ela não conta como destino.
+            return step === 1 ? { entities: doc.entities.filter((x) => x.id !== 'fora'), crossing: false } : null;
+        },
+        commit(label, next) { commits++; doc = next; },
+    };
+    await EDIT_COMMANDS.MATCHPROP.run(editor);
+    assert.equal(lastOpts.directional, true, 'MA usa janela/crossing pela direção do arraste');
+    assert.equal(commits, 1, 'uma caixa vira um único passo de desfazer');
+    for (const id of ['l1', 'l2']) {
+        const x = doc.entities.find((e) => e.id === id);
+        assert.equal(x.layer, 'CORTE');
+        assert.equal(x.color, 1);
+        assert.equal(x.lineType, 'DASHED');
+        assert.equal(x.lineWeight, 35);
+    }
+    assert.equal(doc.entities.find((e) => e.id === 'fora').color, 3);
+});
+
+test('entityOrWindow: directional segue a direção do arraste; sem ela continua sempre crossing', () => {
+    const run = (directional, from, to) => {
+        let resolved = null;
+        let crossingArg = null;
+        const dummy = {
+            window: { a: from },
+            pending: { mode: 'entityOrWindow', directional },
+            entitiesInWindow(a, b, crossing) { crossingArg = crossing; return []; },
+            resolvePending(v) { resolved = v; },
+            invalidate() {},
+            onChange() {},
+            log() {},
+        };
+        Editor.prototype.finishWindow.call(dummy, to, {});
+        return { crossingArg, resolved };
+    };
+    assert.equal(run(true, { x: 0, y: 0 }, { x: 10, y: 10 }).crossingArg, false, 'esquerda→direita = janela');
+    assert.equal(run(true, { x: 10, y: 0 }, { x: 0, y: 10 }).crossingArg, true, 'direita→esquerda = crossing');
+    assert.equal(run(undefined, { x: 0, y: 0 }, { x: 10, y: 10 }).crossingArg, true, 'TRIM/EXTEND continuam crossing');
 });

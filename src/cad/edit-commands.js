@@ -178,6 +178,47 @@ export function mergeOverlappingLines(lines, tol = 1e-3) {
     return { replacements, removed };
 }
 
+// Pincel do MATCHPROP: aplica as propriedades da referência a um destino.
+function matchProperties(e,source,target0){
+    const target={
+        ...target0,
+        layer:source.layer,
+        color:source.color,
+        lineType:source.lineType,
+        lineWeight:source.lineWeight,
+    };
+    if (target0.type === 'dimension') {
+        const textHeight = source.type === 'dimension'
+            ? (source.textHeight ?? source.style?.textHeight ?? e.doc.dimStyle?.textHeight ?? 2.5)
+            : (source.type === 'text' ? (source.height ?? 2.5) : undefined);
+        if (textHeight !== undefined) {
+            target.textHeight = textHeight;
+            target.style = {
+                ...(target.style ?? {}),
+                ...(source.type === 'dimension' ? (source.style ?? {}) : {}),
+                textHeight,
+            };
+        }
+        if (source.fontFamily !== undefined) target.fontFamily = source.fontFamily;
+        if (source.bold !== undefined) target.bold = source.bold;
+        if (source.italic !== undefined) target.italic = source.italic;
+        if (source.type === 'dimension') {
+            if (source.arrowSize !== undefined) target.arrowSize = source.arrowSize;
+            if (source.scale !== undefined) target.scale = source.scale;
+            if (source.tolerance !== undefined) target.tolerance = structuredClone(source.tolerance);
+        }
+    } else if (target0.type === 'text') {
+        const textHeight = source.type === 'text'
+            ? (source.height ?? 2.5)
+            : (source.type === 'dimension' ? (source.textHeight ?? source.style?.textHeight ?? e.doc.dimStyle?.textHeight ?? 2.5) : undefined);
+        if (textHeight !== undefined) target.height = textHeight;
+        if (source.fontFamily !== undefined) target.fontFamily = source.fontFamily;
+        if (source.bold !== undefined) target.bold = source.bold;
+        if (source.italic !== undefined) target.italic = source.italic;
+    }
+    return target;
+}
+
 export const EDIT_COMMANDS = {
     TEXTEDIT:{aliases:['DDEDIT','ED','EDITARTEXTO'],description:'Editar conteúdo e propriedades do texto',async run(e){
         let target=null;
@@ -1002,46 +1043,14 @@ export const EDIT_COMMANDS = {
         e.canvas.classList.add('cad-property-brush');
         try {
             for(;;){
-                const hit=await e.getEntity('Pincel: clique no destino; Enter/Esc encerra',{allowEnter:true});
-                if(!hit)break;
-                if(!isEntityEditable(e.doc,hit.entity)){e.log('Destino em layer bloqueado ou oculto.');continue;}
-                const target={
-                    ...hit.entity,
-                    layer:source.layer,
-                    color:source.color,
-                    lineType:source.lineType,
-                    lineWeight:source.lineWeight,
-                };
-                if (hit.entity.type === 'dimension') {
-                    const textHeight = source.type === 'dimension'
-                        ? (source.textHeight ?? source.style?.textHeight ?? e.doc.dimStyle?.textHeight ?? 2.5)
-                        : (source.type === 'text' ? (source.height ?? 2.5) : undefined);
-                    if (textHeight !== undefined) {
-                        target.textHeight = textHeight;
-                        target.style = {
-                            ...(target.style ?? {}),
-                            ...(source.type === 'dimension' ? (source.style ?? {}) : {}),
-                            textHeight,
-                        };
-                    }
-                    if (source.fontFamily !== undefined) target.fontFamily = source.fontFamily;
-                    if (source.bold !== undefined) target.bold = source.bold;
-                    if (source.italic !== undefined) target.italic = source.italic;
-                    if (source.type === 'dimension') {
-                        if (source.arrowSize !== undefined) target.arrowSize = source.arrowSize;
-                        if (source.scale !== undefined) target.scale = source.scale;
-                        if (source.tolerance !== undefined) target.tolerance = structuredClone(source.tolerance);
-                    }
-                } else if (hit.entity.type === 'text') {
-                    const textHeight = source.type === 'text'
-                        ? (source.height ?? 2.5)
-                        : (source.type === 'dimension' ? (source.textHeight ?? source.style?.textHeight ?? e.doc.dimStyle?.textHeight ?? 2.5) : undefined);
-                    if (textHeight !== undefined) target.height = textHeight;
-                    if (source.fontFamily !== undefined) target.fontFamily = source.fontFamily;
-                    if (source.bold !== undefined) target.bold = source.bold;
-                    if (source.italic !== undefined) target.italic = source.italic;
-                }
-                e.commit('Copiar propriedades',replaceEntities(e.doc,new Map([[hit.entity.id,target]])));
+                // Clique num destino ou caixa de seleção (esquerda→direita janela, direita→esquerda crossing).
+                const pick=await e.getEntityOrWindow('Pincel: clique no destino ou arraste uma caixa; Enter/Esc encerra',{allowEnter:true,directional:true});
+                if(!pick)break;
+                const picked=pick.entities??[pick.entity];
+                const targets=picked.filter((x)=>!(pick.entities&&x.id===src.entity.id)&&isEntityEditable(e.doc,x));
+                if(!targets.length){e.log(pick.entities?'Nenhum destino editável na caixa.':'Destino em layer bloqueado ou oculto.');continue;}
+                e.commit('Copiar propriedades',replaceEntities(e.doc,new Map(targets.map((x)=>[x.id,matchProperties(e,source,x)]))));
+                if(pick.entities)e.log(`Propriedades copiadas para ${targets.length} objeto(s).`);
             }
         } finally {e.canvas.classList.remove('cad-property-brush');}
     }},

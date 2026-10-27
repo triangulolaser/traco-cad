@@ -3981,8 +3981,16 @@ async function terminalCommand(editor) {
     return null;
 }
 
-async function getExportPayload(editor) {
-    if (editor.doc.sourceFormat === 'elmt' || /\.elmt$/i.test(editor.doc.name || '')) {
+// Formato em que o SAVE grava o desenho: o de origem (QElectroTech ou DWG) ou DXF.
+export function saveFormatOf(doc) {
+    for (const ext of ['elmt', 'qet', 'dwg']) {
+        if (doc?.sourceFormat === ext || new RegExp(`\\.${ext}$`, 'i').test(doc?.name || '')) return ext;
+    }
+    return 'dxf';
+}
+
+async function getExportPayload(editor, format = saveFormatOf(editor.doc)) {
+    if (format === 'elmt') {
         const { documentToElmt } = await import('./elmt.js');
         const content = documentToElmt(editor.doc);
         const baseName = (editor.doc.name || 'elemento').replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '');
@@ -3993,7 +4001,7 @@ async function getExportPayload(editor) {
             filterName: 'Elemento QElectroTech (*.elmt)',
         };
     }
-    if (editor.doc.sourceFormat === 'qet' || /\.qet$/i.test(editor.doc.name || '')) {
+    if (format === 'qet') {
         const { documentToQet } = await import('./qet.js');
         const content = documentToQet(editor.doc);
         const baseName = (editor.doc.name || 'projeto').replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '');
@@ -4004,7 +4012,7 @@ async function getExportPayload(editor) {
             filterName: 'Projeto QElectroTech (*.qet)',
         };
     }
-    if (editor.doc.sourceFormat === 'dwg' || /\.dwg$/i.test(editor.doc.name || '')) {
+    if (format === 'dwg') {
         const { documentToDwg } = await import('./dwg.js');
         const view = editor.viewport?.getView ? editor.viewport.getView() : editor.doc.view;
         if (view) editor.doc.view = view;
@@ -4020,7 +4028,7 @@ async function getExportPayload(editor) {
     }
     const name = editor.doc.name?.toLowerCase().endsWith('.dxf')
         ? editor.doc.name
-        : `${editor.doc.name ? editor.doc.name.replace(/\.(dwg|svg|cdr)$/i, '') : 'desenho'}.dxf`;
+        : `${editor.doc.name ? editor.doc.name.replace(/\.(dwg|elmt|qet|svg|cdr)$/i, '') : 'desenho'}.dxf`;
     const view = editor.viewport?.getView ? editor.viewport.getView() : editor.doc.view;
     if (view) editor.doc.view = view;
     return {
@@ -4073,12 +4081,27 @@ async function save(editor) {
     return null;
 }
 
-async function saveAs(editor) {
-    const payload = await getExportPayload(editor);
+// Salvar Como. Com [{ name, format }] (diálogo de fechar com alterações), grava com esse
+// nome e tipo: no desktop o seletor já abre na mesma pasta com o nome novo; no navegador
+// baixa direto, sem perguntar o nome outra vez.
+async function saveAs(editor, args = []) {
+    const target = args?.[0] && typeof args[0] === 'object' ? args[0] : null;
+    const format = target?.format || saveFormatOf(editor.doc);
+    const payload = await getExportPayload(editor, format);
+    const stem = String(target?.name ?? '').trim().replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '');
+    if (stem) payload.name = `${stem}.${payload.ext}`;
+    const changed = Boolean(target) && (format !== saveFormatOf(editor.doc) || payload.name !== editor.doc.name);
+    const remember = (fileName, filePath) => {
+        editor.setDocumentName(fileName, filePath);
+        if (target && ['dxf', 'dwg'].includes(payload.ext) && editor.doc.sourceFormat !== payload.ext) {
+            editor.history.replace({ ...editor.doc, sourceFormat: payload.ext });
+        }
+    };
     const bridge = typeof window !== 'undefined' ? window.desktopBridge : null;
 
     if (bridge && typeof bridge.showSaveDialog === 'function' && typeof bridge.saveFile === 'function') {
-        const defaultPath = editor.doc.filePath || payload.name;
+        const folder = editor.doc.filePath?.match(/^(.*[\/\\])/)?.[1] ?? '';
+        const defaultPath = changed ? `${folder}${payload.name}` : (editor.doc.filePath || payload.name);
         const selected = await bridge.showSaveDialog({
             defaultPath,
             filters: [
@@ -4092,7 +4115,7 @@ async function saveAs(editor) {
         }
         await bridge.saveFile(selected, payload.content);
         const fileName = selected.split(/[\/\\]/).pop() || selected;
-        editor.setDocumentName(fileName, selected);
+        remember(fileName, selected);
         editor.history?.markClean?.();
         editor.tabs?.render?.();
         editor.tabs?.save?.();
@@ -4102,10 +4125,10 @@ async function saveAs(editor) {
         return null;
     }
 
-    const name = await editor.getString('Nome do arquivo', { defaultValue: editor.doc.name || payload.name });
+    const name = stem ? payload.name : await editor.getString('Nome do arquivo', { defaultValue: editor.doc.name || payload.name });
     if (!name) return null;
     const finalName = name.toLowerCase().endsWith(`.${payload.ext}`) ? name : `${name}.${payload.ext}`;
-    editor.setDocumentName(finalName);
+    remember(finalName, changed ? null : undefined);
     if (payload.isBinary || payload.content instanceof Uint8Array) {
         editor.downloadFile(payload.content, finalName, 'image/vnd.dwg');
     } else {
