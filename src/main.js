@@ -6,6 +6,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { save as tauriSaveDialog, open as tauriOpenDialog } from '@tauri-apps/plugin-dialog';
 import { initDesktopUpdates } from './updater.js';
+import { parseDesktopOpenLink } from './cad/desktop-link.js';
 
 console.log('Traço CAD Desktop inicializado.');
 
@@ -81,8 +82,27 @@ listen('file-opened', (event) => {
     openOpenedFile(event.payload);
 });
 
-// 2. Processa arquivos pendentes passados no cold boot (inicialização do app):
+// 2. Desenho enviado por outra aplicação pelo link traco-cad://open (vira uma aba sem caminho em disco):
+async function openOpenedLink(link) {
+    try {
+        const drawing = await parseDesktopOpenLink(link);
+        if (!drawing) return;
+        openOpenedFile({ path: '', name: drawing.name, bytes: new TextEncoder().encode(drawing.text) });
+    } catch (err) {
+        console.warn('[Tauri] Link de desenho inválido:', err);
+    }
+}
+
+listen('link-opened', (event) => openOpenedLink(event.payload));
+
+// 3. Processa arquivos e links pendentes do cold boot (inicialização do app):
 async function drainPendingFiles() {
+    try {
+        const links = await invoke('get_pending_open_links');
+        for (const link of links || []) openOpenedLink(link);
+    } catch (err) {
+        console.warn('[Tauri] Falha ao verificar links pendentes:', err);
+    }
     try {
         const pending = await invoke('get_pending_open_files');
         if (Array.isArray(pending) && pending.length > 0) {
@@ -102,7 +122,7 @@ if (document.readyState === 'loading') {
     drainPendingFiles();
 }
 
-// 3. Arraste de arquivos do Explorer/Finder: o webview do Tauri intercepta o drop e entrega
+// 4. Arraste de arquivos do Explorer/Finder: o webview do Tauri intercepta o drop e entrega
 // só os caminhos, então lemos cada arquivo e abrimos na fila do editor, um por aba.
 getCurrentWebview()
     .onDragDropEvent(async (event) => {
@@ -119,7 +139,7 @@ getCurrentWebview()
     })
     .catch((err) => console.warn('[Tauri] Arraste de arquivos indisponível:', err));
 
-// 4. X da janela e Alt+F4 passam pela mesma pergunta do Ctrl+F4: desenho com
+// 5. X da janela e Alt+F4 passam pela mesma pergunta do Ctrl+F4: desenho com
 // alteração pergunta se salva, e Cancelar mantém o Traço aberto.
 getCurrentWindow()
     .onCloseRequested(async (event) => {
@@ -130,7 +150,7 @@ getCurrentWindow()
     })
     .catch((err) => console.warn('[Tauri] Interceptação do fechamento indisponível:', err));
 
-// 5. Trava dos arquivos abertos: enquanto houver aba com o arquivo, o Windows
+// 6. Trava dos arquivos abertos: enquanto houver aba com o arquivo, o Windows
 // não deixa apagar, mover nem renomear pelo Explorer e avisa que está aberto no
 // Traço. Conferido a cada segundo para pegar abrir, fechar e Salvar como.
 let lockedPathsKey = null;
@@ -148,5 +168,5 @@ function syncFileLocks() {
 }
 setInterval(syncFileLocks, 1000);
 
-// 6. Atualização automática: checa ao abrir e pelo botão da barra superior.
+// 7. Atualização automática: checa ao abrir e pelo botão da barra superior.
 initDesktopUpdates();

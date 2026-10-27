@@ -1213,6 +1213,17 @@ export function writeDxf(doc, { view = doc.view } = {}) {
             definitions[e.name] = e.definition;
         }
     });
+    // Nested inserts (e.g. *U arrays from AutoCAD/BricsCAD) carry their own definition;
+    // skipping them leaves the parent block referencing a block missing from the file.
+    const pending = Object.values(definitions);
+    while (pending.length) {
+        for (const e of pending.pop().entities ?? []) {
+            if (e.type !== 'insert' || !e.definition || !e.name || Object.hasOwn(definitions, e.name)) continue;
+            if (/^\*(?:Model_Space|Paper_Space)/i.test(e.name)) continue;
+            definitions[e.name] = e.definition;
+            pending.push(e.definition);
+        }
+    }
 
     outputStyles = new Map();
     const defaultKey = styleKey(doc.dimStyle ?? {});

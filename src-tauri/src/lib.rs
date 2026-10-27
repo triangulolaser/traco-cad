@@ -15,6 +15,10 @@ pub struct OpenedFile {
 #[derive(Default)]
 pub struct PendingFilesState(pub Mutex<Vec<OpenedFile>>);
 
+/// Links traco-cad://open recebidos antes de a janela estar pronta.
+#[derive(Default)]
+pub struct PendingLinksState(pub Mutex<Vec<String>>);
+
 /// Arquivos abertos em abas ficam com um handle de leitura sem
 /// FILE_SHARE_DELETE: no Windows o Explorer não consegue apagar, mover nem
 /// renomear e avisa que o arquivo está aberto no Traço. Salvar continua
@@ -57,6 +61,11 @@ fn get_pending_open_files(state: tauri::State<'_, PendingFilesState>) -> Vec<Ope
     let files = lock.clone();
     lock.clear();
     files
+}
+
+#[tauri::command]
+fn get_pending_open_links(state: tauri::State<'_, PendingLinksState>) -> Vec<String> {
+    std::mem::take(&mut *state.0.lock().unwrap())
 }
 
 #[tauri::command]
@@ -262,6 +271,21 @@ fn read_and_dispatch_file(app_handle: &tauri::AppHandle, path: PathBuf) {
     }
 }
 
+/// Desenho entregue por link traco-cad://open (o conteúdo vai no próprio link
+/// e é decodificado pela janela). Também traz a janela para a frente.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn dispatch_open_link(app_handle: &tauri::AppHandle, link: String) {
+    let _ = app_handle.emit("link-opened", &link);
+    if let Some(state) = app_handle.try_state::<PendingLinksState>() {
+        state.0.lock().unwrap().push(link);
+    }
+    if let Some(window) = app_handle.webview_windows().values().next() {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -292,8 +316,9 @@ pub fn run() {
     let app = builder
         .manage(PendingFilesState::default())
         .manage(FileLocksState::default())
+        .manage(PendingLinksState::default())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_pending_open_files, write_file, write_file_binary, read_file_text, read_file_binary, convert_dwg_to_dxf, read_cad_clipboard, read_cad_clipboard_seq, sync_file_locks])
+        .invoke_handler(tauri::generate_handler![get_pending_open_files, get_pending_open_links, write_file, write_file_binary, read_file_text, read_file_binary, convert_dwg_to_dxf, read_cad_clipboard, read_cad_clipboard_seq, sync_file_locks])
         .setup(|app| {
             #[cfg(desktop)]
             {
@@ -328,7 +353,9 @@ pub fn run() {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         if let RunEvent::Opened { urls } = _event {
             for url in urls {
-                if let Ok(path) = url.to_file_path() {
+                if url.scheme() == "traco-cad" {
+                    dispatch_open_link(_app_handle, url.to_string());
+                } else if let Ok(path) = url.to_file_path() {
                     read_and_dispatch_file(_app_handle, path);
                 }
             }
