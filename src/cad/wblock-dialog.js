@@ -6,7 +6,10 @@ const escapeAttr = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&am
 function showDialog(dialog) {
     // Teclas da janela não chegam ao editor: Enter no OK repetiria o último comando.
     dialog.addEventListener('keydown', (event) => event.stopPropagation());
-    document.body.append(dialog);
+    // Idem para o mouse, agora que o diálogo mora dentro do `.cad-app`.
+    for (const type of ['pointerdown', 'click', 'dblclick', 'wheel']) dialog.addEventListener(type, (event) => event.stopPropagation());
+    // Dentro do `.cad-app` para herdar o tema claro/escuro; no body ficava sempre escuro.
+    (document.querySelector('[data-cad-app]') ?? document.body).append(dialog);
     dialog.addEventListener('close', () => dialog.remove(), { once: true });
     dialog.showModal();
 }

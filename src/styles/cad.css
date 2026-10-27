@@ -1606,23 +1606,28 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-inline-text-editor :focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
 
 /* WBLOCK: janela de gravar bloco em arquivo. */
-.cad-wblock-dialog { width: min(520px, 94vw); border: 1px solid #64748b; border-radius: 10px; padding: 16px; background: #18212f; color: #f8fafc; }
-.cad-wblock-dialog::backdrop { background: #0008; }
-.cad-wblock-dialog h3 { font-size: 1rem; margin: 0 0 10px; }
-.cad-wblock-dialog fieldset { border: 1px solid #475569; border-radius: 6px; margin: 0 0 10px; padding: 8px 10px; }
-.cad-wblock-dialog legend { padding: 0 4px; font-size: .85rem; }
+/* O diálogo é anexado dentro do `.cad-app`, então herda as variáveis do tema claro/escuro. */
+.cad-wblock-dialog { width: min(520px, 94vw); border: 1px solid var(--cad-border-strong); border-radius: 10px; padding: 16px; background: var(--cad-panel); color: var(--cad-text); font-family: var(--cad-font); font-size: 13px; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35); }
+.cad-wblock-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+.cad-wblock-dialog h3 { font-size: 1rem; font-weight: 600; margin: 0 0 10px; }
+.cad-wblock-dialog fieldset { border: 1px solid var(--cad-border-strong); border-radius: 6px; margin: 0 0 10px; padding: 8px 10px; }
+.cad-wblock-dialog legend { padding: 0 4px; font-size: .85rem; color: var(--cad-muted); }
 .cad-wblock-dialog label { display: block; font-size: .85rem; }
 .cad-wblock-path { display: flex; gap: 6px; margin-top: 4px; }
 .cad-wblock-path input { flex: 1; min-width: 0; }
 .cad-wblock-xyz { display: flex; gap: 8px; margin-top: 8px; }
 .cad-wblock-xyz label { display: flex; align-items: center; gap: 4px; }
 .cad-wblock-xyz input { width: 90px; }
-.cad-wblock-dialog input { background: #0f172a; color: #f8fafc; border: 1px solid #64748b; border-radius: 4px; padding: 4px 6px; }
-.cad-wblock-dialog button { background: #334155; color: #fff; border: 1px solid #64748b; border-radius: 6px; padding: 5px 12px; }
-.cad-wblock-dialog button[type=submit]:first-child { background: #2563eb; }
-.cad-wblock-dialog button:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
+.cad-wblock-dialog input { background: var(--cad-panel-3); color: var(--cad-text); border: 1px solid var(--cad-border-strong); border-radius: 4px; padding: 4px 6px; font: inherit; user-select: text; }
+.cad-wblock-dialog input:focus { border-color: var(--cad-accent); }
+.cad-wblock-dialog button { background: var(--cad-panel-3); color: var(--cad-text); border: 1px solid var(--cad-border-strong); border-radius: 6px; padding: 5px 12px; font: inherit; cursor: pointer; }
+.cad-wblock-dialog button:hover { border-color: var(--cad-accent); }
+.cad-wblock-dialog button[type=submit]:first-child { background: var(--cad-accent); border-color: var(--cad-accent); color: #fff; }
+/* !important vence o reset `.cad-app *:focus`: o OK nasce focado (W, Enter, Enter) e precisa aparecer. */
+.cad-app .cad-wblock-dialog input:focus { box-shadow: 0 0 0 2px var(--cad-accent-soft) !important; }
+.cad-app .cad-wblock-dialog button:focus { outline: 2px solid var(--cad-accent) !important; outline-offset: 2px; box-shadow: 0 0 0 4px var(--cad-accent-soft) !important; }
 .cad-wblock-dialog footer { display: flex; justify-content: flex-end; gap: 8px; }
-.cad-wblock-count { font-size: .8rem; opacity: .8; margin: 0 0 10px; }
+.cad-wblock-count { font-size: .8rem; color: var(--cad-muted); margin: 0 0 10px; }
 .cad-wblock-confirm-path { font-family: var(--cad-mono, monospace); word-break: break-all; }
 
 /* Tela Início (sem abas abertas), no espírito do lançador do BricsCAD. */

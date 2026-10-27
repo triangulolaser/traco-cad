@@ -4,7 +4,7 @@
 
 import { distance, sub, add, midpoint, polar, angleOf, normalizeAngle, sweepCCW, scale, perpendicular, dot, arcFromThreePoints } from './geometry.js';
 import { ensureSplineGeometry } from './extra-entities.js';
-import { LINEAR_DIMENSION_KINDS, linearDimensionEnds, linearTextHandle } from './dimensions.js';
+import { LINEAR_DIMENSION_KINDS, linearDimensionEnds, linearTextHandle, restretchLinearDimension } from './dimensions.js';
 
 /**
  * Retorna lista de alças (grips) disponíveis para a entidade.
@@ -160,9 +160,10 @@ export function getEntityGrips(entity, dimStyle) {
  * @param {object} entity
  * @param {object} grip
  * @param {{x: number, y: number}} targetPoint
+ * @param {object} [dimStyle] estilo de cota do documento (fator de medida ao reesticar cota com texto fixo)
  * @returns {object}
  */
-export function applyGripMove(entity, grip, targetPoint) {
+export function applyGripMove(entity, grip, targetPoint, dimStyle) {
     if (!entity || !grip) return entity;
     const p = targetPoint;
 
@@ -261,11 +262,8 @@ export function applyGripMove(entity, grip, targetPoint) {
                 const outside = grip.index === 0 ? t < 0 : t > len;
                 return { ...entity, arrowPlacement: outside ? 'outside' : 'inside' };
             }
-            if (grip.type === 'p1') {
-                return { ...entity, p1: { x: p.x, y: p.y } };
-            }
-            if (grip.type === 'p2') {
-                return { ...entity, p2: { x: p.x, y: p.y } };
+            if (grip.type === 'p1' || grip.type === 'p2') {
+                return restretchLinearDimension(entity, { ...entity, [grip.type]: { x: p.x, y: p.y } }, dimStyle);
             }
             if (grip.type === 'vertex') {
                 return { ...entity, vertex: { x: p.x, y: p.y } };

@@ -324,6 +324,32 @@ function linearGeometry(entity, style) {
     return { segments, arrows, texts: [textEntityAt(textCenter, angle, text, style, entity.id)], measurement, text, textAnchor, textNormal };
 }
 
+/**
+ * Cota linear com p1/p2 movidos: o número volta a medir e o texto gravado acompanha o meio da cota.
+ * Texto fixo só numérico (cota de DXF/DWG que congelou a medida) vira medição viva; a diferença entre o
+ * número e a geometria, comum em vista em escala, passa a fator (DIMLFAC) para seguir proporcional.
+ * Textos com palavras ou `<>` ficam como estão.
+ */
+export function restretchLinearDimension(before, after, style) {
+    if (!LINEAR_DIMENSION_KINDS.includes(before?.kind) || !before.p1 || !before.p2 || !before.linePoint) return after;
+    const old = linearDimensionEnds(before);
+    let next = after;
+    const frozen = typeof before.textOverride === 'string' ? before.textOverride.trim().match(/^([^\d<>]*?)(-?\d+(?:[.,]\d+)?)([^\d<>]*)$/) : null;
+    if (frozen && old.measurement > 1e-9) {
+        const shown = Number(frozen[2].replace(',', '.'));
+        const current = old.measurement * measurementFactor(effectiveStyle(style, before));
+        const { textOverride: _frozen, ...rest } = next;
+        next = { ...rest, ...(frozen[1] && !before.prefix ? { prefix: frozen[1] } : {}), ...(frozen[3] && !before.suffix ? { suffix: frozen[3] } : {}) };
+        if (Math.abs(shown - current) > Math.max(1e-6, Math.abs(shown) * 1e-4)) next.measurementScale = shown / old.measurement;
+    }
+    if (before.textPosition) {
+        const now = linearDimensionEnds(next);
+        const shift = dot(sub(midpoint(now.d1, now.d2), midpoint(old.d1, old.d2)), now.lineDir);
+        next = { ...next, textPosition: add(before.textPosition, scale(now.lineDir, shift)) };
+    }
+    return next;
+}
+
 /** Ponto da linha de cota logo abaixo do texto (alça que arrasta o texto ao longo da linha). */
 // AI_DIM_TEXTHOME / TEXTCENTER / TEXTABOVE do BricsCAD: devolve a cota com o texto na
 // posição padrão, no meio sobre a linha ou no meio acima dela. Cotas não lineares só voltam ao padrão.

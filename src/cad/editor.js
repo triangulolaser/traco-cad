@@ -938,7 +938,7 @@ export class Editor {
         const cursor = this.effectiveCursor() ?? this.cursorWorld ?? this.activeGrip.point;
         const target = this.dyn ? this.dyn.spec.resolve(cursor) : cursor;
         this.rubber = { from: this.activeGrip.point, to: target };
-        const modified = applyGripMove(this.gripOriginalEntity, this.activeGrip, target);
+        const modified = applyGripMove(this.gripOriginalEntity, this.activeGrip, target, this.doc.dimStyle);
         this.preview = [modified];
         this.invalidate();
     }
@@ -947,7 +947,7 @@ export class Editor {
         if (!this.activeGrip || !this.gripOriginalEntity) return;
         const cursor = this.effectiveCursor() ?? this.cursorWorld ?? this.activeGrip.point;
         const target = targetPoint ?? (this.dyn ? this.dyn.spec.resolve(cursor) : cursor);
-        const modified = applyGripMove(this.gripOriginalEntity, this.activeGrip, target);
+        const modified = applyGripMove(this.gripOriginalEntity, this.activeGrip, target, this.doc.dimStyle);
         const gripId = this.activeGrip.entityId;
         this.closeDynInput();
 

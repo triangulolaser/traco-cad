@@ -236,3 +236,18 @@ test('cad.css: destaque do botão escolhido no aviso de fechar guia vence o rese
     assert.match(rule[1], /outline:[^;]*!important/);
     assert.match(rule[1], /box-shadow:[^;]*!important/);
 });
+
+test('WBLOCK: janela segue o tema do Traço e mantém o foco visível', () => {
+    const css = readFileSync(resolve('src/styles/cad.css'), 'utf8');
+    const box = css.match(/\.cad-wblock-dialog\s*\{([^}]*)\}/);
+    assert.ok(box, 'regra da janela ausente');
+    assert.match(box[1], /background:\s*var\(--cad-panel\)/);
+    assert.match(box[1], /color:\s*var\(--cad-text\)/);
+    const wblockRules = css.match(/\.cad-wblock[^{]*\{[^}]*\}/g).join('\n');
+    assert.doesNotMatch(wblockRules, /#(?:18212f|0f172a|334155|64748b|475569)/i, 'cores fixas do tema escuro voltaram');
+    const focus = css.match(/\.cad-app \.cad-wblock-dialog button:focus\s*\{([^}]*)\}/);
+    assert.ok(focus, 'foco do botão ausente');
+    assert.match(focus[1], /outline:[^;]*!important/);
+    const js = readFileSync(resolve('src/cad/wblock-dialog.js'), 'utf8');
+    assert.match(js, /querySelector\('\[data-cad-app\]'\)/, 'janela deve ser anexada dentro do .cad-app para herdar o tema');
+});

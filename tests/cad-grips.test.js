@@ -244,3 +244,34 @@ test('cota linear: alça no meio da linha sob o número arrasta o texto para o o
     assert.ok(Math.abs(g2.point.x + 15) < 1e-6 && Math.abs(g2.point.y - 10) < 1e-6);
     assert.equal(applyGripMove(dim, g, { x: 20, y: 18 }).linePoint.y, 18);
 });
+
+test('arrastar a origem de cota importada com número fixo atualiza a medida e leva o texto junto', async () => {
+    const { dimensionGeometry } = await import('../src/cad/dimensions.js');
+    // Cota de DXF: texto "268" gravado e posição do texto no meio, como na peça em U.
+    const dim = { id: 'd', type: 'dimension', kind: 'vertical', p1: { x: 300, y: 268 }, p2: { x: 300, y: 0 }, linePoint: { x: 400, y: 134 }, textPosition: { x: 400, y: 134 }, textOverride: '268' };
+    const grip = getEntityGrips(dim).find((g) => g.type === 'p2');
+    const longer = applyGripMove(dim, grip, { x: 150, y: -100 });
+    assert.equal(dimensionGeometry(longer, {}).text, '368');
+    assert.equal(longer.textOverride, undefined);
+    assert.deepEqual(longer.textPosition, { x: 400, y: 84 });
+    const shorter = applyGripMove(dim, grip, { x: 300, y: 100 });
+    assert.equal(dimensionGeometry(shorter, {}).text, '168');
+});
+
+test('cota com número fixo diferente da geometria (vista em escala) segue proporcional ao arrasto', async () => {
+    const { dimensionGeometry } = await import('../src/cad/dimensions.js');
+    const dim = { id: 'd', type: 'dimension', kind: 'horizontal', p1: { x: 0, y: 0 }, p2: { x: 50, y: 0 }, linePoint: { x: 0, y: 10 }, textOverride: 'Ø1000' };
+    const grip = getEntityGrips(dim).find((g) => g.type === 'p2');
+    const moved = applyGripMove(dim, grip, { x: 75, y: 0 });
+    assert.equal(dimensionGeometry(moved, {}).text, 'Ø1500');
+});
+
+test('texto escrito pelo usuário na cota não é trocado pela medida ao arrastar a origem', async () => {
+    const { dimensionGeometry } = await import('../src/cad/dimensions.js');
+    for (const textOverride of ['FURO PASSANTE', '<> REF']) {
+        const dim = { id: 'd', type: 'dimension', kind: 'horizontal', p1: { x: 0, y: 0 }, p2: { x: 50, y: 0 }, linePoint: { x: 0, y: 10 }, textOverride };
+        const moved = applyGripMove(dim, getEntityGrips(dim).find((g) => g.type === 'p2'), { x: 80, y: 0 });
+        assert.equal(moved.textOverride, textOverride);
+        assert.equal(dimensionGeometry(moved, {}).text, textOverride.replace('<>', '80'));
+    }
+});
