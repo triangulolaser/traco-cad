@@ -473,6 +473,30 @@ export function tangentPoints(p, curve) {
     return curve.kind === 'circle' ? pts : pts.filter((q) => angleInArc(angleOf(curve.center, q), curve.start, curve.end));
 }
 
+// Retas tangentes comuns a dois círculos/arcos: até 4 pares {a, b} (a sobre c1, b sobre c2).
+// Externas (s = 1) e internas (s = -1); em arcos, só os pontos dentro do trecho.
+export function commonTangents(c1, c2) {
+    if (c1.kind === 'segment' || c2.kind === 'segment') return [];
+    const d = distance(c1.center, c2.center);
+    if (d < EPS) return [];
+    const ux = (c2.center.x - c1.center.x) / d;
+    const uy = (c2.center.y - c1.center.y) / d;
+    const onArc = (curve, p) => curve.kind === 'circle' || angleInArc(angleOf(curve.center, p), curve.start, curve.end);
+    const out = [];
+    for (const s of [1, -1]) {
+        const k = (c1.radius - s * c2.radius) / d;
+        if (Math.abs(k) > 1 + EPS) continue;
+        const h = Math.sqrt(Math.max(0, 1 - k * k));
+        for (const t of h < EPS ? [1] : [1, -1]) {
+            const n = { x: k * ux - t * h * uy, y: k * uy + t * h * ux };
+            const a = { x: c1.center.x + c1.radius * n.x, y: c1.center.y + c1.radius * n.y };
+            const b = { x: c2.center.x + s * c2.radius * n.x, y: c2.center.y + s * c2.radius * n.y };
+            if (distance(a, b) > EPS && onArc(c1, a) && onArc(c2, b)) out.push({ a, b });
+        }
+    }
+    return out;
+}
+
 // Arco por três pontos. Retorna null se colineares.
 export function arcFromThreePoints(p1, p2, p3) {
     const ax = p1.x; const ay = p1.y;
@@ -978,15 +1002,19 @@ function offsetPolyline(entity, dist, side) {
 // Divide a curva de uma entidade nos pontos dados e devolve as partes como entidades.
 export function splitEntityAt(entity, rawPoints) {
     // Pontos de corte coincidentes (ex.: duas arestas cruzando no mesmo ponto) geram peças de comprimento zero; deduplica.
+    // Linha tangente a círculo dá duas raízes a ~1e-6 uma da outra: com tolerância absoluta pequena,
+    // o TRIM deixava lascas de arco e linhas de comprimento zero que o SolidWorks lê como círculo inteiro.
+    const tol = splitTolerance(entity);
     const points = [];
     rawPoints.forEach((p) => {
-        if (!points.some((q) => distance(p, q) < 1e-7)) points.push(p);
+        if (!points.some((q) => distance(p, q) < tol)) points.push(p);
     });
     if (points.length === 0) return [entity];
     if (entity.type === 'line') {
+        const len = distance(entity.start, entity.end);
         const sorted = points
             .map((p) => ({ p, t: projectOnLine(p, entity.start, entity.end).t }))
-            .filter((h) => h.t > 1e-9 && h.t < 1 - 1e-9)
+            .filter((h) => h.t * len > tol && (1 - h.t) * len > tol)
             .sort((a, b) => a.t - b.t);
         const pieces = [];
         let cursor = entity.start;
@@ -999,6 +1027,8 @@ export function splitEntityAt(entity, rawPoints) {
     }
     if (entity.type === 'circle') {
         const angles = points.map((p) => normalizeAngle(angleOf(entity.center, p))).sort((a, b) => a - b);
+        // Pontos a menos de tol pela costura de 0/2π também são o mesmo corte.
+        if (angles.length > 1 && (angles[0] + TWO_PI - angles[angles.length - 1]) * entity.radius < tol) angles.pop();
         if (angles.length < 2) return [entity];
         const pieces = [];
         for (let i = 0; i < angles.length; i += 1) {
@@ -1012,7 +1042,7 @@ export function splitEntityAt(entity, rawPoints) {
         const sweep = sweepCCW(entity.start, entity.end);
         const rels = points
             .map((p) => normalizeAngle(angleOf(entity.center, p) - entity.start))
-            .filter((r) => r > 1e-9 && r < sweep - 1e-9)
+            .filter((r) => r * entity.radius > tol && (sweep - r) * entity.radius > tol)
             .sort((a, b) => a - b);
         const pieces = [];
         let cursor = 0;
@@ -1024,6 +1054,21 @@ export function splitEntityAt(entity, rawPoints) {
         return pieces;
     }
     return [entity];
+}
+
+// Tolerância de corte relativa ao tamanho das coordenadas, a mesma escala usada no TRIM.
+export function splitTolerance(entity) {
+    const pts = entity.type === 'line' ? [entity.start, entity.end] : entity.center ? [entity.center] : [];
+    const reach = Math.max(1, ...pts.map((p) => Math.hypot(p.x, p.y) + (entity.radius ?? 0)));
+    return 1e-6 * reach;
+}
+
+// Linha ou arco abaixo da tolerância de corte: resíduo numérico, não geometria.
+export function isDegenerateEntity(entity) {
+    const tol = splitTolerance(entity);
+    if (entity.type === 'line') return distance(entity.start, entity.end) < tol;
+    if (entity.type === 'arc') return sweepCCW(entity.start, entity.end) * entity.radius < tol;
+    return false;
 }
 
 export function curveLength(curve) {

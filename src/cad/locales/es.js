@@ -1419,5 +1419,18 @@ export default {
     "Tipo de linha dos próximos objetos": "Tipo de línea de los próximos objetos",
     "Espessura dos próximos objetos": "Grosor de los próximos objetos",
     "Novo objeto": "Objeto nuevo",
-    "Novos objetos": "Objetos nuevos"
+    "Novos objetos": "Objetos nuevos",
+    "Ponto dentro do círculo: não há tangente.": "Punto dentro del círculo: no hay tangente.",
+    "Nenhuma tangente possível nesse ponto.": "No hay tangente posible en este punto.",
+    "Nenhum ponto de snap nesse lugar.": "Ningún punto de referencia aquí.",
+    "Snap para ponto final de:": "Referencia a punto final de:",
+    "Snap para ponto médio de:": "Referencia a punto medio de:",
+    "Snap para centro de:": "Referencia a centro de:",
+    "Snap para centro geométrico de:": "Referencia a centro geométrico de:",
+    "Snap para interseção de:": "Referencia a intersección de:",
+    "Snap para quadrante de:": "Referencia a cuadrante de:",
+    "Snap para perpendicular de:": "Referencia a perpendicular de:",
+    "Snap para tangente de:": "Referencia a tangente de:",
+    "Snap para mais próximo de:": "Referencia a cercano de:",
+    "Snap para nó de:": "Referencia a nodo de:"
 };

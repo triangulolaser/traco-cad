@@ -68,6 +68,7 @@ import { parseDxf, writeDxf } from './dxf.js';
 import { chooseLinearKind, autoDimensionFor, dimensionGeometry, DIMENSION_LAYER, ensureDimensionSetup, computeAutoDimScale, getDrawingContentBox, resolveAngularQuadrant, placeDimensionText } from './dimensions.js';
 import { interpolateSpline, sampleSpline } from './splines.js';
 import { ellipsePoint, imageLocalPoint, ensureSplineGeometry } from './extra-entities.js';
+import { resolveDeferredTangent } from './snaps.js';
 import { autoDimensionPart } from './autodim.js';
 import { loopsFromEntities, HATCH_PATTERNS } from './hatch.js';
 import { DRAWING_ACCEPT, DRAWING_KINDS, IMAGE_ACCEPT, kindOf } from './file-types.js';
@@ -304,6 +305,30 @@ async function line(editor) {
     let last = first.point;
     let count = 0;
     let start = first.point;
+    // TAN no primeiro ponto ("tangente ajustada"): o ponto de tangência sai do segundo ponto.
+    let deferred = first.deferredTangent ?? null;
+    while (deferred) {
+        const res = await editor.getPoint('Próximo ponto', {
+            deferredTangent: deferred,
+            allowEnter: true,
+            preview: (cursor) => {
+                const a = editor.snap?.tangentFrom ?? resolveDeferredTangent(deferred, cursor);
+                return a ? [{ type: 'line', start: a, end: cursor }] : [];
+            },
+        });
+        if (res.enter) return;
+        if (!res.point) continue;
+        const a = res.tangentFrom ?? resolveDeferredTangent(deferred, res.point);
+        if (!a) {
+            editor.log('Ponto dentro do círculo: não há tangente.', 'warn');
+            continue;
+        }
+        editor.commit('Linha', addEntities(editor.doc, [{ type: 'line', start: a, end: res.point }]));
+        start = a;
+        last = res.point;
+        count = 1;
+        deferred = null;
+    }
     for (;;) {
         const options = count >= 2 ? [{ key: 'c', label: 'Fechar' }, { key: 'u', label: 'Desfazer' }] : count >= 1 ? [{ key: 'u', label: 'Desfazer' }] : [];
         const dynInput = lineDynSpec(editor, last);

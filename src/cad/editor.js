@@ -6,7 +6,7 @@ import { Viewport } from './viewport.js';
 import { Renderer } from './renderer.js';
 import { Terminal } from './terminal.js';
 import { History, createDocument, addEntities, removeEntities, updateEntities, editableEntities, visibleEntities, entityColor, layerOf, isEntityEditable, aciToHex, getDocumentSpatialIndex, ensureEntityIds } from './document.js';
-import { findSnap, findCenterHints, applyOrtho, applyPolar, applyAngleLock, findSoftAxis, defaultSnapSettings, SNAP_MODES } from './snaps.js';
+import { findSnap, findCenterHints, findOverrideSnap, parseSnapOverride, SNAP_OVERRIDE_PROMPTS, applyOrtho, applyPolar, applyAngleLock, findSoftAxis, defaultSnapSettings, SNAP_MODES } from './snaps.js';
 import { findTrackingSnap, mergeSnaps, trackingPointFromSnap, addTrackingPoint } from './tracking.js';
 import { parsePointInput, parseNumberInput, matchKeyword, formatOptions, splitCommandLine } from './input.js';
 import { tr } from './i18n.js';
@@ -726,6 +726,12 @@ export class Editor {
             })
             : visibleEntities(this.doc);
         const reference = this.pending?.reference ?? (this.activeGrip ? this.activeGrip.point : null);
+        if (this.pending?.snapOverride) {
+            // Snap digitado (TAN, END...) manda sozinho no próximo ponto: sem rastreamento nem ORTO.
+            this.snap = findOverrideSnap(entities, this.cursorWorld, tolerance, this.pending.snapOverride, { reference, deferred: this.pending.deferredTangent, exclude });
+            this.centerHint = null;
+            return;
+        }
         let objectSnap = this.settings.osnap ? findSnap(entities, this.cursorWorld, tolerance, this.settings.snaps, { reference, exclude }) : null;
         if (this.settings.osnap && !objectSnap && this.activeGrip?.type === 'textPosition' && this.gripOriginalEntity) {
             // Texto da cota encaixa no centro da medida (a própria cota fica fora do findSnap durante o arrasto).
@@ -1477,6 +1483,16 @@ export class Editor {
         }
         switch (pending.mode) {
             case 'point': {
+                if (pending.snapOverride) {
+                    const snap = this.snap;
+                    if (!snap) {
+                        this.log(pending.snapOverride === 'tan' ? 'Nenhuma tangente possível nesse ponto.' : 'Nenhum ponto de snap nesse lugar.', 'warn');
+                        return;
+                    }
+                    this.lastPoint = snap.point;
+                    this.resolvePending({ point: snap.point, snapMode: snap.mode, deferredTangent: snap.deferred ?? null, tangentFrom: snap.tangentFrom ?? null });
+                    return;
+                }
                 const point = this.effectiveCursor() ?? world;
                 this.lastPoint = point;
                 this.resolvePending({ point });
@@ -1692,6 +1708,15 @@ export class Editor {
         if (pending.options) {
             const option = matchKeyword(value, pending.options);
             if (option) return this.resolvePending({ keyword: option.key });
+        }
+        const override = parseSnapOverride(value);
+        if (override) {
+            pending.snapOverride = override;
+            this.closeDynInput();
+            this.terminal.setPrompt(tr(SNAP_OVERRIDE_PROMPTS[override]));
+            this.updateSnap();
+            this.invalidate();
+            return null;
         }
         const parsed = parsePointInput(value, { last: pending.reference ?? this.lastPoint, dynamic: Boolean(pending.reference) });
         if (parsed?.error) return this.log(parsed.error, 'error');

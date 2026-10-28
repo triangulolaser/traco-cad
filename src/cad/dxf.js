@@ -3,7 +3,7 @@ import {hydrateInsert} from './blocks.js';
 // Leitura e escrita de DXF ASCII (R12 / R2000) para o subconjunto suportado pelo Traço.
 // Entidades: LINE, CIRCLE, ARC, LWPOLYLINE, POLYLINE/VERTEX, TEXT, MTEXT, INSERT (achatado).
 
-import { degToRad, radToDeg, rotatePoint, add, sub, scale, distance, perpendicular, normalizeAngle } from './geometry.js';
+import { degToRad, radToDeg, rotatePoint, add, sub, scale, distance, perpendicular, normalizeAngle, isDegenerateEntity } from './geometry.js';
 import { createLayer, DEFAULT_LAYER, BYLAYER, LINETYPES } from './document.js';
 import { dimensionGeometry, formatMeasurement } from './dimensions.js';
 import { HATCH_PATTERNS } from './hatch.js';
@@ -1057,6 +1057,8 @@ function writeBlock(name,definition,dimStyle,graphics=null){
 }
 
 function writeEntity(entity, dimStyle) {
+    // Lasca de arco com início ≈ fim vira círculo inteiro no SolidWorks; linha de comprimento zero não serve a ninguém.
+    if (isDegenerateEntity(entity)) return '';
     switch (entity.type) {
         case '__insert':
         case 'insert': return entityHeader('INSERT',entity,'AcDbBlockReference')+pair(2,entity.name)+pair(10,fmt(entity.position.x))+pair(20,fmt(entity.position.y))+pair(30,0)+pair(41,fmt(entity.scaleX??1))+pair(42,fmt(entity.scaleY??1))+pair(43,1)+pair(50,fmt(entity.rotation??0));

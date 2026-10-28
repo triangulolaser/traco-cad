@@ -1419,5 +1419,18 @@ export default {
     "Tipo de linha dos próximos objetos": "Linetype of the next objects",
     "Espessura dos próximos objetos": "Lineweight of the next objects",
     "Novo objeto": "New object",
-    "Novos objetos": "New objects"
+    "Novos objetos": "New objects",
+    "Ponto dentro do círculo: não há tangente.": "Point inside the circle: no tangent.",
+    "Nenhuma tangente possível nesse ponto.": "No tangent possible at this point.",
+    "Nenhum ponto de snap nesse lugar.": "No snap point here.",
+    "Snap para ponto final de:": "Snap to endpoint of:",
+    "Snap para ponto médio de:": "Snap to midpoint of:",
+    "Snap para centro de:": "Snap to center of:",
+    "Snap para centro geométrico de:": "Snap to geometric center of:",
+    "Snap para interseção de:": "Snap to intersection of:",
+    "Snap para quadrante de:": "Snap to quadrant of:",
+    "Snap para perpendicular de:": "Snap to perpendicular of:",
+    "Snap para tangente de:": "Snap to tangent of:",
+    "Snap para mais próximo de:": "Snap to nearest of:",
+    "Snap para nó de:": "Snap to node of:"
 };

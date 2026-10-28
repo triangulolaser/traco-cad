@@ -10,6 +10,7 @@ import {
     intersectCurves,
     perpendicularFoot,
     tangentPoints,
+    commonTangents,
     closestPointOnCurve,
     distanceToCurve,
     curveBox,
@@ -149,6 +150,86 @@ export function findSnap(entities, cursor, tolerance, settings, { reference = nu
         return distance(a.point, cursor) - distance(b.point, cursor);
     });
     return candidates[0];
+}
+
+// Snap digitado no prompt de ponto (TAN, END, PER...), como no AutoCAD/BricsCAD: vale só para o
+// próximo ponto, ignora os snaps ligados e funciona mesmo com OSNAP desligado.
+export const SNAP_OVERRIDE_PROMPTS = {
+    end: 'Snap para ponto final de:',
+    mid: 'Snap para ponto médio de:',
+    cen: 'Snap para centro de:',
+    gcen: 'Snap para centro geométrico de:',
+    int: 'Snap para interseção de:',
+    qua: 'Snap para quadrante de:',
+    per: 'Snap para perpendicular de:',
+    tan: 'Snap para tangente de:',
+    nea: 'Snap para mais próximo de:',
+    nod: 'Snap para nó de:',
+};
+
+export function parseSnapOverride(text) {
+    const key = String(text ?? '').trim().toLowerCase().replace(/^_/, '');
+    return Object.hasOwn(SNAP_OVERRIDE_PROMPTS, key) ? key : null;
+}
+
+function roundCurvesNear(entities, cursor, tolerance, exclude) {
+    const out = [];
+    entities.forEach((entity) => {
+        if (exclude.has(entity.id)) return;
+        entityCurves(entity).forEach((curve) => {
+            if (curve.kind === 'segment' || curve.approx) return;
+            const d = distanceToCurve(cursor, curve);
+            if (d <= tolerance) out.push({ curve, entity, d });
+        });
+    });
+    return out.sort((x, y) => x.d - y.d);
+}
+
+// Ponto do override. TAN sem ponto anterior devolve `deferred` ("tangente ajustada"): o ponto real
+// só se define quando o próximo ponto chega. Com `deferred` vindo do ponto anterior, TAN em outro
+// círculo dá a reta tangente aos dois (`tangentFrom` é o ponto sobre o primeiro).
+export function findOverrideSnap(entities, cursor, tolerance, mode, { reference = null, deferred = null, exclude = new Set() } = {}) {
+    if (mode !== 'tan') {
+        const settings = mode === 'nod' ? { nod: true, end: false } : { [mode]: true };
+        return findSnap(entities, cursor, tolerance, settings, { reference, exclude });
+    }
+    const near = roundCurvesNear(entities, cursor, tolerance, exclude);
+    if (deferred) {
+        let best = null;
+        near.forEach(({ curve, entity }) => {
+            commonTangents(deferred.curve, curve).forEach(({ a, b }) => {
+                const score = distance(a, deferred.pick) + distance(b, cursor);
+                if (!best || score < best.score) best = { mode: 'tan', point: b, entity, tangentFrom: a, score };
+            });
+        });
+        if (best) return best;
+        // Cursor sobre o próprio círculo ajustado ou fora de qualquer círculo: sem tangente comum.
+        return null;
+    }
+    if (reference) {
+        let best = null;
+        near.forEach(({ curve, entity }) => {
+            tangentPoints(reference, curve).forEach((p) => {
+                const d = distance(p, cursor);
+                if (!best || d < best.d) best = { mode: 'tan', point: p, entity, d };
+            });
+        });
+        return best;
+    }
+    if (near.length === 0) return null;
+    const { curve, entity } = near[0];
+    const point = closestPointOnCurve(cursor, curve);
+    return { mode: 'tan', point, entity, deferred: { curve, entity, pick: point } };
+}
+
+// Ponto de tangência sobre o círculo ajustado visto de p: o do lado escolhido no clique.
+export function resolveDeferredTangent(deferred, p) {
+    let best = null;
+    tangentPoints(p, deferred.curve).forEach((q) => {
+        const d = distance(q, deferred.pick);
+        if (!best || d < best.d) best = { point: q, d };
+    });
+    return best?.point ?? null;
 }
 
 // Centros de arcos/círculos/elipses sob o cursor: a borda não puxa o snap, mas o centro
