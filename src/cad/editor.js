@@ -210,10 +210,13 @@ export class Editor {
         usage('edit');
         setEntityContext({ dimStyle: doc.dimStyle });
         this.selection = new Set([...this.selection].filter((id) => doc.entities.some((e) => e.id === id)));
+        // Comandos que guardam ids entre passos (MATCHPROP) consultam a troca feita por este commit.
+        this.lastRenamedIds = null;
         if (this.collabBridge) {
             // A ponte troca ids locais (e1, e2…) por ids globais; a seleção acompanha.
             const renamed = this.collabBridge.commitLocalDocument(doc);
             if (renamed?.size) this.selection = new Set([...this.selection].map((id) => renamed.get(id) ?? id));
+            this.lastRenamedIds = renamed?.size ? renamed : null;
         }
         if (this.collabProvider) {
             this.collabProvider.updateLocalAwareness({ selection: Array.from(this.selection) });

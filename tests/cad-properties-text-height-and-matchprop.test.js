@@ -408,3 +408,43 @@ test('entityOrWindow: directional segue a direção do arraste; sem ela continua
     assert.equal(run(true, { x: 10, y: 0 }, { x: 0, y: 10 }).crossingArg, true, 'direita→esquerda = crossing');
     assert.equal(run(undefined, { x: 0, y: 0 }, { x: 10, y: 10 }).crossingArg, true, 'TRIM/EXTEND continuam crossing');
 });
+
+test('MATCHPROP: com Shift o clique ou a caixa devolve as propriedades originais e o pincel continua', async () => {
+    let doc = addEntities(createDocument(), [
+        { id: 'src', type: 'line', a: { x: 0, y: 0 }, b: { x: 1, y: 0 }, layer: 'CORTE', color: 1, lineType: 'DASHED', lineWeight: 35 },
+        { id: 'l1', type: 'line', a: { x: 0, y: 5 }, b: { x: 1, y: 5 }, layer: '0', color: 7 },
+        { id: 'l2', type: 'line', a: { x: 0, y: 9 }, b: { x: 1, y: 9 }, layer: '0', color: 3, lineType: 'CENTER' },
+        { id: 'l3', type: 'line', a: { x: 0, y: 12 }, b: { x: 1, y: 12 }, layer: '0', color: 5 },
+    ]);
+    doc.layers.push({ name: 'CORTE', color: 1, visible: true, locked: false });
+    const by = (id) => doc.entities.find((x) => x.id === id);
+    const picks = [
+        () => ({ entities: [by('l1'), by('l2')] }),
+        () => ({ entities: [by('l1'), by('l2'), by('l3')], shift: true }),
+        () => ({ entity: by('l1') }),
+    ];
+    let commits = 0;
+    let snapshot = null;
+    const editor = {
+        get doc() { return doc; },
+        selection: new Set(),
+        canvas: { classList: { add() {}, remove() {} } },
+        log() {},
+        async getEntity() { return { entity: by('src') }; },
+        async getEntityOrWindow() {
+            if (picks.length === 2) snapshot = structuredClone(doc.entities);
+            const next = picks.shift();
+            return next ? next() : null;
+        },
+        commit(label, next) { commits++; doc = next; },
+    };
+    await EDIT_COMMANDS.MATCHPROP.run(editor);
+    assert.equal(commits, 3, 'caixa do Shift sem objeto mudado (l3) não cria passo extra');
+    assert.equal(by('l2').color, 3);
+    assert.equal(by('l2').lineType, 'CENTER');
+    assert.equal(by('l2').layer, '0');
+    assert.ok(!('lineWeight' in by('l2')), 'propriedade que não existia volta a não existir');
+    assert.equal(by('l3').color, 5, 'Shift não mexe em quem o pincel não mudou');
+    assert.equal(by('l1').color, 1, 'soltar o Shift volta a aplicar');
+    assert.equal(snapshot.find((x) => x.id === 'l2').color, 1);
+});

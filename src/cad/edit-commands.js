@@ -178,6 +178,17 @@ export function mergeOverlappingLines(lines, tol = 1e-3) {
     return { replacements, removed };
 }
 
+// Desfaz o pincel num objeto: as propriedades que o MATCHPROP copia voltam ao valor anterior; a geometria fica a atual.
+const BRUSH_KEYS=['layer','color','lineType','lineWeight','textHeight','style','height','fontFamily','bold','italic','arrowSize','scale','tolerance'];
+function restoreProperties(current,original){
+    const next={...current};
+    for(const key of BRUSH_KEYS){
+        if(key in original)next[key]=structuredClone(original[key]);
+        else delete next[key];
+    }
+    return next;
+}
+
 // Pincel do MATCHPROP: aplica as propriedades da referência a um destino.
 function matchProperties(e,source,target0){
     const target={
@@ -1041,15 +1052,29 @@ export const EDIT_COMMANDS = {
         const src=pre?{entity:pre}:await e.getEntity('Objeto de referência');if(!src)return;
         const source=structuredClone(src.entity);
         e.canvas.classList.add('cad-property-brush');
+        // Estado de cada destino antes do pincel: com Shift, clique ou caixa devolve o objeto a ele.
+        const originals=new Map();
         try {
             for(;;){
                 // Clique num destino ou caixa de seleção (esquerda→direita janela, direita→esquerda crossing).
-                const pick=await e.getEntityOrWindow('Pincel: clique no destino ou arraste uma caixa; Enter/Esc encerra',{allowEnter:true,directional:true});
+                const pick=await e.getEntityOrWindow('Pincel: clique no destino ou arraste uma caixa; Shift desfaz; Enter/Esc encerra',{allowEnter:true,directional:true});
                 if(!pick)break;
                 const picked=pick.entities??[pick.entity];
                 const targets=picked.filter((x)=>!(pick.entities&&x.id===src.entity.id)&&isEntityEditable(e.doc,x));
                 if(!targets.length){e.log(pick.entities?'Nenhum destino editável na caixa.':'Destino em layer bloqueado ou oculto.');continue;}
+                if(pick.shift){
+                    // Só volta quem o pincel mudou nesta execução; o resto da caixa fica como está.
+                    const restore=targets.filter((x)=>originals.has(x.id));
+                    if(!restore.length){e.log('Nada a desfazer nos objetos escolhidos.');continue;}
+                    e.commit('Desfazer cópia de propriedades',replaceEntities(e.doc,new Map(restore.map((x)=>[x.id,restoreProperties(x,originals.get(x.id))]))));
+                    restore.forEach((x)=>originals.delete(x.id));
+                    e.log(`Propriedades originais devolvidas a ${restore.length} objeto(s).`);
+                    continue;
+                }
+                targets.forEach((x)=>{if(!originals.has(x.id))originals.set(x.id,structuredClone(x));});
                 e.commit('Copiar propriedades',replaceEntities(e.doc,new Map(targets.map((x)=>[x.id,matchProperties(e,source,x)]))));
+                // Na colaboração o commit troca ids locais por globais: o original segue o objeto.
+                for(const [from,to] of e.lastRenamedIds??[]){if(originals.has(from)){originals.set(to,originals.get(from));originals.delete(from);}}
                 if(pick.entities)e.log(`Propriedades copiadas para ${targets.length} objeto(s).`);
             }
         } finally {e.canvas.classList.remove('cad-property-brush');}
