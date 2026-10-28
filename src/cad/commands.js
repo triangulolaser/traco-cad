@@ -72,7 +72,7 @@ import { resolveDeferredTangent } from './snaps.js';
 import { autoDimensionPart } from './autodim.js';
 import { loopsFromEntities, HATCH_PATTERNS } from './hatch.js';
 import { DRAWING_ACCEPT, DRAWING_KINDS, IMAGE_ACCEPT, kindOf } from './file-types.js';
-import { createRectangleEntity, polylineFillet, createRevcloudFromEntity, distanceToEntity, polygonAreaAndPerimeter, polylineArea, getEntityAreaAndPerimeter, pointInPolygon } from './edit-tools.js';
+import { createRectangleEntity, createSlotEntity, polylineFillet, createRevcloudFromEntity, distanceToEntity, polygonAreaAndPerimeter, polylineArea, getEntityAreaAndPerimeter, pointInPolygon } from './edit-tools.js';
 
 export class CancelError extends Error {
     constructor() {
@@ -2454,6 +2454,64 @@ async function polygon(editor, args = []) {
     return editor.commit('Polígono', addEntities(editor.doc, [build(radius, angle)]));
 }
 
+// Oblongo (furo oblongo/rasgo) de uma vez: largura e dois pontos. A ribbon passa o modo
+// (c = centro a centro dos arcos, b = borda a borda); no terminal o modo é opção do prompt.
+// Valor digitado no segundo ponto é a distância na direção do cursor, como na LINE.
+async function slot(editor, args = []) {
+    editor.memory = editor.memory ?? {};
+    const preset = String((Array.isArray(args) ? args[0] : args) || '').toLowerCase();
+    let mode = preset === 'b' || preset === 'c' ? preset : (editor.memory.slotMode ?? 'c');
+    let width = editor.memory.slotWidth ?? 10;
+    let first;
+    for (;;) {
+        const res = await editor.getPoint(mode === 'b' ? 'Ponta do oblongo (borda)' : 'Centro do primeiro arco', {
+            options: [
+                { key: 'l', label: `Largura (${fmt(width)})` },
+                { key: 'c', label: 'Centro a centro' },
+                { key: 'b', label: 'Borda a borda' },
+            ],
+            allowEnter: false,
+        });
+        if (!res) return null;
+        if (res.keyword === 'l') {
+            const w = await editor.getNumber('Largura do oblongo (diâmetro dos arcos)', { defaultValue: width, min: 0 });
+            if (w > 0) width = w;
+            else if (w !== undefined && w !== null) editor.log('A largura precisa ser maior que zero.', 'error');
+            editor.memory.slotWidth = width;
+            continue;
+        }
+        if (res.keyword === 'c' || res.keyword === 'b') {
+            mode = res.keyword;
+            editor.memory.slotMode = mode;
+            editor.log(mode === 'b' ? 'Oblongo borda a borda.' : 'Oblongo centro a centro.');
+            continue;
+        }
+        if (res.point) { first = res.point; break; }
+        if (!res.keyword) return null;
+    }
+    editor.memory.slotMode = mode;
+    editor.memory.slotWidth = width;
+    for (;;) {
+        const res = await editor.getPoint(mode === 'b' ? 'Outra ponta (comprimento total)' : 'Centro do segundo arco (distância entre centros)', {
+            reference: first,
+            preview: (cursor) => {
+                const e = createSlotEntity(first, cursor, width, mode);
+                return e ? [e] : [];
+            },
+        });
+        if (!res?.point) return null;
+        const entity = createSlotEntity(first, res.point, width, mode);
+        if (!entity) {
+            editor.log(`No modo borda a borda o comprimento total precisa ser pelo menos a largura (${fmt(width)}).`, 'error');
+            continue;
+        }
+        const length = distance(first, res.point);
+        const total = mode === 'b' ? length : length + width;
+        editor.log(`Oblongo ${fmt(width)} × ${fmt(total)} (centros a ${fmt(total - width)}).`);
+        return editor.commit('Oblongo', addEntities(editor.doc, [entity]));
+    }
+}
+
 function polygonFromEdge(sides, a, b) {
     const edge = distance(a, b);
     const interior = ((sides - 2) * Math.PI) / sides;
@@ -4576,6 +4634,7 @@ export const COMMANDS = {
     RECTANG: { dimInput: true, aliases: ['REC', 'RECT', 'RECTANGLE'], run: rectangle, description: 'Retângulo por dois cantos' },
     REVCLOUD: { dimInput: true, aliases: ['REV', 'NUVEMREV'], run: revcloud, description: 'Criar nuvem de revisão em forma de arcos sequenciais' },
     TEXT: { aliases: ['T', 'DT', 'DTEXT'], run: text, description: 'Texto de linha única' },
+    SLOT: { dimInput: true, aliases: ['OBLONGO', 'OBL', 'RASGO'], run: slot, description: 'Furo oblongo por largura e dois pontos, centro a centro ou borda a borda' },
     POLYGON: { dimInput: true, aliases: ['POL', 'POLIGONO'], run: polygon, description: 'Polígono regular por lados, inscrito/circunscrito ou por aresta' },
     ELLIPSE: { dimInput: true, aliases: ['EL', 'ELIPSE'], run: ellipse, description: 'Elipse por eixo e distância ou centro' },
     SPLINE: { dimInput: true, aliases: ['SPL'], run: spline, description: 'Spline por pontos de ajuste (B-spline cúbica)' },

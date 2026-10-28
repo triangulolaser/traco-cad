@@ -857,6 +857,33 @@ export function xlineOffsetThrough(entity, throughPoint, options = {}) {
     return createXline(throughPoint, u, options);
 }
 
+// Oblongo (rasgo) como polilinha fechada: dois lados retos e duas semicircunferências
+// (bulge 1, anti-horário). Modo 'c': a e b são os centros dos arcos; modo 'b': a e b são
+// as pontas, e o comprimento total inclui os dois raios. Sem trecho reto vira círculo.
+export function createSlotEntity(a, b, width, mode = 'c') {
+    const r = width / 2;
+    if (!(r > 0)) return null;
+    const length = distance(a, b);
+    const straight = mode === 'b' ? length - width : length;
+    if (straight < -1e-9) return null;
+    const u = length > 1e-12 ? normalize(sub(b, a)) : { x: 1, y: 0 };
+    const c1 = mode === 'b' ? add(a, scale(u, r)) : a;
+    if (straight <= 1e-9) return { type: 'circle', center: c1, radius: r };
+    const c2 = add(c1, scale(u, straight));
+    const n = { x: -u.y, y: u.x };
+    const off = scale(n, r);
+    return {
+        type: 'polyline',
+        closed: true,
+        vertices: [
+            { ...sub(c1, off), bulge: 0 },
+            { ...sub(c2, off), bulge: 1 },
+            { ...add(c2, off), bulge: 0 },
+            { ...add(c1, off), bulge: 1 },
+        ],
+    };
+}
+
 export function createRectangleEntity(a, b, { fillet = 0, chamfer1 = 0, chamfer2 = 0, width = 0, rotation = 0, layer = undefined } = {}) {
     const rotRad = (rotation * Math.PI) / 180;
     const bLoc = rotRad !== 0 ? rotatePoint(b, a, -rotRad) : b;

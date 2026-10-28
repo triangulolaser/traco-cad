@@ -87,7 +87,7 @@ const toggleKey = (event) => event.ctrlKey || event.metaKey;
 // escolhidos no painel Propriedades antes de desenhar (CECOLOR/CELTYPE/CELWEIGHT).
 // Edições (COPY, OFFSET, MIRROR...) preservam as propriedades da origem.
 export const DRAW_COMMANDS = new Set([
-    'POINT', 'DONUT', 'LINE', 'CIRCLE', 'ARC', 'PLINE', 'RECTANG', 'REVCLOUD', 'TEXT', 'POLYGON', 'ELLIPSE', 'SPLINE',
+    'POINT', 'DONUT', 'LINE', 'CIRCLE', 'ARC', 'PLINE', 'RECTANG', 'REVCLOUD', 'TEXT', 'POLYGON', 'SLOT', 'ELLIPSE', 'SPLINE',
     'BOUNDARY', 'HATCH', 'RAY', 'XLINE', 'LEADER', 'AI_CIRCTAN',
     'DIM', 'DIMENSION', 'DIMLINEAR', 'DIMHORIZONTAL', 'DIMVERTICAL', 'DIMALIGNED', 'DIMBASELINE', 'DIMCONTINUE',
     'DIMCENTER', 'DIMANGULAR', 'DIMRADIUS', 'DIMDIAMETER',
