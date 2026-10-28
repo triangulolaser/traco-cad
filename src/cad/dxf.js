@@ -369,8 +369,8 @@ function parseEntity(type, groups) {
                     rotation = (Math.atan2(dy, dx) * 180) / Math.PI;
                 }
             } else if (first(groups, 50) !== undefined) {
-                const raw50 = num(first(groups, 50));
-                rotation = Math.abs(raw50) > Math.PI * 2 ? raw50 : (raw50 * 180) / Math.PI;
+                // A referência DXF diz radianos, mas AutoCAD, BricsCAD e o próprio Traço gravam graus.
+                rotation = num(first(groups, 50));
             }
 
             return {
