@@ -51,6 +51,41 @@ test('AI_CIRCTAN: comando cria o círculo', async () => {
     assert.equal(suggestCommands('AI_')[0].name.startsWith('AI_'), true);
 });
 
+test('AI_CIRCTAN: retângulo em polilinha, três lados do mesmo objeto', async () => {
+    const rect = { id: 1, type: 'polyline', layer: '0', closed: true, vertices: [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 80, y: 240 }, { x: 0, y: 240 }] };
+    const pts = [{ x: 0, y: 100 }, { x: 0, y: 120 }, { x: 80, y: 90 }, { x: 40, y: 0 }];
+    let i = 0;
+    const editor = {
+        doc: addEntities(createDocument(), [rect]), logs: [],
+        log(m) { this.logs.push(m); }, commit(_, d) { this.doc = d; },
+        async getEntity(_, opts) { const e = this.doc.entities[0]; assert.ok(opts.filter(e)); return { entity: e, point: pts[i++] }; },
+    };
+    await resolveCommand('ai_circtan').run(editor);
+    // Segundo clique no mesmo lado é recusado; depois lado direito e base: círculo de raio 40 encostado embaixo.
+    assert.ok(editor.logs.includes('Esse trecho já foi selecionado.'));
+    const circle = editor.doc.entities.find((e) => e.type === 'circle');
+    close(circle.radius, 40); close(circle.center.x, 40); close(circle.center.y, 40);
+});
+
+test('AI_CIRCTAN: trecho em arco (bulge) da polilinha vale como arco', async () => {
+    // Semicírculo de raio 10 centrado na origem (bulge 1) + duas linhas.
+    const pl = { id: 1, type: 'polyline', layer: '0', closed: false, vertices: [{ x: 10, y: 0, bulge: 1 }, { x: -10, y: 0 }] };
+    const ents = [pl, line(2, -100, -30, 100, -30), line(3, -100, 30, 100, 30)];
+    const pts = [{ x: 0, y: 10 }, { x: 0, y: -30 }, { x: 0, y: 30 }];
+    let i = 0;
+    const editor = {
+        doc: addEntities(createDocument(), ents), logs: [],
+        log(m) { this.logs.push(m); }, commit(_, d) { this.doc = d; },
+        async getEntity(_, opts) { const e = this.doc.entities[i]; assert.ok(opts.filter(e)); return { entity: e, point: pts[i++] }; },
+    };
+    await resolveCommand('ai_circtan').run(editor);
+    const circle = editor.doc.entities.find((e) => e.type === 'circle');
+    close(circle.radius, 30);
+    // Tangente ao círculo de apoio do arco: por fora (30 + 10) ou envolvendo-o (30 − 10).
+    const d = Math.hypot(circle.center.x, circle.center.y);
+    assert.ok(Math.abs(d - 40) < 1e-6 || Math.abs(d - 20) < 1e-6, `centro a ${d}`);
+});
+
 test('AI_DIM_TEXT*: centro, acima e posição padrão', () => {
     const style = defaultDimStyle();
     const dim = { id: 9, type: 'dimension', kind: 'aligned', p1: { x: 0, y: 0 }, p2: { x: 100, y: 0 }, linePoint: { x: 0, y: 20 }, textPosition: { x: 300, y: 80 } };

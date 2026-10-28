@@ -1384,6 +1384,7 @@ export default {
     "Selecione o primeiro objeto tangente:": "Select first tangent object:",
     "Selecione o segundo objeto tangente:": "Select second tangent object:",
     "Selecione o terceiro objeto tangente:": "Select third tangent object:",
+    "Esse trecho já foi selecionado.": "That segment is already selected.",
     "Não existe círculo tangente aos três objetos.": "No circle is tangent to the three objects.",
     "Círculo tangente": "Tangent circle",
     "Círculo tangente: raio {0} diâmetro {1}": "Tangent circle: radius {0} diameter {1}",

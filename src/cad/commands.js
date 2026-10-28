@@ -4377,16 +4377,37 @@ async function importDxf(editor) {
 }
 
 // Comandos AI_* do BricsCAD.
-const TANGENT_TYPES = new Set(['line', 'circle', 'arc']);
+const TANGENT_TYPES = new Set(['line', 'circle', 'arc', 'polyline']);
+
+// Polilinha (retângulo, polígono) entra pelo trecho mais perto do clique, como linha ou arco.
+function tangentPiece(entity, point) {
+    if (entity.type !== 'polyline') return { key: String(entity.id), entity };
+    let best = null;
+    for (const c of polylineCurves(entity.vertices, entity.closed)) {
+        const d = distance(point, closestPointOnCurve(point, c));
+        if (!best || d < best.d) best = { c, d };
+    }
+    if (!best) return null;
+    const { c } = best;
+    const piece = c.kind === 'segment'
+        ? { type: 'line', start: c.a, end: c.b }
+        : { type: 'arc', center: c.center, radius: c.radius, start: c.start, end: c.end };
+    return { key: `${entity.id}#${c.index}`, entity: { ...piece, id: entity.id, layer: entity.layer } };
+}
 
 async function aiCircTan(editor) {
     const prompts = ['Selecione o primeiro objeto tangente:', 'Selecione o segundo objeto tangente:', 'Selecione o terceiro objeto tangente:'];
     const picks = [];
     for (const prompt of prompts) {
-        const used = new Set(picks.map((p) => p.entity.id));
-        const pick = await editor.getEntity(prompt, { filter: (e) => TANGENT_TYPES.has(e.type) && !used.has(e.id) });
-        if (!pick) return;
-        picks.push({ entity: pick.entity, point: pick.point });
+        // Linha/círculo só uma vez; polilinha pode repetir desde que em outro lado.
+        const used = new Set(picks.map((p) => p.key));
+        for (;;) {
+            const pick = await editor.getEntity(prompt, { filter: (e) => TANGENT_TYPES.has(e.type) && (e.type === 'polyline' || !used.has(String(e.id))) });
+            if (!pick) return;
+            const piece = tangentPiece(pick.entity, pick.point);
+            if (piece && !used.has(piece.key)) { picks.push({ ...piece, point: pick.point }); break; }
+            editor.log('Esse trecho já foi selecionado.', 'warn');
+        }
     }
     const c = circleTangentToThree(picks);
     if (!c) return editor.log('Não existe círculo tangente aos três objetos.', 'error');

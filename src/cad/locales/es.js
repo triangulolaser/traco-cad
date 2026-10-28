@@ -1384,6 +1384,7 @@ export default {
     "Selecione o primeiro objeto tangente:": "Seleccione el primer objeto tangente:",
     "Selecione o segundo objeto tangente:": "Seleccione el segundo objeto tangente:",
     "Selecione o terceiro objeto tangente:": "Seleccione el tercer objeto tangente:",
+    "Esse trecho já foi selecionado.": "Ese tramo ya fue seleccionado.",
     "Não existe círculo tangente aos três objetos.": "No existe un círculo tangente a los tres objetos.",
     "Círculo tangente": "Círculo tangente",
     "Círculo tangente: raio {0} diâmetro {1}": "Círculo tangente: radio {0} diámetro {1}",
