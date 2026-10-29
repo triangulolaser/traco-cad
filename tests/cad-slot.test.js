@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { COMMANDS, resolveCommand } from '../src/cad/commands.js';
 import { createDocument } from '../src/cad/document.js';
-import { createSlotEntity, getEntityAreaAndPerimeter } from '../src/cad/edit-tools.js';
+import { createSlotEntity, createRectangleEntity, getEntityAreaAndPerimeter, slotParams, resizeSlot } from '../src/cad/edit-tools.js';
 import { entityBox } from '../src/cad/geometry.js';
 
 const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-6, `${msg}: ${a} != ${b}`);
@@ -106,4 +106,43 @@ test('SLOT pelo terminal: troca de modo, memória e repetição após compriment
     const box2 = entityBox(again.doc.entities[0]);
     near(box2.minX, -5, 'centro a centro estende um raio para cada lado');
     near(box2.maxX, 35, 'maxX');
+});
+
+test('slotParams reconhece o oblongo em qualquer vértice inicial e sentido', () => {
+    const e = createSlotEntity({ x: 0, y: 0 }, { x: 30, y: 40 }, 10, 'c');
+    const rotated = { ...e, vertices: [...e.vertices.slice(1), e.vertices[0]] };
+    const reversed = { ...e, vertices: [...e.vertices].reverse().map((v, i, a) => ({ ...v, bulge: -(a[(i + 1) % 4].bulge) })) };
+    for (const shape of [e, rotated, reversed]) {
+        const p = slotParams(shape);
+        assert.ok(p, 'reconhecido');
+        near(p.width, 10, 'largura');
+        near(p.centers, 50, 'centro a centro');
+        near(p.length, 60, 'total');
+    }
+    assert.equal(slotParams(createRectangleEntity({ x: 0, y: 0 }, { x: 10, y: 5 })), null, 'retângulo não é oblongo');
+    assert.equal(slotParams({ ...e, closed: false }), null);
+    assert.equal(slotParams({ ...e, vertices: e.vertices.map((v, i) => (i === 1 ? { ...v, bulge: 0.5 } : v)) }), null);
+});
+
+test('resizeSlot: largura mantém os centros; comprimento e centro a centro mantêm o meio e a direção', () => {
+    const e = { ...createSlotEntity({ x: 0, y: 0 }, { x: 0, y: 40 }, 10, 'c'), id: 'x', layer: 'FUROS', color: 1 };
+    const w = resizeSlot(e, { width: 6 });
+    let p = slotParams(w);
+    near(p.width, 6, 'largura');
+    near(p.centers, 40, 'centros parados');
+    near(p.c1.x, 0, 'mesma direção');
+    assert.equal(w.id, 'x');
+    assert.equal(w.layer, 'FUROS');
+    assert.equal(w.color, 1);
+    p = slotParams(resizeSlot(e, { length: 70 }));
+    near(p.length, 70, 'total');
+    near(p.width, 10, 'largura mantida');
+    near((p.c1.y + p.c2.y) / 2, 20, 'meio parado');
+    near(p.c1.x, 0, 'direção vertical');
+    p = slotParams(resizeSlot(e, { centers: 25 }));
+    near(p.centers, 25, 'centros');
+    near(p.length, 35, 'total');
+    assert.throws(() => resizeSlot(e, { length: 8 }), /pelo menos a largura/);
+    assert.throws(() => resizeSlot(e, { length: 10 }), /círculo/);
+    assert.equal(resizeSlot({ type: 'line', start: { x: 0, y: 0 }, end: { x: 1, y: 0 } }, { width: 2 }), null);
 });

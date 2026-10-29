@@ -884,6 +884,47 @@ export function createSlotEntity(a, b, width, mode = 'c') {
     };
 }
 
+// Reconhece um oblongo em qualquer polilinha fechada de 4 vértices (do SLOT, do DXF ou
+// montada à mão e unida): dois lados retos paralelos e duas semicircunferências do mesmo
+// diâmetro, em qualquer vértice inicial e sentido. Devolve centros dos arcos e largura.
+export function slotParams(entity, tol = 1e-6) {
+    if (entity?.type !== 'polyline' || !entity.closed || entity.vertices?.length !== 4) return null;
+    const v = entity.vertices;
+    for (let i = 0; i < 2; i += 1) {
+        const at = (k) => v[(i + k) % 4];
+        const b = [0, 1, 2, 3].map((k) => at(k).bulge ?? 0);
+        if (Math.abs(b[0]) > tol || Math.abs(b[2]) > tol || Math.abs(Math.abs(b[1]) - 1) > 1e-4 || Math.abs(b[3] - b[1]) > 1e-4) continue;
+        const width = distance(at(1), at(2));
+        if (!(width > tol) || Math.abs(distance(at(3), at(0)) - width) > 1e-4 * Math.max(1, width)) continue;
+        const c2 = midpoint(at(1), at(2));
+        const c1 = midpoint(at(3), at(0));
+        const straight = distance(c1, c2);
+        if (Math.abs(distance(at(0), at(1)) - straight) > 1e-4 * Math.max(1, straight)) continue;
+        if (Math.abs(distance(at(2), at(3)) - straight) > 1e-4 * Math.max(1, straight)) continue;
+        // Lados retos perpendiculares às cordas das pontas.
+        if (straight > tol && Math.abs(dot(normalize(sub(c2, c1)), normalize(sub(at(2), at(1))))) > 1e-4) continue;
+        return { c1, c2, width, centers: straight, length: straight + width };
+    }
+    return null;
+}
+
+// Novo tamanho do oblongo mantendo o meio e a direção. changes: width, length (total)
+// e/ou centers (centro a centro). Mudar só a largura mantém os centros dos arcos.
+export function resizeSlot(entity, changes) {
+    const p = slotParams(entity);
+    if (!p) return null;
+    const width = changes.width ?? p.width;
+    let centers = changes.centers ?? (changes.length !== undefined ? changes.length - width : p.centers);
+    if (!(width > 0)) throw new Error('A largura precisa ser maior que zero.');
+    if (centers < -1e-9) throw new Error('O comprimento total precisa ser pelo menos a largura.');
+    if (centers <= 1e-9) throw new Error('Comprimento igual à largura vira círculo; use o CIRCLE.');
+    const mid = midpoint(p.c1, p.c2);
+    const u = p.centers > 1e-12 ? normalize(sub(p.c2, p.c1)) : { x: 1, y: 0 };
+    const half = scale(u, centers / 2);
+    const fresh = createSlotEntity(sub(mid, half), add(mid, half), width, 'c');
+    return { ...entity, vertices: fresh.vertices };
+}
+
 export function createRectangleEntity(a, b, { fillet = 0, chamfer1 = 0, chamfer2 = 0, width = 0, rotation = 0, layer = undefined } = {}) {
     const rotRad = (rotation * Math.PI) / 180;
     const bLoc = rotRad !== 0 ? rotatePoint(b, a, -rotRad) : b;

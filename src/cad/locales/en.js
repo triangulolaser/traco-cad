@@ -1451,5 +1451,12 @@ export default {
     "Ponta do oblongo (borda)": "Slot end (edge)",
     "Oblongo borda a borda.": "Edge-to-edge slot.",
     "Oblongo centro a centro.": "Center-to-center slot.",
-    "Oblongo": "Slot"
+    "Oblongo": "Slot",
+    "{0} objetos (Oblongo)": "{0} objects (Slot)",
+    "Largura do oblongo (diâmetro dos arcos); os centros dos arcos ficam parados": "Slot width (arc diameter); arc centers stay put",
+    "Comprimento total, borda a borda; o meio do oblongo fica parado": "Overall length, edge to edge; the slot middle stays put",
+    "Distância entre os centros dos arcos; o meio do oblongo fica parado": "Distance between arc centers; the slot middle stays put",
+    "Tamanho do oblongo": "Slot size",
+    "O comprimento total precisa ser pelo menos a largura.": "Overall length must be at least the width.",
+    "Comprimento igual à largura vira círculo; use o CIRCLE.": "Length equal to the width is a circle; use CIRCLE."
 };

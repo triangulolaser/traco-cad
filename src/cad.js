@@ -1,6 +1,6 @@
 import { bootUsage, usage } from './usage-telemetry.js';
 import {FONT_FAMILIES,loadCadFonts} from './cad/fonts.js';
-import {geometryFields,setGeometryField} from './cad/edit-tools.js';
+import {geometryFields,setGeometryField,slotParams,resizeSlot} from './cad/edit-tools.js';
 import {isEntityEditable,replaceEntities} from './cad/document.js';
 // Entrada do app Traço CAD.
 import { Editor } from './cad/editor.js';
@@ -499,7 +499,10 @@ function renderProperties(editor, root) {
     }
 
     const kinds = [...new Set(selected.map((e) => e.type))];
-    title.textContent = selected.length === 1 ? (TYPE_LABELS[selected[0].type] ?? selected[0].type) : `${selected.length} objetos${kinds.length === 1 ? ` (${TYPE_LABELS[kinds[0]] ?? kinds[0]})` : ''}`;
+    // Oblongos (polilinhas reconhecidas por slotParams) ganham largura e comprimento editáveis.
+    const slots = selected.map(slotParams);
+    const allSlots = slots.every(Boolean);
+    title.textContent = allSlots ? (selected.length === 1 ? 'Oblongo' : `${selected.length} objetos (Oblongo)`) : selected.length === 1 ? (TYPE_LABELS[selected[0].type] ?? selected[0].type) : `${selected.length} objetos${kinds.length === 1 ? ` (${TYPE_LABELS[kinds[0]] ?? kinds[0]})` : ''}`;
 
     // 1. Layer
     const sameLayer = selected.every((e) => e.layer === selected[0].layer) ? selected[0].layer : '';
@@ -570,6 +573,19 @@ function renderProperties(editor, root) {
         const firstF = factorOf(dims[0]);
         const sameF = dims.every((e) => Math.abs(factorOf(e) - firstF) < 1e-9) ? firstF : '';
         html += `<div class="cad-prop-row"><span class="cad-prop-key">Escala da cota</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-prop="dim-scale" value="${sameF !== '' ? fmt(sameF, 6) : ''}" placeholder="${sameF !== '' ? '' : '(varia)'}" title="Fator da medida (DIMLFAC): 5 numa vista 1:5 mostra o tamanho real"></span></div>`;
+    }
+
+    if (allSlots) {
+        const locked = selected.some((e) => !isEntityEditable(editor.doc, e));
+        const field = (key, label, hint) => {
+            const values = slots.map((p) => p[key]);
+            const same = values.every((v) => Math.abs(v - values[0]) < 1e-4);
+            return `<div class="cad-prop-row"><span class="cad-prop-key">${label}</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-prop="slot-${key}" value="${same ? fmt(values[0]) : ''}" placeholder="${same ? '' : '*Varia*'}" title="${hint}" ${locked ? 'disabled' : ''}></span></div>`;
+        };
+        html += section('Oblongo')
+            + field('width', 'Largura', 'Largura do oblongo (diâmetro dos arcos); os centros dos arcos ficam parados')
+            + field('length', 'Comprimento', 'Comprimento total, borda a borda; o meio do oblongo fica parado')
+            + field('centers', 'Centro a centro', 'Distância entre os centros dos arcos; o meio do oblongo fica parado');
     }
 
     if (selected.length === 1) {
@@ -821,6 +837,37 @@ function renderProperties(editor, root) {
         });
         lineLengthInput.addEventListener('change', applyLineLength);
     }
+
+    // Largura/comprimento de um ou vários oblongos
+    box.querySelectorAll('[data-prop^="slot-"]').forEach((input) => {
+        const apply = () => {
+            const val = parseDecimalInput(input.value);
+            if (!Number.isFinite(val) || val <= 0) {
+                renderProperties(editor, root);
+                return;
+            }
+            const key = input.dataset.prop.slice(5);
+            try {
+                editor.commit('Tamanho do oblongo', updateEntities(editor.doc, [...editor.selection], (e) => (isEntityEditable(editor.doc, e) ? resizeSlot(e, { [key]: val }) ?? e : e)));
+            } catch (error) {
+                editor.log(error.message, 'error');
+                renderProperties(editor, root);
+            }
+        };
+        input.addEventListener('keydown', (event) => {
+            event.stopPropagation();
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                apply();
+                input.blur();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                renderProperties(editor, root);
+                input.blur();
+            }
+        });
+        input.addEventListener('change', apply);
+    });
 
     // Raio/diâmetro de vários círculos
     box.querySelectorAll('[data-prop="circle-radius"], [data-prop="circle-diameter"]').forEach((input) => {

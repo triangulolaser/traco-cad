@@ -1451,5 +1451,12 @@ export default {
     "Ponta do oblongo (borda)": "Extremo del oblongo (borde)",
     "Oblongo borda a borda.": "Oblongo borde a borde.",
     "Oblongo centro a centro.": "Oblongo centro a centro.",
-    "Oblongo": "Oblongo"
+    "Oblongo": "Oblongo",
+    "{0} objetos (Oblongo)": "{0} objetos (Oblongo)",
+    "Largura do oblongo (diâmetro dos arcos); os centros dos arcos ficam parados": "Ancho del oblongo (diámetro de los arcos); los centros de los arcos no se mueven",
+    "Comprimento total, borda a borda; o meio do oblongo fica parado": "Longitud total, borde a borde; el centro del oblongo no se mueve",
+    "Distância entre os centros dos arcos; o meio do oblongo fica parado": "Distancia entre los centros de los arcos; el centro del oblongo no se mueve",
+    "Tamanho do oblongo": "Tamaño del oblongo",
+    "O comprimento total precisa ser pelo menos a largura.": "La longitud total debe ser al menos el ancho.",
+    "Comprimento igual à largura vira círculo; use o CIRCLE.": "Longitud igual al ancho es un círculo; use CIRCLE."
 };
