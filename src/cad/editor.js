@@ -102,6 +102,19 @@ export function withDrawProps(entity, props) {
     for (const field of ['color', 'lineType', 'lineWeight']) {
         if (!isByLayer(props[field]) && isByLayer(entity[field])) next = { ...next, [field]: props[field] };
     }
+    // Opções escolhidas no painel durante um comando de cota valem só para as cotas novas:
+    // mexer no dimStyle do desenho mudaria também as cotas já feitas sem estilo próprio.
+    const dim = props.dimStyle;
+    if (entity.type === 'dimension' && dim && Object.keys(dim).length) {
+        const { textHeight, scale, measurementScale, ...rest } = next;
+        next = {
+            ...rest,
+            ...(dim.textHeight === undefined && textHeight !== undefined ? { textHeight } : {}),
+            ...(dim.scale === undefined && scale !== undefined ? { scale } : {}),
+            ...(dim.measurementScale !== undefined ? { measurementScale: dim.measurementScale } : measurementScale !== undefined ? { measurementScale } : {}),
+            style: { ...(next.style ?? {}), ...dim },
+        };
+    }
     return next;
 }
 
@@ -121,7 +134,7 @@ export class Editor {
         this.preview = [];
         this.pending = null;
         this.running = null;
-        this.drawProps = { color: 'bylayer', lineType: 'bylayer', lineWeight: 'bylayer' };
+        this.drawProps = { color: 'bylayer', lineType: 'bylayer', lineWeight: 'bylayer', dimStyle: {} };
         this.lastCommand = null;
         this.cursorScreen = null;
         this.cursorWorld = null;

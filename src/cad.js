@@ -426,6 +426,60 @@ function bindDrawProps(editor, root, box) {
     });
 }
 
+// Comandos que criam cotas: o painel "Desenhando" ganha as opções da cota a criar.
+const DIM_DRAW_COMMANDS = new Set(['DIM', 'DIMENSION', 'DIMLINEAR', 'DIMHORIZONTAL', 'DIMVERTICAL', 'DIMALIGNED', 'DIMBASELINE', 'DIMCONTINUE', 'DIMANGULAR', 'DIMRADIUS', 'DIMDIAMETER', 'LEADER']);
+
+const DIM_DRAW_DEFAULTS = { textHeight: 2.5, arrowSize: 2.5, scale: 1, precision: 2, measurementScale: 1 };
+
+// Valor que a próxima cota vai usar: opção do comando, senão o estilo do desenho.
+function dimDrawValue(editor, field) {
+    return editor.drawProps.dimStyle?.[field] ?? editor.doc.dimStyle?.[field] ?? DIM_DRAW_DEFAULTS[field];
+}
+
+function dimDrawPropsHtml(editor) {
+    const row = (label, control) => `<div class="cad-prop-row"><span class="cad-prop-key">${label}</span><span class="cad-prop-value">${control}</span></div>`;
+    const input = (field, title, digits = 3) => `<input type="text" inputmode="decimal" data-dim-draw-prop="${field}" value="${fmt(dimDrawValue(editor, field), digits)}" title="${title}">`;
+    const precision = dimDrawValue(editor, 'precision');
+    const options = Array.from({ length: 9 }, (_, n) => `<option value="${n}" ${precision === n ? 'selected' : ''}>${n ? `0.${'0'.repeat(n)}` : '0'}</option>`).join('');
+    return row('Tam. texto', input('textHeight', 'Altura do texto das próximas cotas, em milímetros'))
+        + row('Tam. seta', input('arrowSize', 'Tamanho das setas das próximas cotas, em milímetros'))
+        + row('Escala geral', input('scale', 'DIMSCALE das próximas cotas: texto e seta na tela = valor × escala geral', 4))
+        + row('Precisão dim', `<select data-dim-draw-prop="precision" title="Casas decimais das próximas cotas">${options}</select>`)
+        + row('Escala da cota', input('measurementScale', 'Fator da medida (DIMLFAC) das próximas cotas: 5 numa vista 1:5 mostra o tamanho real', 6));
+}
+
+function bindDimDrawProps(editor, root, box) {
+    const set = (field, value) => {
+        if (dimDrawValue(editor, field) === value) return;
+        editor.setDrawProp('dimStyle', { ...(editor.drawProps.dimStyle ?? {}), [field]: value });
+    };
+    box.querySelectorAll('input[data-dim-draw-prop]').forEach((input) => {
+        const field = input.dataset.dimDrawProp;
+        const apply = () => {
+            const val = parseDecimalInput(input.value);
+            if (Number.isFinite(val) && val > 0) set(field, val);
+            else renderProperties(editor, root);
+        };
+        input.addEventListener('keydown', (event) => {
+            event.stopPropagation();
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                apply();
+                editor.terminal?.focus?.();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                renderProperties(editor, root);
+                editor.terminal?.focus?.();
+            }
+        });
+        input.addEventListener('change', apply);
+    });
+    box.querySelector('select[data-dim-draw-prop="precision"]')?.addEventListener('change', (event) => {
+        set('precision', Number(event.target.value));
+        editor.terminal?.focus?.();
+    });
+}
+
 function renderProperties(editor, root) {
     const box = root.querySelector('[data-cad-properties]');
     const title = root.querySelector('[data-cad-properties-title]');
@@ -444,8 +498,10 @@ function renderProperties(editor, root) {
     const row = (k, v) => `<div class="cad-prop-row"><span class="cad-prop-key">${escapeHtml(k)}</span><span class="cad-prop-value" title="${escapeHtml(String(v))}">${v}</span></div>`;
     if (editor.drawing) {
         title.textContent = `Desenhando: ${editor.running}`;
-        box.innerHTML = section('Novo objeto') + drawPropsHtml(editor);
+        const dimDrawing = DIM_DRAW_COMMANDS.has(editor.running);
+        box.innerHTML = section('Novo objeto') + drawPropsHtml(editor) + (dimDrawing ? section('Cota') + dimDrawPropsHtml(editor) : '');
         bindDrawProps(editor, root, box);
+        if (dimDrawing) bindDimDrawProps(editor, root, box);
         return;
     }
     if (selected.length === 0) {
@@ -476,6 +532,11 @@ function renderProperties(editor, root) {
                 const val = parseDecimalInput(input.value);
                 if (Number.isFinite(val) && val > 0) {
                     // editor.doc só tem getter: atribuir lançava TypeError e o campo não fazia nada.
+                    // O estilo do desenho volta a valer para as próximas cotas nesse campo.
+                    if (editor.drawProps.dimStyle?.[field] !== undefined) {
+                        const { [field]: _dropped, ...rest } = editor.drawProps.dimStyle;
+                        editor.drawProps = { ...editor.drawProps, dimStyle: rest };
+                    }
                     if (editor.doc.dimStyle?.[field] !== val) editor.commit('Estilo de cota', { ...editor.doc, dimStyle: { ...(editor.doc.dimStyle ?? {}), [field]: val, ...(field === 'scale' ? { scaleManual: true } : {}) } });
                 } else {
                     renderProperties(editor, root);

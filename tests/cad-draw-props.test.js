@@ -59,3 +59,24 @@ test('Painel Propriedades mostra cor, tipo e espessura durante o comando de dese
     for (const prop of ['layer', 'color', 'color-picker', 'lineType', 'lineWeight']) assert.match(content, new RegExp(`data-draw-prop="${prop}"`));
     assert.match(content, /editor\.setDrawProp\('color'/);
 });
+
+test('Opções de cota do comando vão para a cota nova e não mexem nas antigas nem no estilo do desenho', () => {
+    const old = { id: 'old', type: 'dimension', kind: 'horizontal', p1: { x: 0, y: 0 }, p2: { x: 10, y: 0 }, linePoint: { x: 5, y: 5 } };
+    const base = addEntities(createDocument(), [old]);
+    const dimStyle = { arrowSize: 5, scale: 2, textHeight: 4, precision: 0, measurementScale: 3 };
+    const ed = fakeEditor('DIMLINEAR', { color: 'bylayer', lineType: 'bylayer', lineWeight: 'bylayer', dimStyle }, base);
+    ed.commit('Cota', addEntities(ed.doc, [{ ...old, id: 'new', textHeight: 9, scale: 7, measurementScale: 8 }]));
+    const byId = Object.fromEntries(ed.doc.entities.map((e) => [e.id, e]));
+    assert.equal(byId.old.style, undefined);
+    assert.deepEqual(byId.new.style, dimStyle);
+    // Campos de topo venceriam o style em dimensionStyle(): saem quando o painel define o valor.
+    assert.equal(byId.new.textHeight, undefined);
+    assert.equal(byId.new.scale, undefined);
+    assert.equal(byId.new.measurementScale, 3);
+    assert.equal(ed.doc.dimStyle, base.dimStyle);
+});
+
+test('Sem opções de cota escolhidas, a cota nova continua herdando o estilo do desenho', () => {
+    const dim = { id: 'd', type: 'dimension', kind: 'horizontal', p1: { x: 0, y: 0 }, p2: { x: 10, y: 0 }, linePoint: { x: 5, y: 5 } };
+    assert.equal(withDrawProps(dim, { color: 'bylayer', lineType: 'bylayer', lineWeight: 'bylayer', dimStyle: {} }), dim);
+});

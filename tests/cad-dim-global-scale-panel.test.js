@@ -7,7 +7,8 @@ import { createDocument, addEntities } from '../src/cad/document.js';
 
 test('painel sem seleção grava o estilo de cota por commit (editor.doc só tem getter)', () => {
     const src = readFileSync(resolve('src/cad.js'), 'utf8');
-    const block = src.slice(src.indexOf("['dimOverallScale', 'scale']"), src.indexOf("input.addEventListener('change', apply);"));
+    const start = src.indexOf("['dimOverallScale', 'scale']");
+    const block = src.slice(start, src.indexOf("input.addEventListener('change', apply);", start));
     assert.ok(block.includes("editor.commit('Estilo de cota'"), 'aplica via commit');
     assert.ok(!/editor\.doc\s*=[^=]/.test(block), 'não atribui editor.doc');
 });

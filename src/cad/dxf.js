@@ -103,8 +103,20 @@ function all(groups, code) {
     return groups.filter((p) => p.code === code).map((p) => p.value);
 }
 
+// Notação de circunflexo do DXF para caracteres de controle: ^I = tab, ^J = LF, ^M = CR, "^ " = o próprio ^.
+// Tab vira espaço (o Traço não tem paradas de tabulação); demais controles somem.
+function decodeCaret(text) {
+    return text.replace(/\^([ @-_])/g, (_, c) => {
+        if (c === ' ') return '^';
+        const code = c.charCodeAt(0) - 64;
+        if (code === 9) return ' ';
+        if (code === 10 || code === 13) return '\n';
+        return '';
+    }).replace(/\t/g, ' ');
+}
+
 function decodeText(value) {
-    return String(value ?? '')
+    return decodeCaret(String(value ?? ''))
         .replace(/\\U\+([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
         .replace(/\\P/g, '\n')
         .replace(/\\~/g, ' ')
@@ -963,7 +975,8 @@ function encodeText(text) {
     // AC1015 text is read in the drawing codepage (ANSI_1252 by default), so raw
     // UTF-8 turned "PLANIFICAÇÃO" into "PLANIFICAÃÃO" in QCAD and nesting software. \U+XXXX
     // is codepage-independent.
-    return String(text ?? '').replace(/Ø/g, '%%c').replace(/°/g, '%%d').replace(/±/g, '%%p')
+    // ^ abre a notação de circunflexo do DXF; "^ " grava o próprio caractere.
+    return String(text ?? '').replace(/\^/g, '^ ').replace(/\t/g, '^I').replace(/Ø/g, '%%c').replace(/°/g, '%%d').replace(/±/g, '%%p')
         .replace(/[^\x00-\x7f]/g, (ch) => '\\U+' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0'));
 }
 
