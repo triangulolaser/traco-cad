@@ -1492,7 +1492,7 @@ export default {
     "Hachura {0}: escala {1}, ângulo {2}°.": "Hatch {0}: scale {1}, angle {2}°.",
     "{0} hachuras {1}: escala {2}, ângulo {3}°.": "{0} hatches {1}: scale {2}, angle {3}°.",
     "hachura {1} escala {2} ângulo {3}° {4} laço(s)": "hatch {1} scale {2} angle {3}° {4} loop(s)",
-    "Hachura em janela: padrão (ANSI31, SAND...), escala, ângulo, cor, pontos internos e ilhas": "Hatch dialog: pattern (ANSI31, SAND...), scale, angle, color, internal points and islands",
+    "Hachura em janela: padrão (ANSI31, XADREZ...), escala, ângulo, cor, pontos internos e ilhas": "Hatch dialog: pattern (ANSI31, XADREZ...), scale, angle, color, internal points and islands",
     "Hachura pelo terminal: padrão, escala e ângulo": "Hatch from the command line: pattern, scale and angle",
     "Paleta de padrões de hachura": "Hatch pattern palette",
     "{0} limite(s), {1} laço(s) definidos.": "{0} boundary(ies), {1} loop(s) defined.",

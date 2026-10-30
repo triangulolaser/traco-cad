@@ -32,27 +32,37 @@ test('ANSI31 como no BricsCAD: ângulo 0 = linhas a 45°, escala 1 = 3,175 mm; e
     assert.ok(base.segments.every((s) => [s.a, s.b].every((p) => p.x > -1e-6 && p.x < 100 + 1e-6 && p.y > -1e-6 && p.y < 100 + 1e-6)));
 });
 
-test('SAND é chapa piso: traços curtos a +45° e -45° alternados em xadrez, escalando com a hachura', () => {
+test('XADREZ é chapa piso: fileiras de traços a +45° intercaladas com fileiras a -45°, escalando com a hachura', () => {
     for (const scale of [1, 3]) {
-        const { segments } = patternGeometry(hatch({ pattern: 'SAND', angle: 0, scale, loops: [square(-200, -200, 400)] }));
+        const { segments } = patternGeometry(hatch({ pattern: 'XADREZ', angle: 0, scale, loops: [square(-200.3, -200.1, 400)] }));
         const step = 3.175 * scale;
-        const lug = 0.6 * step * Math.SQRT2;
+        const lug = 0.7 * step * Math.SQRT2;
         const inner = segments.filter((s) => [s.a, s.b].every((p) => Math.abs(p.x) < 190 && Math.abs(p.y) < 190));
         assert.ok(inner.length > 50, 'muitos traços');
         const up = inner.filter((s) => close(deg(s), 45, 1e-6));
         const down = inner.filter((s) => close(deg(s), 135, 1e-6));
         assert.equal(up.length + down.length, inner.length, 'só traços a ±45°');
-        assert.ok(inner.every((s) => close(len(s), lug, 1e-6)), 'traços inteiros com o comprimento do ressalto');
-        // Centros na grade de passo `step`: +45° nas casas pares, -45° nas ímpares.
+        assert.ok(inner.every((s) => close(len(s), lug, 1e-6)), 'traços inteiros e separados');
+        // +45° nas casas (par, par), -45° nas (ímpar, ímpar): cada fileira tem uma só direção,
+        // as vizinhas têm a outra e ficam deslocadas meio passo.
         const cell = (s) => ({ i: ((s.a.x + s.b.x) / 2) / step, j: ((s.a.y + s.b.y) / 2) / step });
         for (const [list, parity] of [[up, 0], [down, 1]]) {
             for (const s of list) {
                 const { i, j } = cell(s);
                 assert.ok(close(i, Math.round(i), 1e-6) && close(j, Math.round(j), 1e-6), 'centro na grade');
-                assert.equal(Math.abs(Math.round(i) + Math.round(j)) % 2, parity, 'xadrez');
+                assert.equal(Math.abs(Math.round(i)) % 2, parity, 'coluna');
+                assert.equal(Math.abs(Math.round(j)) % 2, parity, 'fileira');
             }
         }
+        assert.ok(Math.abs(up.length - down.length) < up.length * 0.15, 'metade de cada');
     }
+});
+
+test('SAND salvo pelo Traço sem definição passa a desenhar o XADREZ', () => {
+    assert.equal(upgradeHatch(hatch({ pattern: 'SAND', angle: 0, scale: 1 })).pattern, 'XADREZ');
+    assert.deepEqual(patternGeometry(hatch({ pattern: 'SAND', angle: 10, scale: 2 })).segments, patternGeometry(hatch({ pattern: 'XADREZ', angle: 10, scale: 2 })).segments);
+    const fromFile = hatch({ pattern: 'SAND', angle: 0, scale: 1, definition: [{ angle: 0, x: 0, y: 0, dx: 0, dy: 7, dashes: [] }], definitionAngle: 0, definitionScale: 1 });
+    assert.equal(upgradeHatch(fromFile).pattern, 'SAND', 'definição do arquivo continua valendo');
 });
 
 test('todos os padrões da biblioteca geram geometria finita e recortada', () => {
@@ -79,15 +89,15 @@ test('hachura antiga (ângulo absoluto + espaçamento) continua com o mesmo dese
     assert.deepEqual(cross.map((x) => Math.round((x.angle * 180) / Math.PI)), [10, 100]);
 });
 
-test('DXF: SAND com escala e ângulo volta igual; linhas de definição do arquivo são respeitadas', () => {
-    const doc = addEntities(createDocument(), [hatch({ pattern: 'SAND', angle: 15, scale: 2 })]);
+test('DXF: XADREZ com escala e ângulo volta igual; linhas de definição do arquivo são respeitadas', () => {
+    const doc = addEntities(createDocument(), [hatch({ pattern: 'XADREZ', angle: 15, scale: 2 })]);
     const text = writeDxf(doc);
-    assert.match(text, /\n2\nSAND\n/);
+    assert.match(text, /\n2\nXADREZ\n/);
     assert.match(text, /\n52\n15\n/);
     assert.match(text, /\n41\n2\n/);
     assert.match(text, /\n78\n2\n/);
     const back = parseDxf(text).entities.find((e) => e.type === 'hatch');
-    assert.equal(back.pattern, 'SAND');
+    assert.equal(back.pattern, 'XADREZ');
     assert.ok(close(back.scale, 2) && close(back.angle, 15));
     const a = patternGeometry(doc.entities[0]).segments;
     const b = patternGeometry(back).segments;
@@ -109,7 +119,7 @@ test('DXF: SAND com escala e ângulo volta igual; linhas de definição do arqui
     assert.equal(setHatchProps(imported, { pattern: 'ANSI31' }).definition, undefined);
 });
 
-test('espelhar hachura espelha o padrão (SAND não vira outro desenho)', () => {
+test('espelhar hachura espelha o padrão (XADREZ não vira outro desenho)', () => {
     const original = hatch({ pattern: 'ANSI38', angle: 20, scale: 1.3 });
     const mirrored = mirrorEntity(original, { x: 0, y: 0 }, { x: 0, y: 10 });
     const reflect = (p) => ({ x: -p.x, y: p.y });
@@ -139,7 +149,7 @@ test('pontos internos: menor contorno em volta do clique e ilhas aninhado/exteri
 test('Propriedades: escala inválida é recusada; impressão desenha o mesmo padrão', () => {
     assert.throws(() => setHatchProps(hatch({ pattern: 'ANSI31', angle: 0, scale: 1 }), { scale: 0 }), /maior que zero/);
     assert.throws(() => setHatchProps(hatch({ pattern: 'ANSI31', angle: 0, scale: 1 }), { pattern: 'NADA' }), /desconhecido/);
-    const doc = addEntities(createDocument(), [hatch({ pattern: 'SAND', angle: 0, scale: 2, loops: [square(0, 0, 40)] })]);
+    const doc = addEntities(createDocument(), [hatch({ pattern: 'XADREZ', angle: 0, scale: 2, loops: [square(0, 0, 40)] })]);
     const svg = printSvg(doc, { fit: true });
     const expected = patternGeometry(doc.entities[0]).segments.length;
     const drawn = (svg.match(/M[-\d.]+ [-\d.]+L/g) ?? []).length;

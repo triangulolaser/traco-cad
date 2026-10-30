@@ -1492,7 +1492,7 @@ export default {
     "Hachura {0}: escala {1}, ângulo {2}°.": "Sombreado {0}: escala {1}, ángulo {2}°.",
     "{0} hachuras {1}: escala {2}, ângulo {3}°.": "{0} sombreados {1}: escala {2}, ángulo {3}°.",
     "hachura {1} escala {2} ângulo {3}° {4} laço(s)": "sombreado {1} escala {2} ángulo {3}° {4} lazo(s)",
-    "Hachura em janela: padrão (ANSI31, SAND...), escala, ângulo, cor, pontos internos e ilhas": "Sombreado en ventana: patrón (ANSI31, SAND...), escala, ángulo, color, puntos internos e islas",
+    "Hachura em janela: padrão (ANSI31, XADREZ...), escala, ângulo, cor, pontos internos e ilhas": "Sombreado en ventana: patrón (ANSI31, XADREZ...), escala, ángulo, color, puntos internos e islas",
     "Hachura pelo terminal: padrão, escala e ângulo": "Sombreado por terminal: patrón, escala y ángulo",
     "Paleta de padrões de hachura": "Paleta de patrones de sombreado",
     "{0} limite(s), {1} laço(s) definidos.": "{0} contorno(s), {1} lazo(s) definidos.",

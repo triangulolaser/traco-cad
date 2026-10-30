@@ -12,10 +12,12 @@ import { sampleSpline } from './splines.js';
 const IN = 25.4;
 const pat = (rows) => rows.map(([angle, x, y, dx, dy, ...dashes]) => ({ angle, x: x * IN, y: y * IN, dx: dx * IN, dy: dy * IN, dashes: dashes.map((d) => d * IN) }));
 const R2 = Math.SQRT2;
-// SAND do Traço: chapa piso (xadrez). Traços alternados a +45° e -45° em xadrez, passo de 1/8".
-const SAND_STEP = 0.125;
-const SAND_LUG = 0.6 * SAND_STEP * R2;
-const sandLug = SAND_LUG / (2 * R2);
+// XADREZ: chapa piso. Fileiras de traços a +45° intercaladas com fileiras a -45°, cada uma
+// deslocada meio passo; centros em (2i, 2j)·passo (+45°) e (2i+1, 2j+1)·passo (-45°).
+const XADREZ_STEP = 0.125;
+const XADREZ_HALF = 0.35 * XADREZ_STEP;
+const XADREZ_LUG = 2 * XADREZ_HALF * R2;
+const XADREZ_PERIOD = 2 * XADREZ_STEP * R2;
 
 export const HATCH_PATTERNS = {
     SOLID: { label: 'Sólido', description: 'Preenchimento sólido', lines: [] },
@@ -27,12 +29,12 @@ export const HATCH_PATTERNS = {
     ANSI36: { label: 'ANSI36', description: 'Mármore, ardósia e vidro', lines: pat([[45, 0, 0, 0.21875, 0.125, 0.3125, -0.0625, 0, -0.0625]]) },
     ANSI37: { label: 'ANSI37', description: 'Chumbo, zinco e magnésio (cruzado)', lines: pat([[45, 0, 0, 0, 0.125], [135, 0, 0, 0, 0.125]]) },
     ANSI38: { label: 'ANSI38', description: 'Alumínio', lines: pat([[45, 0, 0, 0, 0.125], [135, 0, 0, 0.25, 0.125, 0.3125, -0.1875]]) },
-    SAND: {
-        label: 'SAND',
+    XADREZ: {
+        label: 'XADREZ',
         description: 'Chapa piso (xadrez)',
         lines: pat([
-            [45, -sandLug, -sandLug, 0, SAND_STEP * R2, SAND_LUG, -(SAND_STEP * R2 - SAND_LUG)],
-            [135, SAND_STEP + sandLug, -sandLug, 0, SAND_STEP * R2, SAND_LUG, -(SAND_STEP * R2 - SAND_LUG)],
+            [45, -XADREZ_HALF, -XADREZ_HALF, XADREZ_STEP * R2, XADREZ_STEP * R2, XADREZ_LUG, -(XADREZ_PERIOD - XADREZ_LUG)],
+            [135, XADREZ_STEP + XADREZ_HALF, XADREZ_STEP - XADREZ_HALF, XADREZ_STEP * R2, XADREZ_STEP * R2, XADREZ_LUG, -(XADREZ_PERIOD - XADREZ_LUG)],
         ]),
     },
     ANGLE: { label: 'ANGLE', description: 'Cantoneiras', lines: pat([[0, 0, 0, 0, 0.275, 0.2, -0.075], [90, 0, 0, 0, 0.275, 0.2, -0.075]]) },
@@ -44,11 +46,15 @@ export const HATCH_PATTERNS = {
     DOTS: { label: 'DOTS', description: 'Pontos', lines: pat([[0, 0, 0, 0.03125, 0.0625, 0, -0.0625]]) },
 };
 
+// Nomes antigos do Traço sem definição gravada passam a usar o padrão atual.
+const PATTERN_ALIASES = { SAND: 'XADREZ' };
+
 export const HATCH_DEFAULTS = { pattern: 'ANSI31', angle: 0, scale: 1 };
 
 // Hachura no modelo atual (padrão + ângulo + escala). As antigas guardavam o ângulo das
 // linhas e o espaçamento; a conversão reproduz exatamente o desenho anterior.
 export function upgradeHatch(entity) {
+    if (entity?.type === 'hatch' && !entity.definition && PATTERN_ALIASES[entity.pattern]) entity = { ...entity, pattern: PATTERN_ALIASES[entity.pattern] };
     if (!entity || entity.type !== 'hatch' || entity.scale !== undefined || entity.definition) return entity;
     const { spacing, ...rest } = entity;
     const angle = entity.angle ?? 45;

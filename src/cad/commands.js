@@ -4829,7 +4829,7 @@ export const COMMANDS = {
     DIM: { aliases: ['COTA', 'DIMAUTO'], run: dimAuto, description: 'Cota automática: linear, alinhada, raio ou diâmetro conforme o alvo' },
     DIMENSION: { aliases: ['DIMENSAO'], run: dimension, description: 'Dimensão: clique na linha e puxe a cota até a primeira interseção; arco e círculo dão raio e diâmetro' },
     DIMPART: { aliases: ['COTARPECA', 'DIMPECA'], run: dimPart, description: 'Cotar a peça inteira: gerais, posições de furos, diâmetros e raios únicos' },
-    HATCH: { aliases: ['H', 'HACHURA', 'BHATCH'], run: hatch, description: 'Hachura em janela: padrão (ANSI31, SAND...), escala, ângulo, cor, pontos internos e ilhas' },
+    HATCH: { aliases: ['H', 'HACHURA', 'BHATCH'], run: hatch, description: 'Hachura em janela: padrão (ANSI31, XADREZ...), escala, ângulo, cor, pontos internos e ilhas' },
     '-HATCH': { aliases: ['-H', '-HACHURA', '-BHATCH'], run: hatchPrompt, description: 'Hachura pelo terminal: padrão, escala e ângulo' },
     DIMLINEAR: { aliases: ['DLI', 'DIMLIN'], run: dimLinear, description: 'Cota linear horizontal/vertical' },
     DIMHORIZONTAL: { aliases: ['DHO', 'DIMHOR'], run: dimHorizontal, description: 'Cota linear horizontal' },

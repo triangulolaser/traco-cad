@@ -304,7 +304,7 @@ function parseEntity(type, groups) {
             // (inclusive padrões que o Traço não tem); sem elas, vale o padrão pelo nome.
             const definition = hatchDefinitionLines(groups);
             if (definition.length) return { ...entity, definition, definitionAngle: angle, definitionScale: scale };
-            return HATCH_PATTERNS[name] ? entity : { ...entity, pattern: 'ANSI31' };
+            return HATCH_PATTERNS[name] ? entity : upgradeHatch({ ...entity, pattern: name === 'SAND' ? name : 'ANSI31' });
         }
         case 'TEXT': {
             const height = num(first(groups, 40, 2.5));
