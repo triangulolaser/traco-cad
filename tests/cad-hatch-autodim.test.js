@@ -50,10 +50,11 @@ test('segmentos do padrão ficam dentro do contorno e respeitam furo (par/ímpar
 
 test('hachura: transformações e DXF (polilinha com bulge, padrão e sólido)', () => {
     const hatch = { type: 'hatch', layer: '0', pattern: 'ANSI37', angle: 45, spacing: 3, opacity: 0.35, loops: [{ vertices: [{ x: 0, y: 0, bulge: 1 }, { x: 10, y: 0, bulge: 1 }] }] };
+    // Hachura antiga (ângulo absoluto 45° + espaçamento 3) vira ANSI37 com ângulo 0 e escala 3/3,175.
     const moved = translateEntity(hatch, { x: 5, y: 5 });
-    assert.ok(close(moved.loops[0].vertices[0].x, 5) && close(moved.angle, 45));
+    assert.ok(close(moved.loops[0].vertices[0].x, 5) && close(moved.angle, 0) && close(moved.scale, 3 / 3.175));
     const rotated = rotateEntity(hatch, { x: 0, y: 0 }, Math.PI / 2);
-    assert.ok(close(rotated.angle, 135));
+    assert.ok(close(rotated.angle, 90));
     let doc = addEntities(createDocument(), [hatch, { type: 'hatch', layer: '0', pattern: 'SOLID', angle: 0, spacing: 3, loops: [{ vertices: [{ x: 0, y: 0, bulge: 0 }, { x: 4, y: 0, bulge: 0 }, { x: 4, y: 4, bulge: 0 }] }] }]);
     const text = writeDxf(doc);
     assert.match(text, /\n0\nHATCH\n/);
@@ -64,7 +65,7 @@ test('hachura: transformações e DXF (polilinha com bulge, padrão e sólido)',
     assert.equal(hatches.length, 2);
     assert.equal(hatches[0].pattern, 'ANSI37');
     assert.ok(close(hatches[0].loops[0].vertices[0].bulge, 1));
-    assert.ok(close(hatches[0].spacing, 3));
+    assert.ok(close(hatches[0].scale, 3 / 3.175) && close(hatches[0].angle, 0));
     assert.equal(hatches[1].pattern, 'SOLID');
     // HATCH de outro CAD com laço de arestas (linha + arco).
     const edges = ['0', 'SECTION', '2', 'ENTITIES', '0', 'HATCH', '8', '0', '2', 'ANSI31', '70', '0', '71', '0', '91', '1', '92', '1', '93', '3',

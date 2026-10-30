@@ -6,7 +6,7 @@ import {hydrateInsert} from './blocks.js';
 import { degToRad, radToDeg, rotatePoint, add, sub, scale, distance, perpendicular, normalizeAngle, isDegenerateEntity } from './geometry.js';
 import { createLayer, DEFAULT_LAYER, BYLAYER, LINETYPES } from './document.js';
 import { dimensionGeometry, formatMeasurement } from './dimensions.js';
-import { HATCH_PATTERNS } from './hatch.js';
+import { HATCH_PATTERNS, hatchFamilies, upgradeHatch } from './hatch.js';
 
 // ---------------------------------------------------------------------------
 // Parser
@@ -296,8 +296,15 @@ function parseEntity(type, groups) {
                 return vertices.length >= 2 ? { vertices } : null;
             }).filter(Boolean);
             if (converted.length === 0) return null;
-            const pattern = HATCH_PATTERNS[name] ? name : solid ? 'SOLID' : 'ANSI31';
-            return { ...base, type: 'hatch', loops: converted, pattern, angle: num(first(groups, 52, 45)), spacing: num(first(groups, 41, 1)) * 3, opacity: 0.35 };
+            if (solid) return { ...base, type: 'hatch', loops: converted, pattern: 'SOLID', angle: 0, scale: 1, opacity: 0.35 };
+            const angle = num(first(groups, 52, 0));
+            const scale = num(first(groups, 41, 1)) > 0 ? num(first(groups, 41, 1)) : 1;
+            const entity = { ...base, type: 'hatch', loops: converted, pattern: HATCH_PATTERNS[name] ? name : name || 'ANSI31', angle, scale, opacity: 0.35 };
+            // As linhas de definição gravadas no arquivo são o desenho exato do outro CAD
+            // (inclusive padrões que o Traço não tem); sem elas, vale o padrão pelo nome.
+            const definition = hatchDefinitionLines(groups);
+            if (definition.length) return { ...entity, definition, definitionAngle: angle, definitionScale: scale };
+            return HATCH_PATTERNS[name] ? entity : { ...entity, pattern: 'ANSI31' };
         }
         case 'TEXT': {
             const height = num(first(groups, 40, 2.5));
@@ -853,6 +860,39 @@ function resolveLeader(entity, dimStyles = {}) {
     return out;
 }
 
+// Linhas de definição do padrão no HATCH (53 ângulo, 43/44 origem, 45/46 deslocamento, 79 + 49 traços).
+function hatchDefinitionLines(groups) {
+    const start = groups.findIndex((g) => g.code === 78);
+    if (start < 0) return [];
+    const count = num(groups[start].value);
+    const out = [];
+    let line = null;
+    let dashes = 0;
+    for (let i = start + 1; i < groups.length && out.length <= count; i += 1) {
+        const g = groups[i];
+        if (g.code === 53) {
+            if (out.length >= count) break;
+            line = { angle: num(g.value), x: 0, y: 0, ox: 0, oy: 0, dashes: [] };
+            out.push(line);
+            dashes = 0;
+        } else if (!line) {
+            if (g.code !== 79 && g.code !== 49) break;
+        } else if (g.code === 43) line.x = num(g.value);
+        else if (g.code === 44) line.y = num(g.value);
+        else if (g.code === 45) line.ox = num(g.value);
+        else if (g.code === 46) line.oy = num(g.value);
+        else if (g.code === 79) dashes = num(g.value);
+        else if (g.code === 49 && line.dashes.length < dashes) line.dashes.push(num(g.value));
+        else if (g.code === 47 || g.code === 98 || g.code === 450 || g.code === 1001) break;
+    }
+    return out.map(({ angle, x, y, ox, oy, dashes: d }) => {
+        const a = degToRad(angle);
+        const dx = ox * Math.cos(a) + oy * Math.sin(a);
+        const dy = -ox * Math.sin(a) + oy * Math.cos(a);
+        return { angle, x, y, dx, dy, dashes: d };
+    }).filter((l) => Math.abs(l.dy) > 1e-9 && [l.angle, l.x, l.y, l.dx, l.dy, ...l.dashes].every(Number.isFinite));
+}
+
 export function parseDxf(text, { preserveBlocks = false, preserveDimensions = false, dimensionGraphics = true, dimensionColor = null } = {}) {
     const cursor = new Cursor(readPairs(text));
     let layers = [];
@@ -1139,7 +1179,6 @@ function writeEntity(entity, dimStyle) {
             return '';
         case 'hatch': {
             const solid = entity.pattern === 'SOLID';
-            const pattern = HATCH_PATTERNS[entity.pattern] ?? HATCH_PATTERNS.ANSI31;
             let out = entityHeader('HATCH', entity, 'AcDbHatch') + pair(10, 0) + pair(20, 0) + pair(30, 0) + pair(210, 0) + pair(220, 0) + pair(230, 1)
                 + pair(2, solid ? 'SOLID' : entity.pattern) + pair(70, solid ? 1 : 0) + pair(71, 0) + pair(91, entity.loops.length);
             entity.loops.forEach((loop) => {
@@ -1150,13 +1189,17 @@ function writeEntity(entity, dimStyle) {
                 });
                 out += pair(97, 0);
             });
-            out += pair(75, 0) + pair(76, 1);
+            const hatch = upgradeHatch(entity);
+            out += pair(75, 0) + pair(76, HATCH_PATTERNS[hatch.pattern] && !hatch.definition ? 1 : 2);
             if (!solid) {
-                const spacing = entity.spacing ?? 3;
-                out += pair(52, fmt(entity.angle ?? 45)) + pair(41, fmt(spacing / 3)) + pair(77, pattern.lines.length > 1 ? 1 : 0) + pair(78, pattern.lines.length);
-                pattern.lines.forEach((line) => {
-                    const a = degToRad((entity.angle ?? 45) + line.angle);
-                    out += pair(53, fmt((entity.angle ?? 45) + line.angle)) + pair(43, 0) + pair(44, 0) + pair(45, fmt(-Math.sin(a) * spacing)) + pair(46, fmt(Math.cos(a) * spacing)) + pair(79, 0);
+                const families = hatchFamilies(hatch);
+                out += pair(52, fmt(hatch.angle ?? 0)) + pair(41, fmt(hatch.scale ?? 1)) + pair(77, 0) + pair(78, families.length);
+                families.forEach((f) => {
+                    const dir = { x: Math.cos(f.angle), y: Math.sin(f.angle) };
+                    const normal = { x: -dir.y, y: dir.x };
+                    out += pair(53, fmt((f.angle * 180) / Math.PI)) + pair(43, fmt(f.origin.x)) + pair(44, fmt(f.origin.y))
+                        + pair(45, fmt(dir.x * f.dx + normal.x * f.dy)) + pair(46, fmt(dir.y * f.dx + normal.y * f.dy)) + pair(79, f.dashes.length);
+                    f.dashes.forEach((d) => { out += pair(49, fmt(d)); });
                 });
             }
             out += pair(98, 0);

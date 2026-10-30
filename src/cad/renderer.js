@@ -7,7 +7,7 @@ import { entityColor, visibleEntities, LINETYPES, layerOf, getDocumentSpatialInd
 import { dimensionGeometry } from './dimensions.js';
 import { ellipseSamples, ellipseIsFull, imageCorners, imageVisibleCorners } from './extra-entities.js';
 import { sampleSpline } from './splines.js';
-import { hatchPath, HATCH_PATTERNS, hatchBox, hatchLineRange } from './hatch.js';
+import { hatchPath, hatchBox, hatchFamilies, forEachPatternPiece } from './hatch.js';
 import { ensureSplineGeometry } from './extra-entities.js';
 
 const imageCache = new Map();
@@ -135,7 +135,7 @@ export class Renderer {
         if (state.showGrid) this.drawGrid();
         this.drawAxes();
 
-        const visible = viewport.visibleBox();
+        const visible = viewport.visibleBox?.() ?? box;
         const spatial = state.doc ? getDocumentSpatialIndex(state.doc) : null;
         const entities = spatial ? spatial.search(visible) : visibleEntities(state.doc);
         const hidden = state.hiddenIds ?? new Set();
@@ -584,37 +584,40 @@ export class Renderer {
 
         const path = new Path2D();
         hatchPath(entity, (p) => viewport.worldToScreen(p), path);
-        const pattern = HATCH_PATTERNS[entity.pattern] ?? HATCH_PATTERNS.ANSI31;
+        const families = hatchFamilies(entity);
         ctx.save();
-        if (pattern.lines.length === 0) {
+        const smudge = () => {
+            // Padrão mais fino que a tela consegue mostrar: mancha translúcida em vez de milhares de traços.
+            ctx.globalAlpha = (style.alpha ?? 1) * 0.25;
+            ctx.fill(path, 'evenodd');
+        };
+        if (families.length === 0) {
             ctx.globalAlpha = (style.alpha ?? 1) * (entity.opacity ?? 0.35);
             ctx.fill(path, 'evenodd');
+        } else if (!(Math.min(...families.map((f) => Math.abs(f.dy))) * viewport.scale >= 1.5)) {
+            smudge();
         } else {
             ctx.clip(path, 'evenodd');
-            const spacingPx = Math.max((entity.spacing ?? 3) * viewport.scale, 2);
-            // Mesma âncora da exportação: a origem do desenho, para hachuras vizinhas casarem.
-            const anchor = viewport.worldToScreen({ x: 0, y: 0 });
-            const corners = [{ x: left, y: top }, { x: right, y: top }, { x: right, y: bottom }, { x: left, y: bottom }]
-                .map((p) => ({ x: p.x - anchor.x, y: p.y - anchor.y }));
-            ctx.lineWidth = Math.max(0.8, (style.width ?? 1) * 0.7);
-            ctx.setLineDash(pattern.lines[0].dots ? [1, Math.max(2, spacingPx - 1)] : []);
-            pattern.lines.forEach((line) => {
-                const angle = -(((entity.angle ?? 45) + line.angle) * Math.PI) / 180;
-                const dir = { x: Math.cos(angle), y: Math.sin(angle) };
-                const normal = { x: -dir.y, y: dir.x };
-                const along = corners.map((p) => p.x * dir.x + p.y * dir.y);
-                const across = corners.map((p) => p.x * normal.x + p.y * normal.y);
-                const from = Math.min(...along);
-                const to = Math.max(...along);
-                const range=hatchLineRange(Math.min(...across),Math.max(...across),spacingPx);
-                ctx.beginPath();
-                for(let step=0;step<range.count;step++){
-                    const off=(range.first+step)*spacingPx;
-                    ctx.moveTo(anchor.x + normal.x * off + dir.x * from, anchor.y + normal.y * off + dir.y * from);
-                    ctx.lineTo(anchor.x + normal.x * off + dir.x * to, anchor.y + normal.y * off + dir.y * to);
-                }
-                ctx.stroke();
-            });
+            const visible = viewport.visibleBox?.() ?? box;
+            const area = { minX: Math.max(box.minX, visible.minX), minY: Math.max(box.minY, visible.minY), maxX: Math.min(box.maxX, visible.maxX), maxY: Math.min(box.maxY, visible.maxY) };
+            const lines = new Path2D();
+            const dots = new Path2D();
+            const at = (p0, dir, t) => viewport.worldToScreen({ x: p0.x + dir.x * t, y: p0.y + dir.y * t });
+            const complete = forEachPatternPiece(families, area, (kind, f, p0, dir, t0, t1) => {
+                const a = at(p0, dir, t0);
+                if (kind === 'dot') { dots.rect(a.x - 0.75, a.y - 0.75, 1.5, 1.5); return; }
+                const b = at(p0, dir, t1);
+                lines.moveTo(a.x, a.y);
+                lines.lineTo(b.x, b.y);
+            }, { maxPieces: 60000 });
+            if (!complete) smudge();
+            else {
+                ctx.lineWidth = Math.max(0.8, (style.width ?? 1) * 0.7);
+                ctx.setLineDash([]);
+                ctx.stroke(lines);
+                ctx.fillStyle = ctx.strokeStyle;
+                ctx.fill(dots);
+            }
         }
         ctx.restore();
         if (style.dashed) {

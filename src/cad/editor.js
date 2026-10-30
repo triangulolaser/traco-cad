@@ -88,7 +88,7 @@ const toggleKey = (event) => event.ctrlKey || event.metaKey;
 // Edições (COPY, OFFSET, MIRROR...) preservam as propriedades da origem.
 export const DRAW_COMMANDS = new Set([
     'POINT', 'DONUT', 'LINE', 'CIRCLE', 'ARC', 'PLINE', 'RECTANG', 'REVCLOUD', 'TEXT', 'POLYGON', 'SLOT', 'ELLIPSE', 'SPLINE',
-    'BOUNDARY', 'HATCH', 'RAY', 'XLINE', 'LEADER', 'AI_CIRCTAN',
+    'BOUNDARY', 'HATCH', '-HATCH', 'RAY', 'XLINE', 'LEADER', 'AI_CIRCTAN',
     'DIM', 'DIMENSION', 'DIMLINEAR', 'DIMHORIZONTAL', 'DIMVERTICAL', 'DIMALIGNED', 'DIMBASELINE', 'DIMCONTINUE',
     'DIMCENTER', 'DIMANGULAR', 'DIMRADIUS', 'DIMDIAMETER',
 ]);
@@ -728,6 +728,8 @@ export class Editor {
         if (!this.cursorWorld) return;
         const isPointPrompt = this.pending && ['point', 'pointOrEntity'].includes(this.pending.mode);
         if (!isPointPrompt && !this.activeGrip) return;
+        // Ponto interno da hachura: encaixar numa borda tornaria o clique ambíguo.
+        if (this.pending?.freePoint && !this.activeGrip) return;
         const tolerance = this.viewport.pixelsToWorld(SNAP_PIXELS);
         const exclude = new Set(this.pending?.hide ?? (this.activeGrip ? [this.activeGrip.entityId] : []));
         const spatial = getDocumentSpatialIndex(this.doc);
@@ -1809,6 +1811,11 @@ export class Editor {
         const command = resolveCommand(name);
         if (!command) {
             this.log(`Comando desconhecido: ${name}`, 'error');
+            return;
+        }
+        // Comando com desfazer próprio (TRIM/EXTEND): Ctrl+Z e o botão voltam só o último passo dele, sem sair.
+        if (command.name === 'UNDO' && this.pending?.undoKeyword) {
+            this.resolvePending({ keyword: this.pending.undoKeyword });
             return;
         }
         if (this.running) {

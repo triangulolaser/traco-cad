@@ -4,6 +4,7 @@ import {expandInsert} from './blocks.js';
 import {dimensionGeometry} from './dimensions.js';
 import {fontFamily,loadCadFonts} from './fonts.js';
 import './extra-entities.js';
+import {patternGeometry} from './hatch.js';
 export const escapeXml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const n=x=>Number(x.toFixed(6));
 function curvePath(c){
@@ -15,7 +16,6 @@ function curvePath(c){
 function textSvg(e){
  return `<g transform="translate(${n(e.position.x)} ${n(e.position.y)}) rotate(${n(e.rotation??0)}) scale(1 -1)"><text font-family="${escapeXml(fontFamily(e.fontFamily))}" font-size="${n(fontEm(e.height))}" font-weight="${e.bold?700:400}" font-style="${e.italic?'italic':'normal'}" stroke="none">${String(e.text??'').split('\n').map((line,i)=>`<tspan x="0" y="${n(i*e.height*LINE_SPACING)}">${escapeXml(line)}</tspan>`).join('')}</text></g>`;
 }
-let patternId=0;
 function entitySvg(e,doc,k,mono){
  if(e.type==='insert')return expandInsert(e).filter(x=>layerOf(doc,x.layer)?.visible!==false).map(x=>entitySvg(x,doc,k,mono)).join('');
  const color=mono?'#000000':entityColor(e,doc),stroke=(e.lineWeight??layerOf(doc,e.layer)?.lineWeight??25)/100||0.25;
@@ -31,9 +31,10 @@ function entitySvg(e,doc,k,mono){
   const d=e.loops.map(l=>polylineCurves(l.vertices,true).map((c,i)=>{const path=curvePath(c);return i?path.replace(/^M[-\d.]+ [-\d.]+/,''):path;}).join('')+'Z').join('');
   if(e.pattern==='SOLID')body=`<path d="${d}" fill="${color}" fill-rule="evenodd"/>`;
   else {
-   const id=`traco-hatch-${++patternId}`,spacing=Math.max(e.spacing??3,0.01),cross=e.pattern==='ANSI37',dots=e.pattern==='DOTS';
-   const lines=dots?`<circle cx="${spacing/2}" cy="${spacing/2}" r="${0.2/k}" stroke="none" fill="${color}"/>`:`<path d="M0 0H${spacing}${cross?` M0 0V${spacing}`:''}" stroke="${color}" stroke-width="${0.15/k}"/>`;
-   body=`<defs><pattern id="${id}" width="${spacing}" height="${spacing}" patternUnits="userSpaceOnUse" patternTransform="rotate(${e.angle??45})">${lines}</pattern></defs><path d="${d}" fill="url(#${id})" fill-rule="evenodd" stroke="none"/>`;
+   // Mesmo padrão da tela, recortado pelo contorno em coordenadas do desenho.
+   const g=patternGeometry(e);
+   if(!g.complete)body=`<path d="${d}" fill="${color}" fill-opacity="0.25" fill-rule="evenodd" stroke="none"/>`;
+   else body=`<path d="${g.segments.map(s=>`M${n(s.a.x)} ${n(s.a.y)}L${n(s.b.x)} ${n(s.b.y)}`).join('')}" fill="none" stroke="${color}" stroke-width="${0.15/k}"/>`+(g.dots.length?`<path d="${g.dots.map(p=>`M${n(p.x)} ${n(p.y)}h0`).join('')}" fill="none" stroke="${color}" stroke-width="${0.3/k}" stroke-linecap="round"/>`:'');
   }
  }else body=`<path d="${entityCurves(e).map(curvePath).join('')}" fill="none"/>`;
  const type=e.lineType && e.lineType!=='bylayer'?e.lineType:layerOf(doc,e.layer)?.lineType;

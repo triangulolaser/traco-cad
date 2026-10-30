@@ -70,7 +70,8 @@ import { interpolateSpline, sampleSpline } from './splines.js';
 import { ellipsePoint, imageLocalPoint, ensureSplineGeometry } from './extra-entities.js';
 import { resolveDeferredTangent } from './snaps.js';
 import { autoDimensionPart } from './autodim.js';
-import { loopsFromEntities, HATCH_PATTERNS } from './hatch.js';
+import { loopsFromEntities, HATCH_PATTERNS, HATCH_DEFAULTS, boundaryLoopsAt, loopKey, upgradeHatch } from './hatch.js';
+import { openHatchDialog } from './hatch-dialog.js';
 import { DRAWING_ACCEPT, DRAWING_KINDS, IMAGE_ACCEPT, kindOf } from './file-types.js';
 import { createRectangleEntity, createSlotEntity, polylineFillet, createRevcloudFromEntity, distanceToEntity, polygonAreaAndPerimeter, polylineArea, getEntityAreaAndPerimeter, pointInPolygon } from './edit-tools.js';
 
@@ -1823,14 +1824,25 @@ async function trimOrExtend(editor, primary) {
         : 'Selecione arestas de limite ou <Enter> para todas:', { allowEmpty: true });
     const secondary = primary === 'trim' ? 'extend' : 'trim';
     const filters = { trim: isTrimmable, extend: isExtendable };
+    // Desfazer (U ou Ctrl+Z) volta só o que este comando fez e continua nele, como no AutoCAD.
+    let done = 0;
     for (;;) {
         const { prompt, shiftPrompt } = TRIM_EXTEND_MODES[primary];
         const pick = await editor.getEntityOrWindow(prompt, {
             allowEnter: true,
             filter: (e) => isTrimmable(e) || isExtendable(e),
             shiftPrompt,
+            options: [{ key: 'u', label: 'Desfazer' }],
+            undoKeyword: 'u',
         });
         if (!pick) break;
+        if (pick.keyword === 'u') {
+            if (done === 0) { editor.log('Nada para desfazer neste comando.', 'warn'); continue; }
+            editor.undo();
+            done--;
+            editor.log(primary === 'trim' ? 'Último corte desfeito.' : 'Última extensão desfeita.');
+            continue;
+        }
         const mode = pick.shift ? secondary : primary;
         const edges = edgeIds.length ? editor.entitiesById(edgeIds) : editor.doc.entities;
         if (pick.entities) pick.entities = pick.entities.filter(filters[mode]);
@@ -1838,8 +1850,7 @@ async function trimOrExtend(editor, primary) {
             editor.log(mode === 'extend' ? 'Só linhas e arcos podem ser estendidos.' : 'Esse objeto não pode ser aparado.', 'warn');
             continue;
         }
-        if (mode === 'trim') trimPick(editor, pick, edges);
-        else extendPick(editor, pick, edges);
+        if (mode === 'trim' ? trimPick(editor, pick, edges) : extendPick(editor, pick, edges)) done++;
     }
 }
 
@@ -1860,20 +1871,21 @@ function trimPick(editor, pick, edges) {
             const result = trimInsideBox(entity, cutters, pick.box);
             if (result) replacements.set(entity.id, result);
         });
-        if (replacements.size === 0) { editor.log('Nenhum trecho com interseção dentro da janela.', 'warn'); return; }
+        if (replacements.size === 0) { editor.log('Nenhum trecho com interseção dentro da janela.', 'warn'); return false; }
         editor.commit('Aparar', replaceEntities(editor.doc, replacements));
-        return;
+        return true;
     }
     const cutters = curvesOf(edges.filter((e) => e.id !== pick.entity.id));
     if (pick.entity.type === 'polyline') {
         const result = trimPolyline(pick.entity, cutters, pick.point);
-        if (!result) { editor.log('Nenhuma interseção encontrada para aparar.', 'warn'); return; }
+        if (!result) { editor.log('Nenhuma interseção encontrada para aparar.', 'warn'); return false; }
         editor.commit('Aparar', replaceEntities(editor.doc, new Map([[pick.entity.id, result]])));
-        return;
+        return true;
     }
     const kept = trimAtPoint(pick.entity, cutters, pick.point);
-    if (kept === undefined) { editor.log('Nenhuma interseção encontrada para aparar.', 'warn'); return; }
+    if (kept === undefined) { editor.log('Nenhuma interseção encontrada para aparar.', 'warn'); return false; }
     editor.commit('Aparar', replaceEntities(editor.doc, new Map([[pick.entity.id, kept]])));
+    return true;
 }
 
 // Corta só nas pontas dos trechos removidos: o resto da entidade não fica fatiado nas demais interseções.
@@ -1982,14 +1994,15 @@ function extendPick(editor, pick, boundaries) {
             });
             if (current !== entity) replacements.set(entity.id, current);
         });
-        if (replacements.size === 0) { editor.log('Nenhuma ponta dentro da janela pôde ser estendida.', 'warn'); return; }
+        if (replacements.size === 0) { editor.log('Nenhuma ponta dentro da janela pôde ser estendida.', 'warn'); return false; }
         editor.commit('Estender', replaceEntities(editor.doc, replacements));
-        return;
+        return true;
     }
     const limits = curvesOf(boundaries.filter((e) => e.id !== pick.entity.id));
     const result = extendEntity(pick.entity, limits, pick.point);
-    if (!result) { editor.log('Nenhum limite encontrado nessa direção.', 'warn'); return; }
+    if (!result) { editor.log('Nenhum limite encontrado nessa direção.', 'warn'); return false; }
     editor.commit('Estender', replaceEntities(editor.doc, new Map([[pick.entity.id, result]])));
+    return true;
 }
 
 function extendEntity(entity, limits, pickPoint) {
@@ -2815,30 +2828,186 @@ async function fileExists(bridge, path) {
 // ---------------------------------------------------------------------------
 // Hachura
 
-async function hatch(editor) {
+// -HATCH: perguntas no terminal (scripts, macros e testes). Escala e ângulo como no BricsCAD.
+async function hatchPrompt(editor) {
     const ids = await editor.getSelection('Selecione contornos fechados (polilinha, círculo, elipse, spline) ou uma cadeia de linhas e arcos:');
     if (ids.length === 0) return null;
     const entities = editor.entitiesById(ids);
     const loops = loopsFromEntities(entities);
     if (loops.length === 0) return editor.log('Nenhum contorno fechado na seleção.', 'error');
-    const patternKeys = Object.keys(HATCH_PATTERNS);
-    const options = patternKeys.map((k) => ({ key: k === 'SOLID' ? 's' : k === 'ANSI31' ? 'l' : k === 'ANSI37' ? 'c' : 'p', label: HATCH_PATTERNS[k].label, pattern: k }));
-    const chosen = await editor.getKeyword('Padrão', options, editor.memory.hatchKey ?? 'l');
-    editor.memory.hatchKey = chosen.key;
-    const pattern = chosen.pattern;
-    let angle = 45;
-    let spacing = editor.memory.hatchSpacing ?? 3;
-    if (pattern !== 'SOLID') {
-        angle = await editor.getNumber('Ângulo', { defaultValue: editor.memory.hatchAngle ?? 45 });
-        spacing = await editor.getNumber('Espaçamento', { defaultValue: spacing });
-        if (!(spacing > 0)) return editor.log('Espaçamento inválido.', 'error');
-        editor.memory.hatchAngle = angle;
-        editor.memory.hatchSpacing = spacing;
+    const memory = { ...HATCH_DEFAULTS, ...(editor.memory.hatch ?? {}) };
+    const typed = await editor.getString('Padrão (? lista, S sólido)', { defaultValue: memory.pattern });
+    let pattern = String(typed || memory.pattern).trim().toUpperCase();
+    if (pattern === 'S') pattern = 'SOLID';
+    if (pattern === '?') {
+        editor.log(Object.entries(HATCH_PATTERNS).map(([k, p]) => `${k}: ${p.description}`).join('\n'));
+        pattern = memory.pattern;
     }
-    const entity = { type: 'hatch', loops, pattern, angle, spacing, opacity: 0.35, sourceIds: ids };
-    editor.commit('Hachura', addEntities(editor.doc, [entity]));
+    if (!HATCH_PATTERNS[pattern]) return editor.log(`Padrão desconhecido: ${pattern}.`, 'error');
+    let { angle, scale } = memory;
+    if (pattern !== 'SOLID') {
+        scale = await editor.getNumber('Escala do padrão', { defaultValue: scale });
+        if (!(scale > 0)) return editor.log('Escala inválida.', 'error');
+        angle = await editor.getNumber('Ângulo do padrão', { defaultValue: angle });
+        if (!Number.isFinite(angle)) return editor.log('Ângulo inválido.', 'error');
+    }
+    editor.memory.hatch = { ...(editor.memory.hatch ?? {}), pattern, angle, scale };
+    editor.commit('Hachura', addEntities(editor.doc, [{ type: 'hatch', loops, pattern, angle, scale, opacity: 0.35, sourceIds: ids }]));
     editor.clearSelection();
     editor.log(`Hachura ${HATCH_PATTERNS[pattern].label} com ${loops.length} laço(s).`);
+    return null;
+}
+
+const HATCH_BOUNDARY_SKIP = new Set(['hatch', 'dimension', 'text', 'mtext', 'image', 'insert', 'point', 'leader', 'terminal']);
+
+function hatchEntityFrom(state, group) {
+    const entity = { type: 'hatch', loops: group.loops, pattern: state.pattern, angle: state.angle, scale: state.scale, opacity: 0.35 };
+    if (group.sourceIds?.length) entity.sourceIds = group.sourceIds;
+    if (state.definition) Object.assign(entity, { definition: state.definition, definitionAngle: state.definitionAngle ?? 0, definitionScale: state.definitionScale ?? 1 });
+    if (state.color !== 'current') entity.color = state.color;
+    if (state.layer) entity.layer = state.layer;
+    return entity;
+}
+
+function mergeHatchGroups(groups) {
+    const seen = new Set();
+    const loops = [];
+    const sourceIds = [];
+    groups.forEach((g) => {
+        g.loops.forEach((loop) => { const key = loopKey(loop); if (!seen.has(key)) { seen.add(key); loops.push(loop); } });
+        (g.sourceIds ?? []).forEach((id) => sourceIds.push(id));
+    });
+    return { loops, sourceIds };
+}
+
+// "Escolha pontos internos": contornos fechados visíveis na vista atual, como "Usar vista atual" do BricsCAD.
+async function hatchPickPoints(editor, state, groups, refresh) {
+    const view = editor.viewport.visibleBox();
+    const candidates = editableEntities(editor.doc).filter((e) => {
+        if (HATCH_BOUNDARY_SKIP.has(e.type)) return false;
+        const b = entityBox(e);
+        return b.maxX >= view.minX && b.minX <= view.maxX && b.maxY >= view.minY && b.minY <= view.maxY;
+    });
+    let loops;
+    try {
+        loops = loopsFromEntities(candidates);
+    } catch (error) {
+        editor.log(`${error.message} Aproxime a vista ou use Selecionar objetos.`, 'error');
+        return;
+    }
+    if (loops.length === 0) {
+        editor.log('Nenhum contorno fechado na vista atual.', 'error');
+        return;
+    }
+    for (;;) {
+        let res;
+        try {
+            res = await editor.getPoint('Clique dentro das áreas a hachurar [Desfazer] <Enter volta à janela>', { allowEnter: true, freePoint: true, options: [{ key: 'd', label: 'Desfazer' }] });
+        } catch (error) {
+            if (error instanceof CancelError) return;
+            throw error;
+        }
+        if (!res || res.enter) return;
+        if (res.keyword === 'd') {
+            groups.pop();
+            refresh();
+            continue;
+        }
+        if (!res.point) return;
+        const found = boundaryLoopsAt(res.point, loops, state.islands);
+        if (found.length === 0) {
+            editor.log('Nenhum contorno fechado em volta desse ponto.', 'error');
+            continue;
+        }
+        groups.push({ loops: found, sourceIds: [] });
+        editor.log(`Limite com ${found.length} laço(s) adicionado.`);
+        refresh();
+    }
+}
+
+// HATCH: janela de Hachura no estilo do BricsCAD (padrão, escala, ângulo, cor, limites e ilhas).
+async function hatch(editor) {
+    if (typeof document === 'undefined' || !editor.canvas) return hatchPrompt(editor);
+    const state = { ...HATCH_DEFAULTS, color: 'current', layer: '', islands: 'nested', separate: false, ...(editor.memory.hatch ?? {}) };
+    if (state.pattern !== 'SOLID' && !HATCH_PATTERNS[state.pattern] && !state.definition) state.pattern = HATCH_DEFAULTS.pattern;
+    const groups = [];
+    if (editor.selection.size > 0) {
+        const ids = [...editor.selection];
+        try {
+            const loops = loopsFromEntities(editor.entitiesById(ids));
+            if (loops.length) groups.push({ loops, sourceIds: ids });
+            else editor.log('Nenhum contorno fechado na seleção.', 'warn');
+        } catch (error) {
+            editor.log(error.message, 'error');
+        }
+        editor.clearSelection();
+    }
+    const refresh = () => {
+        const list = state.separate ? groups : groups.length ? [mergeHatchGroups(groups)] : [];
+        editor.preview = list.map((g) => hatchEntityFrom(state, g));
+        editor.invalidate();
+    };
+    try {
+        for (;;) {
+            refresh();
+            const result = await openHatchDialog({
+                state,
+                boundaries: groups.length,
+                loops: groups.reduce((n, g) => n + g.loops.length, 0),
+                layers: editor.doc.layers.map((l) => l.name),
+                currentLayer: editor.doc.currentLayer,
+                onChange: (next) => { Object.assign(state, next); refresh(); },
+            });
+            Object.assign(state, result.state);
+            if (result.action === 'cancel') return null;
+            if (result.action === 'ok') break;
+            if (result.action === 'clear') groups.length = 0;
+            else if (result.action === 'pick') await hatchPickPoints(editor, state, groups, refresh);
+            else if (result.action === 'select') {
+                let ids = [];
+                try {
+                    ids = await editor.getSelection('Selecione os objetos de contorno:', { ignorePreselection: true });
+                } catch (error) {
+                    if (!(error instanceof CancelError)) throw error;
+                }
+                if (ids.length) {
+                    try {
+                        const loops = loopsFromEntities(editor.entitiesById(ids));
+                        if (loops.length) groups.push({ loops, sourceIds: ids });
+                        else editor.log('Nenhum contorno fechado na seleção.', 'error');
+                    } catch (error) {
+                        editor.log(error.message, 'error');
+                    }
+                }
+                editor.clearSelection();
+            } else if (result.action === 'inherit') {
+                let picked = null;
+                try {
+                    picked = await editor.getEntity('Selecione a hachura de origem:');
+                } catch (error) {
+                    if (!(error instanceof CancelError)) throw error;
+                }
+                const source = picked?.entity ? upgradeHatch(picked.entity) : null;
+                if (source?.type === 'hatch') {
+                    Object.assign(state, { pattern: source.pattern, angle: source.angle ?? 0, scale: source.scale ?? 1, definition: source.definition, definitionAngle: source.definitionAngle, definitionScale: source.definitionScale });
+                    if (source.color !== undefined && source.color !== 'bylayer') state.color = source.color;
+                    editor.log(`Propriedades herdadas: ${source.pattern}, escala ${formatNumber(state.scale, 4)}, ângulo ${formatNumber(state.angle, 2)}°.`);
+                } else if (picked) editor.log('O objeto escolhido não é uma hachura.', 'error');
+            }
+        }
+    } finally {
+        editor.preview = [];
+        editor.invalidate();
+    }
+    const { definition, definitionAngle, definitionScale, ...remember } = state;
+    editor.memory.hatch = state.definition ? { ...remember, definition, definitionAngle, definitionScale } : remember;
+    if (groups.length === 0) return editor.log('Nenhum limite definido.', 'warn');
+    const entities = (state.separate ? groups : [mergeHatchGroups(groups)]).map((g) => hatchEntityFrom(state, g));
+    editor.commit('Hachura', addEntities(editor.doc, entities));
+    const label = HATCH_PATTERNS[state.pattern]?.label ?? state.pattern;
+    const scaleText = formatNumber(state.scale, 4);
+    const angleText = formatNumber(state.angle, 2);
+    editor.log(entities.length === 1 ? `Hachura ${label}: escala ${scaleText}, ângulo ${angleText}°.` : `${entities.length} hachuras ${label}: escala ${scaleText}, ângulo ${angleText}°.`);
     return null;
 }
 
@@ -3586,7 +3755,7 @@ async function list(editor) {
                 editor.log(`${base}\n  grau ${e.degree}  ${e.controlPoints?.length ?? 0} pontos de controle  ${e.fitPoints?.length ?? 0} pontos de ajuste  comprimento ≈ ${fmt(entityLength(e))}`);
                 break;
             case 'hatch':
-                editor.log(`${base}\n  hachura ${e.pattern}  ângulo ${fmt(e.angle ?? 45)}°  espaçamento ${fmt(e.spacing ?? 3)}  ${e.loops.length} laço(s)`);
+                { const h = upgradeHatch(e); editor.log(`${base}\n  hachura ${h.pattern}  escala ${fmt(h.scale ?? 1)}  ângulo ${fmt(h.angle ?? 0)}°  ${e.loops.length} laço(s)`); }
                 break;
             case 'image':
                 editor.log(`${base}\n  imagem em ${fmtPoint(e.position)}  ${fmt(e.width)} × ${fmt(e.height)}  rotação ${fmt(e.rotation ?? 0)}°`);
@@ -4660,7 +4829,8 @@ export const COMMANDS = {
     DIM: { aliases: ['COTA', 'DIMAUTO'], run: dimAuto, description: 'Cota automática: linear, alinhada, raio ou diâmetro conforme o alvo' },
     DIMENSION: { aliases: ['DIMENSAO'], run: dimension, description: 'Dimensão: clique na linha e puxe a cota até a primeira interseção; arco e círculo dão raio e diâmetro' },
     DIMPART: { aliases: ['COTARPECA', 'DIMPECA'], run: dimPart, description: 'Cotar a peça inteira: gerais, posições de furos, diâmetros e raios únicos' },
-    HATCH: { aliases: ['H', 'HACHURA', 'BHATCH'], run: hatch, description: 'Hachura ou preenchimento de contornos fechados (sólido, linhas, cruzado, pontos)' },
+    HATCH: { aliases: ['H', 'HACHURA', 'BHATCH'], run: hatch, description: 'Hachura em janela: padrão (ANSI31, SAND...), escala, ângulo, cor, pontos internos e ilhas' },
+    '-HATCH': { aliases: ['-H', '-HACHURA', '-BHATCH'], run: hatchPrompt, description: 'Hachura pelo terminal: padrão, escala e ângulo' },
     DIMLINEAR: { aliases: ['DLI', 'DIMLIN'], run: dimLinear, description: 'Cota linear horizontal/vertical' },
     DIMHORIZONTAL: { aliases: ['DHO', 'DIMHOR'], run: dimHorizontal, description: 'Cota linear horizontal' },
     DIMVERTICAL: { aliases: ['DVE', 'DIMVER'], run: dimVertical, description: 'Cota linear vertical' },

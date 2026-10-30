@@ -1713,3 +1713,52 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 @media (max-width: 720px) {
     .cad-start-inner { grid-template-columns: 1fr; padding: 20px; gap: 24px; }
 }
+
+/* Janela de Hachura (HATCH), no desenho da janela do BricsCAD com a cara do Traço */
+.cad-hatch-dialog { width: min(680px, 96vw); max-height: 92vh; overflow: auto; border: 1px solid var(--cad-border-strong); border-radius: 10px; padding: 16px; background: var(--cad-panel); color: var(--cad-text); font-family: var(--cad-font); font-size: 13px; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35); }
+.cad-hatch-dialog::backdrop { background: rgba(0, 0, 0, 0.25); }
+.cad-hatch-dialog h3 { font-size: 1rem; font-weight: 600; margin: 0 0 12px; }
+.cad-hatch-columns { display: grid; grid-template-columns: 1.1fr 1fr; gap: 12px; }
+@media (max-width: 620px) { .cad-hatch-columns { grid-template-columns: 1fr; } }
+.cad-hatch-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.cad-hatch-dialog fieldset { border: 1px solid var(--cad-border-strong); border-radius: 8px; margin: 0; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 8px; }
+.cad-hatch-dialog legend { padding: 0 4px; font-size: .8rem; color: var(--cad-muted); text-transform: uppercase; letter-spacing: .04em; }
+.cad-hatch-row { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; }
+.cad-hatch-row > span:first-child { color: var(--cad-muted); font-size: .85rem; }
+.cad-hatch-field { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.cad-hatch-field select { flex: 1; min-width: 0; }
+.cad-hatch-dialog input, .cad-hatch-dialog select { background: var(--cad-panel-3); color: var(--cad-text); border: 1px solid var(--cad-border-strong); border-radius: 5px; padding: 5px 7px; font: inherit; min-width: 0; user-select: text; }
+.cad-hatch-dialog input:focus, .cad-hatch-dialog select:focus { border-color: var(--cad-accent); outline: none; }
+.cad-hatch-dialog input:disabled { opacity: .45; }
+.cad-hatch-dialog input.is-invalid { border-color: #e5484d; }
+.cad-hatch-dialog button { background: var(--cad-panel-3); color: var(--cad-text); border: 1px solid var(--cad-border-strong); border-radius: 6px; padding: 5px 12px; font: inherit; cursor: pointer; }
+.cad-hatch-dialog button:hover:not(:disabled) { border-color: var(--cad-accent); }
+.cad-hatch-dialog button:disabled { opacity: .45; cursor: default; }
+.cad-app .cad-hatch-dialog button:focus-visible { outline: 2px solid var(--cad-accent) !important; outline-offset: 2px; }
+.cad-hatch-sample { padding: 3px !important; display: flex; line-height: 0; background: var(--cad-panel-2, var(--cad-panel-3)) !important; }
+.cad-hatch-sample canvas { width: 100%; height: 44px; border-radius: 3px; }
+.cad-hatch-swatch { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--cad-border-strong); flex: none; }
+.cad-hatch-swatch.is-auto { background: linear-gradient(135deg, transparent 45%, var(--cad-muted) 45%, var(--cad-muted) 55%, transparent 55%) !important; }
+.cad-hatch-note { margin: 0; font-size: .78rem; color: var(--cad-muted); min-height: 1em; }
+.cad-hatch-action { display: flex; align-items: center; gap: 8px; text-align: left; }
+.cad-hatch-icon { width: 18px; height: 18px; border-radius: 4px; display: inline-grid; place-items: center; background: var(--cad-accent-soft); color: var(--cad-accent); font-weight: 700; line-height: 1; flex: none; }
+.cad-hatch-status { margin: 0; font-size: .8rem; color: var(--cad-text); }
+.cad-hatch-status.is-empty { color: var(--cad-muted); }
+.cad-hatch-islands { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.cad-hatch-island { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; font-size: .8rem; padding: 6px 2px; border: 1px solid transparent; border-radius: 6px; }
+.cad-hatch-island:has(input:checked) { border-color: var(--cad-accent); background: var(--cad-accent-soft); }
+.cad-hatch-island input { position: absolute; opacity: 0; pointer-events: none; }
+.cad-hatch-island svg { width: 40px; height: 40px; }
+.cad-hatch-island .outline { stroke: var(--cad-text); stroke-width: 1.2; }
+.cad-hatch-island .stroke { stroke: var(--cad-text); stroke-width: .8; }
+.cad-hatch-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.cad-hatch-dialog footer { display: flex; gap: 8px; align-items: center; margin-top: 14px; }
+.cad-hatch-spacer { flex: 1; }
+.cad-hatch-dialog footer button[type=submit] { background: var(--cad-accent); border-color: var(--cad-accent); color: #fff; min-width: 84px; }
+.cad-hatch-palette { width: min(560px, 96vw); }
+.cad-hatch-palette-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; max-height: 52vh; overflow: auto; padding: 2px; }
+.cad-hatch-palette-grid button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px !important; }
+.cad-hatch-palette-grid button[aria-selected=true] { border-color: var(--cad-accent); background: var(--cad-accent-soft); }
+.cad-hatch-palette-grid canvas { width: 72px; height: 56px; background: var(--cad-panel); border-radius: 3px; }
+.cad-hatch-palette-grid span { font-size: .75rem; }
+.cad-hatch-palette-desc { margin: 10px 0 0; font-size: .8rem; color: var(--cad-muted); min-height: 1.2em; }

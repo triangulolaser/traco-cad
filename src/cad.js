@@ -1,6 +1,7 @@
 import { bootUsage, usage } from './usage-telemetry.js';
 import {FONT_FAMILIES,loadCadFonts} from './cad/fonts.js';
 import {geometryFields,setGeometryField,slotParams,resizeSlot} from './cad/edit-tools.js';
+import { HATCH_PATTERNS, upgradeHatch, setHatchProps } from './cad/hatch.js';
 import {isEntityEditable,replaceEntities} from './cad/document.js';
 // Entrada do app Traço CAD.
 import { Editor } from './cad/editor.js';
@@ -649,6 +650,26 @@ function renderProperties(editor, root) {
             + field('centers', 'Centro a centro', 'Distância entre os centros dos arcos; o meio do oblongo fica parado');
     }
 
+    const hatches = selected.filter((e) => e.type === 'hatch').map(upgradeHatch);
+    if (hatches.length && hatches.length === selected.length) {
+        const locked = selected.some((e) => !isEntityEditable(editor.doc, e));
+        const same = (key, eq = (a, b) => a === b) => (hatches.every((h) => eq(h[key], hatches[0][key])) ? hatches[0][key] : null);
+        const near = (a, b) => Math.abs((a ?? 0) - (b ?? 0)) < 1e-6;
+        const pattern = same('pattern');
+        const scale = same('scale', near);
+        const angle = same('angle', near);
+        const patterns = Object.keys(HATCH_PATTERNS);
+        const options = (pattern === null ? '<option value="">*Varia*</option>' : '')
+            + (pattern !== null && !HATCH_PATTERNS[pattern] ? `<option value="" selected>${escapeHtml(pattern)} (do arquivo)</option>` : '')
+            + patterns.map((p) => `<option value="${p}" ${p === pattern ? 'selected' : ''}>${escapeHtml(HATCH_PATTERNS[p].label)}</option>`).join('');
+        const solid = pattern === 'SOLID';
+        const field = (key, label, hint, value, digits) => `<div class="cad-prop-row"><span class="cad-prop-key">${label}</span><span class="cad-prop-value"><input type="text" inputmode="decimal" data-prop="hatch-${key}" value="${value !== null ? fmt(value, digits) : ''}" placeholder="${value !== null ? '' : '*Varia*'}" title="${hint}" ${locked || solid ? 'disabled' : ''}></span></div>`;
+        html += section('Hachura')
+            + `<div class="cad-prop-row"><span class="cad-prop-key">Padrão</span><span class="cad-prop-value"><select data-prop="hatch-pattern" title="Padrão da hachura" ${locked ? 'disabled' : ''}>${options}</select></span></div>`
+            + field('scale', 'Escala', 'Escala do padrão: 2 deixa as linhas duas vezes mais afastadas', scale, 4)
+            + field('angle', 'Ângulo', 'Ângulo do padrão em graus (ANSI31 com 0 já tem linhas a 45°)', angle, 4);
+    }
+
     if (selected.length === 1) {
         html += section('Geometria');
         entityRows(editor, selected[0]).forEach(([k, v]) => { html += row(k, escapeHtml(String(v))); });
@@ -914,6 +935,43 @@ function renderProperties(editor, root) {
                 editor.log(error.message, 'error');
                 renderProperties(editor, root);
             }
+        };
+        input.addEventListener('keydown', (event) => {
+            event.stopPropagation();
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                apply();
+                input.blur();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                renderProperties(editor, root);
+                input.blur();
+            }
+        });
+        input.addEventListener('change', apply);
+    });
+
+    // Padrão, escala e ângulo de uma ou várias hachuras
+    const applyHatch = (changes, label) => {
+        try {
+            editor.commit(label, updateEntities(editor.doc, [...editor.selection], (e) => (e.type === 'hatch' && isEntityEditable(editor.doc, e) ? setHatchProps(e, changes) : e)));
+        } catch (error) {
+            editor.log(error.message, 'error');
+            renderProperties(editor, root);
+        }
+    };
+    box.querySelector('[data-prop="hatch-pattern"]')?.addEventListener('change', (event) => {
+        if (event.target.value) applyHatch({ pattern: event.target.value }, 'Padrão da hachura');
+    });
+    box.querySelectorAll('[data-prop="hatch-scale"], [data-prop="hatch-angle"]').forEach((input) => {
+        const key = input.dataset.prop.slice(6);
+        const apply = () => {
+            const val = parseDecimalInput(input.value);
+            if (!Number.isFinite(val) || (key === 'scale' && val <= 0)) {
+                renderProperties(editor, root);
+                return;
+            }
+            applyHatch({ [key]: val }, key === 'scale' ? 'Escala da hachura' : 'Ângulo da hachura');
         };
         input.addEventListener('keydown', (event) => {
             event.stopPropagation();
