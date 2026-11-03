@@ -1,3 +1,5 @@
+mod fileops;
+
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -68,34 +70,38 @@ fn get_pending_open_links(state: tauri::State<'_, PendingLinksState>) -> Vec<Str
     std::mem::take(&mut *state.0.lock().unwrap())
 }
 
-#[tauri::command]
-fn write_file(path: String, contents: String) -> Result<(), String> {
-    let p = std::path::Path::new(&path);
-    if p.is_file() {
-        let bak = p.with_extension("bak");
-        let _ = std::fs::copy(p, bak);
-    }
-    std::fs::write(&path, contents).map_err(|e| e.to_string())
+// Comando síncrono do Tauri roda na thread principal e para a tela enquanto o disco responde.
+async fn off_main_thread<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn write_file_binary(path: String, bytes: Vec<u8>) -> Result<(), String> {
-    let p = std::path::Path::new(&path);
-    if p.is_file() {
-        let bak = p.with_extension("bak");
-        let _ = std::fs::copy(p, bak);
-    }
-    std::fs::write(&path, bytes).map_err(|e| e.to_string())
+async fn write_file(path: String, contents: String) -> Result<Option<String>, String> {
+    off_main_thread(move || fileops::save(std::path::Path::new(&path), contents.as_bytes())).await
 }
 
 #[tauri::command]
-fn read_file_text(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+async fn write_file_binary(path: String, bytes: Vec<u8>) -> Result<Option<String>, String> {
+    off_main_thread(move || fileops::save(std::path::Path::new(&path), &bytes)).await
 }
 
 #[tauri::command]
-fn read_file_binary(path: String) -> Result<Vec<u8>, String> {
-    std::fs::read(&path).map_err(|e| e.to_string())
+async fn file_exists(path: String) -> Result<bool, String> {
+    off_main_thread(move || fileops::file_exists(std::path::Path::new(&path))).await
+}
+
+#[tauri::command]
+async fn read_file_text(path: String) -> Result<String, String> {
+    off_main_thread(move || std::fs::read_to_string(&path).map_err(|e| e.to_string())).await
+}
+
+#[tauri::command]
+async fn read_file_binary(path: String) -> Result<Vec<u8>, String> {
+    off_main_thread(move || std::fs::read(&path).map_err(|e| e.to_string())).await
 }
 
 #[tauri::command]
@@ -318,7 +324,7 @@ pub fn run() {
         .manage(FileLocksState::default())
         .manage(PendingLinksState::default())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_pending_open_files, get_pending_open_links, write_file, write_file_binary, read_file_text, read_file_binary, convert_dwg_to_dxf, read_cad_clipboard, read_cad_clipboard_seq, sync_file_locks])
+        .invoke_handler(tauri::generate_handler![get_pending_open_files, get_pending_open_links, write_file, write_file_binary, file_exists, read_file_text, read_file_binary, convert_dwg_to_dxf, read_cad_clipboard, read_cad_clipboard_seq, sync_file_locks])
         .setup(|app| {
             #[cfg(desktop)]
             {
@@ -350,6 +356,9 @@ pub fn run() {
     // RunEvent::Opened só existe no macOS/iOS; no Windows e no Linux o arquivo
     // chega como argumento de linha de comando (tratado no setup acima).
     app.run(|_app_handle, _event| {
+        if matches!(_event, tauri::RunEvent::Exit) {
+            fileops::wait_for_pending_save();
+        }
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         if let RunEvent::Opened { urls } = _event {
             for url in urls {

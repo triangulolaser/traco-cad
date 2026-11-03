@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Editor } from '../src/cad/editor.js';
+import { COMMANDS } from '../src/cad/commands.js';
 
 if (typeof globalThis.window === 'undefined') {
     globalThis.window = {
@@ -140,4 +141,29 @@ test('pointOrEntity sobre a entidade devolve o ponto do snap de extremidade', as
     assert.equal(res.entity?.id, 'l1');
     assert.deepEqual(res.point, { x: 0, y: 0 });
     assert.deepEqual(res.pickPoint, near);
+});
+
+test('comando novo não perde o estado quando uma gravação lenta anterior termina', async () => {
+    const editor = new Editor(createMockCadRoot(), { storage: createMockStorage() });
+    let finishSave;
+    const save = COMMANDS.SAVE.run;
+    COMMANDS.SAVE.run = () => new Promise((resolve) => { finishSave = resolve; });
+    try {
+        const saving = editor.runCommand('SAVE');
+        await new Promise((resolve) => setImmediate(resolve));
+        const line = editor.runCommand('LINE');
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(editor.running, 'LINE');
+        const prompt = editor.pending;
+        assert.ok(prompt, 'LINE está esperando o primeiro ponto');
+        finishSave(null);
+        await saving;
+        assert.equal(editor.running, 'LINE');
+        assert.equal(editor.pending, prompt);
+        editor.cancel();
+        await line;
+        assert.equal(editor.running, null);
+    } finally {
+        COMMANDS.SAVE.run = save;
+    }
 });

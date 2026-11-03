@@ -2895,7 +2895,7 @@ async function wblock(editor) {
     doc.layers = editor.doc.layers.filter((l) => used.has(l.name) || l.name === '0');
     doc.entities = entities.map((e) => ({ ...e }));
     const content = writeDxf(doc, { view });
-    if (desktop) await bridge.saveFile(path, content);
+    if (desktop) await saveToDisk(editor, bridge, path, content);
     else editor.downloadText(content, name);
     editor.log(`Bloco exportado: ${desktop ? path : name} (${entities.length} entidades, base ${fmtPoint(base)}).`);
     return null;
@@ -4402,6 +4402,29 @@ async function getExportPayload(editor, format = saveFormatOf(editor.doc)) {
     };
 }
 
+// A tela segue livre durante a gravação: o usuário pode editar ou trocar de aba até ela terminar.
+// Por isso o resultado vale para o documento e o ponto do histórico de quando a gravação começou.
+function saveTarget(editor) {
+    const history = editor.history;
+    const pastLength = history?.past?.length;
+    return {
+        history,
+        doc: () => history?.present ?? editor.doc,
+        markClean: () => history?.markClean?.(pastLength),
+        setName(name, filePath) {
+            if (!history || editor.history === history) editor.setDocumentName(name, filePath);
+            else history.replace({ ...history.present, name, filePath });
+        },
+    };
+}
+
+async function saveToDisk(editor, bridge, path, content) {
+    const backupProblem = await bridge.saveFile(path, content);
+    if (typeof backupProblem === 'string' && backupProblem) {
+        editor.log(`Salvo, mas sem cópia de segurança (.bak) da versão anterior: ${backupProblem}`, 'warn');
+    }
+}
+
 async function save(editor) {
     const payload = await getExportPayload(editor);
 
@@ -4416,14 +4439,16 @@ async function save(editor) {
 
     if (bridge && typeof bridge.saveFile === 'function') {
         if (editor.doc.filePath) {
+            const { filePath, entities } = editor.doc;
+            const saved = saveTarget(editor);
             try {
-                await bridge.saveFile(editor.doc.filePath, payload.content);
-                editor.history?.markClean?.();
+                await saveToDisk(editor, bridge, filePath, payload.content);
+                saved.markClean();
                 editor.tabs?.render?.();
                 editor.tabs?.save?.();
                 editor.onDocumentSaved?.(payload.content?.length);
                 usage('export_success');
-                editor.log(`Salvo em ${editor.doc.filePath} (${editor.doc.entities.length} entidades).`, 'info');
+                editor.log(`Salvo em ${filePath} (${entities.length} entidades).`, 'info');
                 return null;
             } catch (error) {
                 editor.log(`Falha ao salvar em ${editor.doc.filePath}: ${error.message}. Tentando Salvar Como...`, 'warn');
@@ -4454,10 +4479,10 @@ async function saveAs(editor, args = []) {
     const stem = String(target?.name ?? '').trim().replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '');
     if (stem) payload.name = `${stem}.${payload.ext}`;
     const changed = Boolean(target) && (format !== saveFormatOf(editor.doc) || payload.name !== editor.doc.name);
-    const remember = (fileName, filePath) => {
-        editor.setDocumentName(fileName, filePath);
-        if (target && ['dxf', 'dwg'].includes(payload.ext) && editor.doc.sourceFormat !== payload.ext) {
-            editor.history.replace({ ...editor.doc, sourceFormat: payload.ext });
+    const remember = (fileName, filePath, saved = saveTarget(editor)) => {
+        saved.setName(fileName, filePath);
+        if (target && ['dxf', 'dwg'].includes(payload.ext) && saved.doc().sourceFormat !== payload.ext) {
+            saved.history.replace({ ...saved.doc(), sourceFormat: payload.ext });
         }
     };
     const bridge = typeof window !== 'undefined' ? window.desktopBridge : null;
@@ -4476,15 +4501,17 @@ async function saveAs(editor, args = []) {
             editor.log('Salvamento cancelado.', 'info');
             return null;
         }
-        await bridge.saveFile(selected, payload.content);
+        const saved = saveTarget(editor);
+        const { entities } = editor.doc;
+        await saveToDisk(editor, bridge, selected, payload.content);
         const fileName = selected.split(/[\/\\]/).pop() || selected;
-        remember(fileName, selected);
-        editor.history?.markClean?.();
+        remember(fileName, selected, saved);
+        saved.markClean();
         editor.tabs?.render?.();
         editor.tabs?.save?.();
         editor.onDocumentSaved?.(payload.content?.length);
         usage('export_success');
-        editor.log(`Salvo em ${selected} (${editor.doc.entities.length} entidades).`, 'info');
+        editor.log(`Salvo em ${selected} (${entities.length} entidades).`, 'info');
         return null;
     }
 
@@ -4527,15 +4554,17 @@ async function exportDwg(editor) {
             editor.log('Salvamento DWG cancelado.', 'info');
             return null;
         }
-        await bridge.saveFile(selected, content);
+        const saved = saveTarget(editor);
+        const { entities } = editor.doc;
+        await saveToDisk(editor, bridge, selected, content);
         const fileName = selected.split(/[\/\\]/).pop() || selected;
-        editor.setDocumentName(fileName, selected);
-        editor.history?.markClean?.();
+        saved.setName(fileName, selected);
+        saved.markClean();
         editor.tabs?.render?.();
         editor.tabs?.save?.();
         editor.onDocumentSaved?.(content?.length);
         usage('export_success');
-        editor.log(`Salvo DWG em ${selected} (${editor.doc.entities.length} entidades).`, 'info');
+        editor.log(`Salvo DWG em ${selected} (${entities.length} entidades).`, 'info');
         return null;
     }
 

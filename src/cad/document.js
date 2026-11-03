@@ -206,8 +206,8 @@ export class History {
         return next;
     }
 
-    markClean() {
-        this.cleanPastLength = this.past.length;
+    markClean(pastLength = this.past.length) {
+        this.cleanPastLength = pastLength;
     }
 
     isDirty() {

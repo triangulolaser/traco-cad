@@ -29,6 +29,9 @@ window.desktopBridge = {
     async readFileBinary(path) {
         return invoke('read_file_binary', { path });
     },
+    async fileExists(path) {
+        return invoke('file_exists', { path });
+    },
     async showSaveDialog(options = {}) {
         return tauriSaveDialog(options);
     },

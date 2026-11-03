@@ -297,6 +297,38 @@ test('WBLOCK no desktop: arquivo existente pede confirmação; Não volta para a
     }
 });
 
+test('WBLOCK no desktop: checa a existência sem ler o arquivo', async () => {
+    const asked = [];
+    globalThis.window = { desktopBridge: {
+        saveFile: async () => null,
+        fileExists: async (path) => { asked.push(path); return false; },
+        readFileBinary: async () => { throw new Error('não deveria ler o arquivo'); },
+    } };
+    try {
+        const editor = wblockEditor([]);
+        editor.wblockUi = wblockUi([{ action: 'ok', path: 'C:\\B\\a.dxf', base: { x: 0, y: 0, z: 0 } }]);
+        await COMMANDS.WBLOCK.run(editor);
+        assert.deepEqual(asked, ['C:\\B\\a.dxf']);
+        assert.deepEqual(editor.wblockUi.confirms, []);
+    } finally {
+        delete globalThis.window;
+    }
+});
+
+test('WBLOCK no desktop: sem cópia de segurança, salva e avisa', async () => {
+    const logs = [];
+    globalThis.window = { desktopBridge: { saveFile: async () => 'disco cheio' } };
+    try {
+        const editor = wblockEditor(logs);
+        editor.wblockUi = wblockUi([{ action: 'ok', path: 'C:\\B\\a.dxf', base: { x: 0, y: 0, z: 0 } }]);
+        await COMMANDS.WBLOCK.run(editor);
+        assert.ok(logs.some(([msg, level]) => level === 'warn' && msg.includes('.bak') && msg.includes('disco cheio')));
+        assert.ok(logs.some(([msg]) => msg.startsWith('Bloco exportado')));
+    } finally {
+        delete globalThis.window;
+    }
+});
+
 test('WBLOCK: escolher ponto base no desenho volta para a janela com o ponto', async () => {
     const editor = wblockEditor([]);
     let downloaded = null;

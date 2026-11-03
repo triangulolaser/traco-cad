@@ -522,3 +522,57 @@ test('SAVEAS com nome e tipo do diálogo na Web: baixa direto, sem perguntar o n
     assert.equal(editor.doc.sourceFormat, 'dxf');
     assert.equal(editor.history.isDirty(), false);
 });
+
+// Gravação fora da thread principal: a tela segue livre enquanto o disco responde.
+function slowBridge() {
+    let finish;
+    const pending = new Promise((resolve) => { finish = resolve; });
+    return { finish, bridge: { saveFile: () => pending, showSaveDialog: async () => '/rede/peca.dwg' } };
+}
+
+function savedDrawing() {
+    const doc = { ...createDocument(), name: 'peca.dwg', filePath: '/rede/peca.dwg', sourceFormat: 'dwg' };
+    return saveTargetEditor(doc);
+}
+
+test('SAVE lento: edição feita durante a gravação continua pendente de salvar', async () => {
+    const { finish, bridge } = slowBridge();
+    globalThis.window = { desktopBridge: bridge };
+    try {
+        const editor = savedDrawing();
+        editor.history.commit('antes', addEntities(editor.doc, [{ type: 'line', start: { x: 0, y: 0 }, end: { x: 1, y: 0 } }]));
+        const saving = COMMANDS.SAVE.run(editor);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        editor.history.commit('durante', addEntities(editor.doc, [{ type: 'line', start: { x: 0, y: 1 }, end: { x: 1, y: 1 } }]));
+        finish(null);
+        await saving;
+        assert.equal(editor.history.isDirty(), true, 'a segunda linha não foi gravada');
+        editor.history.undo();
+        assert.equal(editor.history.isDirty(), false, 'o ponto gravado é o de quando a gravação começou');
+    } finally {
+        delete globalThis.window;
+    }
+});
+
+test('SAVEAS lento: trocar de aba durante a gravação não mexe na aba nova', async () => {
+    const { finish, bridge } = slowBridge();
+    globalThis.window = { desktopBridge: bridge };
+    try {
+        const editor = saveTargetEditor({ ...createDocument(), name: 'Sem título.dwg', filePath: null, sourceFormat: 'dwg' });
+        const original = editor.history;
+        original.commit('antes', addEntities(editor.doc, [{ type: 'line', start: { x: 0, y: 0 }, end: { x: 1, y: 0 } }]));
+        const saving = COMMANDS.SAVEAS.run(editor);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        const other = new History({ ...createDocument(), name: 'outra.dxf', filePath: '/rede/outra.dxf' });
+        other.commit('edição', addEntities(other.present, [{ type: 'line', start: { x: 0, y: 0 }, end: { x: 2, y: 0 } }]));
+        editor.history = other;
+        finish(null);
+        await saving;
+        assert.equal(other.present.filePath, '/rede/outra.dxf');
+        assert.equal(other.isDirty(), true);
+        assert.equal(original.present.filePath, '/rede/peca.dwg');
+        assert.equal(original.isDirty(), false);
+    } finally {
+        delete globalThis.window;
+    }
+});

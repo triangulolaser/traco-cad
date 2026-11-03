@@ -1038,6 +1038,7 @@ export default {
     "Salvar definição na biblioteca local deste navegador": "Save definition to this browser's local library",
     "Salvar tudo e atualizar": "Save all and update",
     "Salvar/Exportar desenho como AutoCAD DWG": "Save/Export drawing as AutoCAD DWG",
+    "Salvo, mas sem cópia de segurança (.bak) da versão anterior: {0}": "Saved, but without a backup (.bak) of the previous version: {0}",
     "Salvo DWG em {0} ({1} entidades).": "DWG saved to {0} ({1} entities).",
     "Salvo em {0} ({1} entidades).": "Saved to {0} ({1} entities).",
     "Saídas": "Output",

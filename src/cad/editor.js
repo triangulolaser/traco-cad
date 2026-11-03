@@ -1825,6 +1825,7 @@ export class Editor {
         this.terminal.log(`Comando: ${command.name}`, 'command');
         this.lastCommand = command.name;
         this.running = command.name;
+        const run = (this.commandRun = (this.commandRun ?? 0) + 1);
         // Painel Propriedades passa a mostrar cor/tipo/espessura do objeto a desenhar.
         if (DRAW_COMMANDS.has(command.name)) this.onChange(this);
         try {
@@ -1835,11 +1836,14 @@ export class Editor {
                 this.log(`Erro em ${command.name}: ${error.message}`, 'error');
             }
         } finally {
-            this.running = null;
-            this.pending = null;
-            this.preview = [];
-            this.window = null;
-            this.terminal.setPrompt('Comando:');
+            // Gravação lenta termina com outro comando já em curso: o estado agora é dele.
+            if (run === this.commandRun) {
+                this.running = null;
+                this.pending = null;
+                this.preview = [];
+                this.window = null;
+                this.terminal.setPrompt('Comando:');
+            }
             this.invalidate();
             this.onChange(this);
         }
