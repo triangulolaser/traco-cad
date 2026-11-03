@@ -66,6 +66,19 @@ test('cota vertical e alinhada medem corretamente e posicionam a linha pelo pont
     assert.ok(a.segments[0].a.x < 0, 'deslocada para a esquerda');
 });
 
+test('cota de raio encurta pela alça do texto, como no BricsCAD', () => {
+    const base = { kind: 'radius', center: { x: 0, y: 0 }, radius: 320 };
+    const near = dimensionGeometry({ ...base, linePoint: { x: 300, y: 0 } });
+    const far = dimensionGeometry({ ...base, linePoint: { x: 100, y: 0 } });
+    const len = (g) => Math.hypot(g.segments[0].b.x - g.segments[0].a.x, g.segments[0].b.y - g.segments[0].a.y);
+    assert.ok(len(near) < len(far), 'texto perto do arco deixa a linha mais curta');
+    assert.ok(near.segments[0].a.x > 250, 'linha não volta até o centro');
+    assert.ok(closePoint(near.segments[0].b, { x: 320, y: 0 }), 'termina no arco');
+    const outside = dimensionGeometry({ ...base, linePoint: { x: 360, y: 0 } });
+    assert.ok(outside.segments.every((s) => s.a.x >= 320 - 1e-9 && s.b.x >= 320 - 1e-9), 'fora: só a chamada do arco ao texto');
+    assert.ok(outside.arrows[0][1].x > 320, 'seta aponta para o centro');
+});
+
 test('cota de raio e diâmetro', () => {
     const r = dimensionGeometry({ kind: 'radius', center: { x: 0, y: 0 }, radius: 10, linePoint: { x: 5, y: 5 } });
     assert.equal(r.text, 'R10');

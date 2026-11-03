@@ -72,6 +72,8 @@ import { resolveDeferredTangent } from './snaps.js';
 import { autoDimensionPart } from './autodim.js';
 import { loopsFromEntities, HATCH_PATTERNS, HATCH_DEFAULTS, boundaryLoopsAt, loopKey, upgradeHatch } from './hatch.js';
 import { openHatchDialog } from './hatch-dialog.js';
+import { arrayCopies, arrayDefaults, arrayEntityCount, arrayItemCount, arrayParamsError, createArrayInsert, rememberArray } from './array.js';
+import { openArrayDialog } from './array-dialog.js';
 import { DRAWING_ACCEPT, DRAWING_KINDS, IMAGE_ACCEPT, kindOf } from './file-types.js';
 import { createRectangleEntity, createSlotEntity, polylineFillet, createRevcloudFromEntity, distanceToEntity, polygonAreaAndPerimeter, polylineArea, getEntityAreaAndPerimeter, pointInPolygon } from './edit-tools.js';
 
@@ -2617,6 +2619,91 @@ async function spline(editor) {
 // Padrões (array), alinhar, wblock
 
 async function arrayCommand(editor, args = []) {
+    if (typeof document === 'undefined' || !editor.canvas) return arrayPrompt(editor, args);
+    const ids = await editor.getSelection('Selecione objetos para o padrão:');
+    if (ids.length === 0) return null;
+    const entities = editor.entitiesById(ids);
+    const state = arrayDefaults(editor.memory, entities);
+    const preset = String((Array.isArray(args) ? args[0] : args) || '').toLowerCase();
+    if (['r', 'p', 'l'].includes(preset)) state.mode = preset;
+    const paramsOf = (s) => ({ ...s });
+    const refresh = () => {
+        const params = paramsOf(state);
+        const error = arrayParamsError(params, entities.length);
+        editor.preview = error ? [] : arrayCopies(entities, params);
+        editor.invalidate();
+        return error ? { error } : { error: null, items: arrayItemCount(params), entities: arrayEntityCount(params, entities.length) };
+    };
+    const pickCenter = async () => {
+        const res = await editor.getPoint('Centro da matriz polar:', {
+            preview: (center) => (arrayParamsError({ ...state, center }, entities.length) ? [] : arrayCopies(entities, { ...state, center })),
+        });
+        if (res.point) state.center = res.point;
+    };
+    const pickDirection = async () => {
+        const a = (await editor.getPoint('Ponto base do deslocamento:')).point;
+        const vector = (b) => ({ distance: distance(a, b), angle: radToDeg(angleOf(a, b)) });
+        const b = await editor.getPoint('Segundo ponto (distância e direção entre itens)', {
+            reference: a,
+            preview: (cursor) => (distance(a, cursor) > 1e-9 ? arrayCopies(entities, { ...state, ...vector(cursor) }) : []),
+        });
+        if (b.point && distance(a, b.point) > 1e-9) Object.assign(state, vector(b.point));
+    };
+    const pick = async (action) => {
+        editor.preview = [];
+        try {
+            await (action === 'pick-center' ? pickCenter() : pickDirection());
+        } catch (error) {
+            // Esc na indicação volta para a janela, sem cancelar a matriz inteira.
+            if (!(error instanceof CancelError)) throw error;
+        }
+    };
+    try {
+        if (state.mode === 'p') await pick('pick-center');
+        for (;;) {
+            refresh();
+            const dialog = openArrayDialog({
+                state,
+                onChange: (next) => { Object.assign(state, next); return refresh(); },
+                onFit: () => {
+                    const box = emptyBox();
+                    [...entities, ...editor.preview].forEach((e) => {
+                        const b = entityBox(e);
+                        boxAddPoint(box, { x: b.minX, y: b.minY });
+                        boxAddPoint(box, { x: b.maxX, y: b.maxY });
+                    });
+                    if (!boxIsEmpty(box)) editor.zoomToBox(box);
+                },
+                anchor: editor.canvas.getBoundingClientRect(),
+            });
+            let result;
+            try {
+                // O desenho segue navegável; Enter nele confirma e Esc cancela o comando.
+                result = await Promise.race([
+                    dialog.result,
+                    editor.panMode('Matriz: arraste para mover a vista; Enter confirma, Esc cancela').then(() => ({ action: 'ok', state: dialog.state() })),
+                ]);
+            } finally {
+                dialog.close();
+            }
+            if (editor.pending?.mode === 'pan') editor.resolvePending({ enter: true });
+            Object.assign(state, result.state);
+            if (result.action === 'cancel') return null;
+            if (result.action === 'ok') {
+                if (arrayParamsError(paramsOf(state), entities.length)) continue;
+                break;
+            }
+            await pick(result.action);
+        }
+    } finally {
+        editor.preview = [];
+        editor.invalidate();
+    }
+    return commitArray(editor, ids, entities, paramsOf(state));
+}
+
+// -ARRAY: perguntas no terminal (scripts e macros), com a pré-visualização a cada resposta.
+async function arrayPrompt(editor, args = []) {
     const ids = await editor.getSelection('Selecione objetos para o padrão:');
     if (ids.length === 0) return null;
     const entities = editor.entitiesById(ids);
@@ -2625,48 +2712,72 @@ async function arrayCommand(editor, args = []) {
     const mode = ['r', 'p', 'l'].includes(preset)
         ? { key: preset }
         : await editor.getKeyword('Tipo de padrão', [{ key: 'r', label: 'Retangular' }, { key: 'p', label: 'Polar' }, { key: 'l', label: 'Linear' }], editor.memory.arrayMode ?? 'r');
+    const params = { ...arrayDefaults(editor.memory, entities), mode: mode.key };
     editor.memory.arrayMode = mode.key;
-    const copies = [];
-    const clone = (fn) => entities.map((e) => ({ ...fn(e), id: undefined }));
-    if (mode.key === 'r') {
-        const rows = await editor.getNumber('Número de linhas', { defaultValue: editor.memory.arrayRows ?? 2 });
-        const cols = await editor.getNumber('Número de colunas', { defaultValue: editor.memory.arrayCols ?? 2 });
-        const rowSpacing = await editor.getNumber('Distância entre linhas (Y)', { defaultValue: editor.memory.arrayRowSpacing ?? 50 });
-        const colSpacing = await editor.getNumber('Distância entre colunas (X)', { defaultValue: editor.memory.arrayColSpacing ?? 50 });
-        Object.assign(editor.memory, { arrayRows: rows, arrayCols: cols, arrayRowSpacing: rowSpacing, arrayColSpacing: colSpacing });
-        if (!(rows >= 1 && cols >= 1)) return editor.log('Linhas e colunas devem ser ≥ 1.', 'error');
-        for (let r = 0; r < rows; r += 1) {
-            for (let c = 0; c < cols; c += 1) {
-                if (r === 0 && c === 0) continue;
-                copies.push(...clone((e) => translateEntity(e, { x: c * colSpacing, y: r * rowSpacing })));
-            }
+    const show = () => {
+        editor.preview = arrayParamsError(params, entities.length) ? [] : arrayCopies(entities, params);
+        editor.invalidate?.();
+    };
+    const askNumber = async (key, prompt) => {
+        show();
+        params[key] = await editor.getNumber(prompt, { defaultValue: params[key] });
+        show();
+    };
+    try {
+        if (mode.key === 'r') {
+            await askNumber('rows', 'Número de linhas');
+            await askNumber('cols', 'Número de colunas');
+            await askNumber('rowSpacing', 'Distância entre linhas (Y)');
+            await askNumber('colSpacing', 'Distância entre colunas (X)');
+        } else if (mode.key === 'p') {
+            params.center = (await editor.getPoint('Centro do padrão polar:')).point;
+            await askNumber('count', 'Número de itens');
+            await askNumber('fill', 'Ângulo a preencher (+ anti-horário)');
+            const rotate = await editor.getKeyword('Rotacionar os itens ao copiar?', [{ key: 's', label: 'Sim' }, { key: 'n', label: 'Não' }], params.rotate ? 's' : 'n');
+            params.rotate = rotate.key === 's';
+        } else {
+            await askNumber('count', 'Número de itens');
+            const a = (await editor.getPoint('Ponto base do deslocamento:')).point;
+            const vector = (cursor) => ({ distance: distance(a, cursor), angle: radToDeg(angleOf(a, cursor)) });
+            const b = await editor.getPoint('Segundo ponto (distância e direção entre itens)', {
+                reference: a,
+                preview: (cursor) => (distance(a, cursor) > 1e-9 && !arrayParamsError(params, entities.length) ? arrayCopies(entities, { ...params, ...vector(cursor) }) : []),
+            });
+            if (b.point) Object.assign(params, vector(b.point));
         }
-    } else if (mode.key === 'p') {
-        const center = (await editor.getPoint('Centro do padrão polar:')).point;
-        const count = await editor.getNumber('Número de itens', { defaultValue: editor.memory.arrayCount ?? 6 });
-        const fill = await editor.getNumber('Ângulo a preencher (+ anti-horário)', { defaultValue: editor.memory.arrayFill ?? 360 });
-        const rotate = await editor.getKeyword('Rotacionar os itens ao copiar?', [{ key: 's', label: 'Sim' }, { key: 'n', label: 'Não' }], 's');
-        Object.assign(editor.memory, { arrayCount: count, arrayFill: fill });
-        if (!(count >= 2)) return editor.log('Informe ao menos 2 itens.', 'error');
-        const full = Math.abs(Math.abs(fill) - 360) < 1e-9;
-        const step = degToRad(fill) / (full ? count : count - 1);
-        for (let i = 1; i < count; i += 1) {
-            const angle = step * i;
-            copies.push(...clone((e) => (rotate.key === 's' ? rotateEntity(e, center, angle) : translateEntity(e, sub(rotatePoint(entityAnchor(e), center, angle), entityAnchor(e))))));
-        }
-    } else {
-        const count = await editor.getNumber('Número de itens', { defaultValue: editor.memory.arrayCount ?? 4 });
-        const a = (await editor.getPoint('Ponto base do deslocamento:')).point;
-        const b = await editor.getPoint('Segundo ponto (distância e direção entre itens)', { reference: a, preview: (cursor) => [{ type: 'line', start: a, end: cursor }] });
-        if (!b.point || !(count >= 2)) return editor.log('Informe ao menos 2 itens e um deslocamento.', 'error');
-        editor.memory.arrayCount = count;
-        const delta = sub(b.point, a);
-        for (let i = 1; i < count; i += 1) copies.push(...clone((e) => translateEntity(e, scale(delta, i))));
+    } finally {
+        editor.preview = [];
+        editor.invalidate?.();
     }
-    if (copies.length === 0) return null;
-    editor.commit('Padrão', addEntities(editor.doc, copies));
-    editor.log(`${copies.length} cópia(s) criada(s).`);
+    return commitArray(editor, ids, entities, params);
+}
+
+function commitArray(editor, ids, entities, params) {
+    const error = arrayParamsError(params, entities.length);
+    if (error) {
+        editor.log(error, 'error');
+        return null;
+    }
+    rememberArray(editor.memory, params);
+    if (!params.associative) {
+        const copies = arrayCopies(entities, params);
+        editor.commit('Padrão', addEntities(editor.doc, copies));
+        editor.log(`${copies.length} cópia(s) criada(s).`);
+        editor.clearSelection();
+        return null;
+    }
+    const insert = createArrayInsert(entities, params);
+    const replacements = new Map(ids.map((id, index) => [id, index === 0 ? { ...insert, id: undefined } : null]));
+    const next = replaceEntities(editor.doc, replacements);
+    editor.commit('Padrão', next);
+    editor.log(`Matriz com ${arrayItemCount(params)} itens criada. Edite nas propriedades ou desagrupe com EXPLODE.`);
     editor.clearSelection();
+    // Selecionada, a matriz já aparece com os parâmetros no painel de propriedades.
+    const created = editor.doc.entities.find((e) => e.name === insert.name);
+    if (created && editor.selection) {
+        editor.selection.add(created.id);
+        editor.onChange?.(editor);
+    }
     return null;
 }
 
@@ -4808,6 +4919,7 @@ export const COMMANDS = {
     ELLIPSE: { dimInput: true, aliases: ['EL', 'ELIPSE'], run: ellipse, description: 'Elipse por eixo e distância ou centro' },
     SPLINE: { dimInput: true, aliases: ['SPL'], run: spline, description: 'Spline por pontos de ajuste (B-spline cúbica)' },
     ARRAY: { aliases: ['AR', 'PADRAO'], run: arrayCommand, description: 'Padrão retangular, polar ou linear' },
+    '-ARRAY': { aliases: ['-AR', '-PADRAO', '-MATRIZ'], run: arrayPrompt, description: 'Padrão pelo terminal: retangular, polar ou linear' },
     ALIGN: { aliases: ['AL', 'ALINHAR'], run: align, description: 'Alinhar por pares de pontos (mover, rotacionar, escalar opcional)' },
     WBLOCK: { aliases: ['W'], run: wblock, description: 'Gravar seleção como bloco em arquivo DXF' },
     ERASE: { aliases: ['E', 'DEL', 'DELETE'], run: erase, description: 'Apagar objetos' },

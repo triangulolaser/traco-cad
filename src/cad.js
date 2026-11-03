@@ -3,6 +3,7 @@ import {FONT_FAMILIES,loadCadFonts} from './cad/fonts.js';
 import {geometryFields,setGeometryField,slotParams,resizeSlot} from './cad/edit-tools.js';
 import { HATCH_PATTERNS, upgradeHatch, setHatchProps } from './cad/hatch.js';
 import {isEntityEditable,replaceEntities} from './cad/document.js';
+import { ARRAY_FIELDS, ARRAY_TITLES, arrayFieldValues, arrayItemCount, isArrayInsert, updateArrayField } from './cad/array.js';
 // Entrada do app Traço CAD.
 import { Editor } from './cad/editor.js';
 import { LINETYPES, LINEWEIGHTS, aciToHex, hexToAci, createDocument, History, updateEntities, ensureEntityIds } from './cad/document.js';
@@ -650,6 +651,20 @@ function renderProperties(editor, root) {
             + field('centers', 'Centro a centro', 'Distância entre os centros dos arcos; o meio do oblongo fica parado');
     }
 
+    const arrayEntity = selected.length === 1 && isArrayInsert(selected[0]) ? selected[0] : null;
+    if (arrayEntity) {
+        title.textContent = ARRAY_TITLES[arrayEntity.array.mode];
+        const locked = !isEntityEditable(editor.doc, arrayEntity) ? 'disabled' : '';
+        const values = arrayFieldValues(arrayEntity);
+        html += section('Matriz') + ARRAY_FIELDS[arrayEntity.array.mode].map((field) => {
+            const key = `<span class="cad-prop-key">${field.label}</span>`;
+            if (field.kind === 'bool') return `<div class="cad-prop-row">${key}<span class="cad-prop-value"><input type="checkbox" data-array-field="${field.key}" ${values[field.key] ? 'checked' : ''} ${locked}></span></div>`;
+            return `<div class="cad-prop-row">${key}<span class="cad-prop-value"><input type="text" inputmode="${field.kind === 'int' ? 'numeric' : 'decimal'}" data-array-field="${field.key}" data-array-kind="${field.kind}" value="${field.kind === 'int' ? values[field.key] : fmt(values[field.key])}" ${locked}></span></div>`;
+        }).join('')
+            + row('Itens', String(arrayItemCount(arrayEntity.array)))
+            + `<div class="cad-prop-row"><span class="cad-prop-key"></span><span class="cad-prop-value"><button type="button" class="cad-btn" data-array-explode ${locked} title="Transforma a matriz em objetos comuns">Desagrupar</button></span></div>`;
+    }
+
     const hatches = selected.filter((e) => e.type === 'hatch').map(upgradeHatch);
     if (hatches.length && hatches.length === selected.length) {
         const locked = selected.some((e) => !isEntityEditable(editor.doc, e));
@@ -723,6 +738,27 @@ function renderProperties(editor, root) {
             renderProperties(editor, root);
         }
     }));
+    box.querySelectorAll('[data-array-field]').forEach((input) => {
+        const apply = () => {
+            const entity = editor.doc.entities.find((x) => x.id === selected[0]?.id);
+            if (!entity || !isArrayInsert(entity) || !isEntityEditable(editor.doc, entity)) return;
+            const value = input.type === 'checkbox' ? input.checked : parseDecimalInput(input.value);
+            try {
+                if (input.type !== 'checkbox' && !Number.isFinite(value)) throw new Error('Valor inválido.');
+                editor.commit('Editar matriz', replaceEntities(editor.doc, new Map([[entity.id, updateArrayField(entity, input.dataset.arrayField, value)]])));
+            } catch (error) {
+                editor.log(error.message, 'error');
+            }
+            renderProperties(editor, root);
+        };
+        input.addEventListener('change', apply);
+        input.addEventListener('keydown', (event) => {
+            event.stopPropagation();
+            if (event.key === 'Enter') { event.preventDefault(); input.blur(); }
+            else if (event.key === 'Escape') { event.preventDefault(); renderProperties(editor, root); }
+        });
+    });
+    box.querySelector('[data-array-explode]')?.addEventListener('click', () => editor.runCommand('EXPLODE'));
     box.querySelector('[data-dim-text]')?.addEventListener('change', (event) => {
         const entity = editor.doc.entities.find((x) => x.id === selected[0]?.id);
         if (!entity || !isEntityEditable(editor.doc, entity)) return;

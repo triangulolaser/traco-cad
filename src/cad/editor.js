@@ -1469,10 +1469,10 @@ export class Editor {
         return this.request('pointOrEntity', prompt, options);
     }
 
-    panMode() {
+    panMode(prompt = 'Arraste para deslocar; Enter ou Esc encerra') {
         this.panActive = true;
         this.canvas.classList.add('is-pan-mode');
-        return this.request('pan', 'Arraste para deslocar; Enter ou Esc encerra', { allowEnter: true }).finally(() => {
+        return this.request('pan', prompt, { allowEnter: true }).finally(() => {
             this.panActive = false;
             this.canvas.classList.remove('is-pan-mode');
         });

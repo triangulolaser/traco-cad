@@ -33,6 +33,22 @@ function patchMultiLeaderWriter(acad) {
     proto.__tracoMultiLeader = true;
 }
 
+/**
+ * O writeEntity do acad-ts 3.2 não despacha DimensionArc: o ARC_DIMENSION sai sem bloco nem pontos e a
+ * cota some na importação (DWG de cliente, 03/11). Grava os dados logo após os comuns, onde o despacho ocorreria.
+ */
+function patchArcDimensionWriter(acad) {
+    const proto = acad.DxfSectionWriterBase?.prototype;
+    if (!proto || proto.__tracoArcDimension) return;
+    const writeCommon = proto.writeCommonEntityData;
+    if (typeof writeCommon !== 'function' || typeof proto._writeDimension !== 'function' || !acad.DimensionArc || !acad.DxfMap) return;
+    proto.writeCommonEntityData = function (entity) {
+        writeCommon.call(this, entity);
+        if (entity instanceof acad.DimensionArc) this._writeDimension(entity, acad.DxfMap.create(entity.constructor.name));
+    };
+    proto.__tracoArcDimension = true;
+}
+
 /** Versão gravada nos 6 primeiros bytes do DWG (AC1009 = R12, AC1032 = 2018...). */
 export function dwgVersion(u8) {
     return String.fromCharCode(...u8.subarray(0, 6));
@@ -46,6 +62,7 @@ export async function dwgToDxfText(buffer) {
     }
     const acad = await import('@node-projects/acad-ts');
     patchMultiLeaderWriter(acad);
+    patchArcDimensionWriter(acad);
     const reader = new acad.DwgReader(u8);
     const cadDoc = reader.read();
 

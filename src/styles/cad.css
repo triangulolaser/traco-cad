@@ -1754,6 +1754,18 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-hatch-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .cad-hatch-dialog footer { display: flex; gap: 8px; align-items: center; margin-top: 14px; }
 .cad-hatch-spacer { flex: 1; }
+.cad-array-dialog { position: fixed; inset: 72px 16px auto auto; margin: 0; width: min(320px, 96vw); z-index: 40; box-shadow: 0 8px 28px rgba(0, 0, 0, .35); }
+.cad-array-dialog form { display: flex; flex-direction: column; gap: 10px; }
+.cad-array-dialog footer { margin-top: 0; }
+.cad-array-dialog header { cursor: move; user-select: none; }
+.cad-array-dialog h3 { margin: 0; }
+.cad-array-modes { display: flex; gap: 12px; }
+.cad-array-modes label { display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: .9rem; }
+.cad-array-fields { display: flex; flex-direction: column; gap: 6px; }
+.cad-array-fields[hidden] { display: none; }
+.cad-array-fields .cad-hatch-row { grid-template-columns: minmax(0, 1fr) 96px; }
+.cad-array-status { margin: 0; min-height: 1.2em; font-size: .85rem; color: var(--cad-muted); }
+.cad-array-status.is-error { color: #e5484d; }
 .cad-hatch-dialog footer button[type=submit] { background: var(--cad-accent); border-color: var(--cad-accent); color: #fff; min-width: 84px; }
 .cad-hatch-palette { width: min(560px, 96vw); }
 .cad-hatch-palette-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; max-height: 52vh; overflow: auto; padding: 2px; }

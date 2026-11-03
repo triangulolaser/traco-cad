@@ -88,6 +88,29 @@ test('bulge de polilinha vira arco com centro e sentido corretos', () => {
     assert.deepEqual(curves.map((c) => c.kind), ['arc', 'segment', 'segment']);
 });
 
+test('offset para dentro elimina concordância menor que a distância e fecha contorno com pontas coincidentes', () => {
+    const b = Math.tan(Math.PI / 8);
+    // Quadrado 20x20 com cantos R1, exportado como polilinha "aberta" com as pontas a 2e-6 (caso real de DXF).
+    const vertices = [
+        { x: 1, y: 0, bulge: 0 }, { x: 19, y: 0, bulge: b }, { x: 20, y: 1, bulge: 0 }, { x: 20, y: 19, bulge: b },
+        { x: 19, y: 20, bulge: 0 }, { x: 1, y: 20, bulge: b }, { x: 0, y: 19, bulge: 0 }, { x: 0, y: 1, bulge: b },
+        { x: 1.000002, y: 0, bulge: 0 },
+    ];
+    const pl = { type: 'polyline', closed: false, vertices };
+    const inner = offsetEntity(pl, 3, { x: 10, y: 10 });
+    assert.ok(inner, 'offset para dentro não pode falhar por causa do R1');
+    assert.equal(inner.closed, true);
+    assert.equal(inner.vertices.length, 4);
+    for (const v of inner.vertices) {
+        assert.ok(close(v.x, 3) || close(v.x, 17));
+        assert.ok(close(v.y, 3) || close(v.y, 17));
+        assert.equal(v.bulge, 0);
+    }
+    const outer = offsetEntity(pl, 3, { x: -5, y: 10 });
+    assert.equal(outer.vertices.length, 8);
+    assert.ok(close(entityLength(outer), 4 * 18 + 2 * Math.PI * 4));
+});
+
 test('offset de linha, círculo e retângulo', () => {
     const line = { type: 'line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 } };
     const up = offsetEntity(line, 2, { x: 5, y: 5 });

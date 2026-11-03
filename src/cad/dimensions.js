@@ -391,12 +391,19 @@ function radialGeometry(entity, style) {
         segments.push({ a: opposite, b: outside ? linePoint : onCircle });
         arrows.push(arrowAt(onCircle, dir, style.arrowSize));
         arrows.push(arrowAt(opposite, scale(dir, -1), style.arrowSize));
+    } else if (outside) {
+        // Como no BricsCAD: com o texto fora, só a chamada do texto até o arco, seta apontando para o centro.
+        segments.push({ a: onCircle, b: linePoint });
+        arrows.push(arrowAt(onCircle, scale(dir, -1), style.arrowSize));
     } else {
-        segments.push({ a: center, b: outside ? linePoint : onCircle });
+        // Texto dentro: a linha vai do texto até o arco; arrastar a alça encurta ou alonga a cota.
+        const width = textWidth({ text, height: style.textHeight, fontFamily: style.fontFamily, bold: style.bold, italic: style.italic });
+        const back = Math.min(width / 2, distance(linePoint, center));
+        segments.push({ a: sub(linePoint, scale(dir, back)), b: onCircle });
         arrows.push(arrowAt(onCircle, dir, style.arrowSize));
     }
     const textNormal = perpendicular({ x: Math.cos(angle), y: Math.sin(angle) });
-    const anchor = outside ? linePoint : midpoint(center, onCircle);
+    const anchor = outside || !isDiameter ? linePoint : midpoint(center, onCircle);
     const textCenter = add(anchor, scale(textNormal, style.textGap));
     if (outside) {
         // Pequena linha de chamada horizontal no fim, como no BricsCAD.

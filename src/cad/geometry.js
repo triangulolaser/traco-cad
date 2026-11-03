@@ -930,7 +930,21 @@ export function offsetEntity(entity, dist, side) {
     }
 }
 
-function offsetPolyline(entity, dist, side) {
+function closeCoincidentEnds(entity) {
+    const vs = entity.vertices;
+    if (entity.closed || vs.length < 4) return entity;
+    const first = vs[0];
+    const last = vs[vs.length - 1];
+    // 0,1 µm ou a escala relativa do TRIM: muito abaixo de qualquer folga real de corte.
+    const tol = Math.max(1e-4, 1e-6 * Math.hypot(first.x, first.y));
+    if (distance(first, last) > tol) return entity;
+    return { ...entity, closed: true, vertices: vs.slice(0, -1) };
+}
+
+function offsetPolyline(rawEntity, dist, side) {
+    // Contorno "aberto" com as pontas coincidentes (comum em DXF) é tratado como fechado: senão o canto do início
+    // não é unido e o offset para dentro sai com sobra ou falha.
+    const entity = closeCoincidentEnds(rawEntity);
     const curves = polylineCurves(entity.vertices, entity.closed);
     if (curves.length === 0) return null;
     // Sentido de percurso de cada curva: arco com bulge positivo é anti-horário.
@@ -949,19 +963,21 @@ function offsetPolyline(entity, dist, side) {
         const inside = distance(side, c.center) < c.radius;
         leftSign = inside === isCCW(c) ? 1 : -1;
     }
-    const offsetCurves = curves.map((curve) => {
-        if (curve.kind === 'segment') {
-            const dir = normalize(sub(curve.b, curve.a));
-            const delta = scale(perpendicular(dir), dist * leftSign);
-            return { kind: 'segment', a: add(curve.a, delta), b: add(curve.b, delta), index: curve.index };
-        }
-        const leftIsInside = isCCW(curve);
-        const radius = leftIsInside ? curve.radius - dist * leftSign : curve.radius + dist * leftSign;
-        if (radius <= EPS) return null;
-        return { ...curve, radius };
-    });
-    if (offsetCurves.some((c2) => c2 === null)) return null;
-    const n = offsetCurves.length;
+    // Arco com raio menor que a distância (ex.: concordância R1 num offset de 3 para dentro) some, como no AutoCAD:
+    // as curvas vizinhas passam a se unir entre si em vez de abortar o offset inteiro.
+    let offsetCurves = curves
+        .map((curve) => {
+            if (curve.kind === 'segment') {
+                const dir = normalize(sub(curve.b, curve.a));
+                const delta = scale(perpendicular(dir), dist * leftSign);
+                return { kind: 'segment', a: add(curve.a, delta), b: add(curve.b, delta), index: curve.index, sweep0: 0 };
+            }
+            const leftIsInside = isCCW(curve);
+            const radius = leftIsInside ? curve.radius - dist * leftSign : curve.radius + dist * leftSign;
+            if (radius <= EPS) return null;
+            return { ...curve, radius, sweep0: sweepCCW(curve.start, curve.end) };
+        })
+        .filter(Boolean);
     const startOf = (curve) => (curve.kind === 'segment' ? curve.a : polar(curve.center, curve.start, curve.radius));
     const endOf = (curve) => (curve.kind === 'segment' ? curve.b : polar(curve.center, curve.end, curve.radius));
     // Junta curvas consecutivas pela interseção (estendendo-as) mais próxima do canto original.
@@ -972,13 +988,37 @@ function offsetPolyline(entity, dist, side) {
         hits.sort((p, q) => distance(p, target) - distance(q, target));
         return hits[0];
     };
-    const joints = [];
-    for (let i = 0; i < n; i += 1) {
-        const curve = offsetCurves[i];
-        const prev = offsetCurves[(i - 1 + n) % n];
-        joints.push(i === 0 && !entity.closed ? startOf(curve) : jointPoint(prev, curve));
+    const computeJoints = () => {
+        const n2 = offsetCurves.length;
+        const out = [];
+        for (let i = 0; i < n2; i += 1) {
+            const curve = offsetCurves[i];
+            const prev = offsetCurves[(i - 1 + n2) % n2];
+            out.push(i === 0 && !entity.closed ? startOf(curve) : jointPoint(prev, curve));
+        }
+        if (!entity.closed) out.push(endOf(offsetCurves[n2 - 1]));
+        return out;
+    };
+    // Curva que ficou "virada" entre as junções (segmento curto ou arco engolido pelo offset) também sai;
+    // repete até estabilizar, pois remover uma muda a junção das vizinhas.
+    const inverted = (curve, a, b) => {
+        if (curve.kind === 'segment') return dot(sub(b, a), sub(curve.b, curve.a)) < 0;
+        const ccw = isCCW(curve);
+        const a0 = angleOf(curve.center, a);
+        const a1 = angleOf(curve.center, b);
+        const sweep = ccw ? sweepCCW(a0, a1) : sweepCCW(a1, a0);
+        return Math.abs(sweep - curve.sweep0) > Math.PI;
+    };
+    let joints;
+    for (;;) {
+        if (offsetCurves.length < (entity.closed ? 2 : 1)) return null;
+        joints = computeJoints();
+        const m = offsetCurves.length;
+        const bad = offsetCurves.findIndex((curve, i) => inverted(curve, joints[i], entity.closed ? joints[(i + 1) % m] : joints[i + 1]));
+        if (bad < 0 || m <= 2) break;
+        offsetCurves = offsetCurves.filter((_, i) => i !== bad);
     }
-    if (!entity.closed) joints.push(endOf(offsetCurves[n - 1]));
+    const n = offsetCurves.length;
     // Bulge recalculado a partir dos novos pontos: o offset muda o raio e, após as junções, o ângulo varrido.
     const vertices = [];
     for (let i = 0; i < n; i += 1) {

@@ -1,5 +1,6 @@
 import {registerEntityProvider,entityCurves,entityBox,transformEntity,add,sub,distance,angleOf,degToRad,radToDeg,polar} from './geometry.js';
 import {normalizeEntity,isEntityEditable} from './document.js';
+import {arrayFromXdata} from './array.js';
 
 export function expandInsert(insert, depth=0) {
     if(depth>12)throw new Error('Blocos aninhados além do limite de segurança.');
@@ -38,7 +39,9 @@ export function hydrateInsert(raw,blocks,stack=[]){
     if(stack.includes(name)||stack.length>12)throw new Error(`Referência circular ou profunda no bloco ${name}.`);
     const b=Object.hasOwn(blocks,name)?blocks[name]:null;if(!b || !Array.isArray(b.entities))throw new Error(`Definição ausente para bloco ${name}.`);
     const entities=b.entities.map(e=>e.type==='__insert'||e.type==='insert'?hydrateInsert(e,blocks,[...stack,name]):e);
-    const out={...raw,type:'insert',definition:{...b,entities}};
+    const {__arrayXdata:arrayText,...rest}=raw;
+    const out={...rest,type:'insert',definition:{...b,entities}};
+    if(arrayText){const array=arrayFromXdata(arrayText,entities.length);if(array)out.array=array;}
     expandInsert(out); // rejeita transformações que ainda não preservamos fielmente.
     return out;
 }

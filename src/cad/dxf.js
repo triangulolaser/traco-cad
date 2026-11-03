@@ -1,5 +1,6 @@
 import {FONT_FAMILIES, textWidth} from './fonts.js';
 import {hydrateInsert} from './blocks.js';
+import {ARRAY_XDATA_APP,arrayXdata} from './array.js';
 // Leitura e escrita de DXF ASCII (R12 / R2000) para o subconjunto suportado pelo Traço.
 // Entidades: LINE, CIRCLE, ARC, LWPOLYLINE, POLYLINE/VERTEX, TEXT, MTEXT, INSERT (achatado).
 
@@ -59,6 +60,12 @@ function collectGroup(cursor) {
     return groups;
 }
 
+// Parâmetros da matriz associativa, conferidos com a definição só ao hidratar o bloco.
+function insertArrayXdata(groups) {
+    const start = groups.findIndex((p) => p.code === 1001 && p.value === ARRAY_XDATA_APP);
+    return start >= 0 && groups[start + 1]?.code === 1000 ? { __arrayXdata: groups[start + 1].value } : {};
+}
+
 function first(groups, code, fallback = undefined) {
     const g = groups.find((p) => p.code === code);
     return g ? g.value : fallback;
@@ -115,11 +122,20 @@ function decodeCaret(text) {
     }).replace(/\t/g, ' ');
 }
 
+// Empilhamento do MTEXT (\Ssuperior/inferior;, separadores / # ^): o conteúdo é texto do desenho, não
+// formatação. Fica em linha como "1/8", já que o Traço não desenha fração empilhada.
+function decodeStack(_, body) {
+    const separator = body.search(/(?<!\\)[/#^]/);
+    const parts = separator < 0 ? [body] : [body.slice(0, separator), body.slice(separator + 1)];
+    return parts.map((part) => part.replace(/\\(.)/g, '$1')).filter(Boolean).join('/');
+}
+
 function decodeText(value) {
     return decodeCaret(String(value ?? ''))
         .replace(/\\U\+([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
         .replace(/\\P/g, '\n')
         .replace(/\\~/g, ' ')
+        .replace(/\\S((?:\\.|[^\\;])*);/g, decodeStack)
         .replace(/\{\\[^;]*;/g, '')
         .replace(/\\[A-Za-z][^;]*;/g, '')
         .replace(/[{}]/g, '')
@@ -457,8 +473,11 @@ function parseEntitiesSection(cursor, stopAt, preserveDimensions = false, dimens
             pendingPolyline = null;
             continue;
         }
-        if (p.value === 'DIMENSION') {
-            if(preserveDimensions){
+        // Cota de arco não tem modelo nativo no Traço: só o CAD a importa, pela geometria do bloco, como a
+        // angular de 2 linhas. Quem lê o DXF para corte continua sem ela.
+        const arcDimension = preserveDimensions && p.value === 'ARC_DIMENSION';
+        if (p.value === 'DIMENSION' || arcDimension) {
+            if(preserveDimensions && !arcDimension){
                 const pt=code=>({x:num(first(groups,code)),y:num(first(groups,code+10))});
                 const kind=num(first(groups,70,0))&7;
                 const lfac=dimStyleOverride(groups,144);
@@ -492,7 +511,7 @@ function parseEntitiesSection(cursor, stopAt, preserveDimensions = false, dimens
             continue;
         }
         if (p.value === 'INSERT') {
-            entities.push({ type: '__insert', name: first(groups, 2, ''), position: { x: num(first(groups, 10)), y: num(first(groups, 20)) }, scaleX: num(first(groups, 41, 1)), scaleY: num(first(groups, 42, 1)), rotation: num(first(groups, 50, 0)), layer: first(groups, 8, DEFAULT_LAYER) });
+            entities.push({ type: '__insert', name: first(groups, 2, ''), position: { x: num(first(groups, 10)), y: num(first(groups, 20)) }, scaleX: num(first(groups, 41, 1)), scaleY: num(first(groups, 42, 1)), rotation: num(first(groups, 50, 0)), layer: first(groups, 8, DEFAULT_LAYER) , ...insertArrayXdata(groups) });
             continue;
         }
         if (preserveDimensions) {
@@ -1114,7 +1133,7 @@ function writeEntity(entity, dimStyle) {
     if (isDegenerateEntity(entity)) return '';
     switch (entity.type) {
         case '__insert':
-        case 'insert': return entityHeader('INSERT',entity,'AcDbBlockReference')+pair(2,entity.name)+pair(10,fmt(entity.position.x))+pair(20,fmt(entity.position.y))+pair(30,0)+pair(41,fmt(entity.scaleX??1))+pair(42,fmt(entity.scaleY??1))+pair(43,1)+pair(50,fmt(entity.rotation??0));
+        case 'insert': return entityHeader('INSERT',entity,'AcDbBlockReference')+pair(2,entity.name)+pair(10,fmt(entity.position.x))+pair(20,fmt(entity.position.y))+pair(30,0)+pair(41,fmt(entity.scaleX??1))+pair(42,fmt(entity.scaleY??1))+pair(43,1)+pair(50,fmt(entity.rotation??0))+(entity.array?pair(1001,ARRAY_XDATA_APP)+pair(1000,arrayXdata(entity)):'');
         case 'dimension':
             return writeDimension(entity, dimStyle);
         case 'line':
@@ -1394,9 +1413,11 @@ export function writeDxf(doc, { view = doc.view } = {}) {
     out += pair(0, 'TABLE') + pair(2, 'UCS') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTable') + pair(70, 0) + pair(0, 'ENDTAB');
 
     // 5. APPID
-    out += pair(0, 'TABLE') + pair(2, 'APPID') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTable') + pair(70, 1)
+    out += pair(0, 'TABLE') + pair(2, 'APPID') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTable') + pair(70, 2)
         + pair(0, 'APPID') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTableRecord') + pair(100, 'AcDbRegAppTableRecord')
-        + pair(2, 'ACAD') + pair(70, 0) + pair(0, 'ENDTAB');
+        + pair(2, 'ACAD') + pair(70, 0)
+        + pair(0, 'APPID') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTableRecord') + pair(100, 'AcDbRegAppTableRecord')
+        + pair(2, ARRAY_XDATA_APP) + pair(70, 0) + pair(0, 'ENDTAB');
 
     // 6. DIMSTYLE
     out += pair(0, 'TABLE') + pair(2, 'DIMSTYLE') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTable') + pair(70, outputDimensionStyles.size) + pair(100, 'AcDbDimStyleTable');
