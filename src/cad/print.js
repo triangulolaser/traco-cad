@@ -2,7 +2,7 @@ import {entityCurves,entityBox,emptyBox,boxAddPoint,boxIsEmpty,polar,sweepCCW,po
 import {visibleEntities,entityColor,layerOf,LINETYPES} from './document.js';
 import {expandInsert} from './blocks.js';
 import {dimensionGeometry} from './dimensions.js';
-import {fontFamily,loadCadFonts} from './fonts.js';
+import {LINE_SPACING,fontEm,fontFamily,loadCadFonts} from './fonts.js';
 import './extra-entities.js';
 import {patternGeometry} from './hatch.js';
 export const escapeXml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
