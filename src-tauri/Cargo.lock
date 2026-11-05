@@ -905,7 +905,6 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "raw-window-handle",
- "serde",
  "thiserror 2.0.20",
  "windows 0.52.0",
  "windows-core 0.58.0",
@@ -3933,21 +3932,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-drag"
-version = "2.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "729ca0ce4b1169869d3405216d3c09a524f41ea5e2eec89f917cd6623f8a70ca"
-dependencies = [
- "base64 0.22.1",
- "drag",
- "serde",
- "serde_json",
- "tauri",
- "tauri-plugin",
- "thiserror 2.0.20",
-]
-
-[[package]]
 name = "tauri-plugin-fs"
 version = "2.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4496,15 +4480,15 @@ dependencies = [
 
 [[package]]
 name = "traco-cad"
-version = "0.3.60"
+version = "0.3.61"
 dependencies = [
+ "drag",
  "log",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
- "tauri-plugin-drag",
  "tauri-plugin-log",
  "tauri-plugin-process",
  "tauri-plugin-single-instance",

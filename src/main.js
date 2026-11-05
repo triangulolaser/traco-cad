@@ -55,7 +55,9 @@ window.desktopBridge = {
     async startFileDrag(path, pngDataUrl, onResult) {
         const onEvent = new Channel();
         onEvent.onmessage = (payload) => onResult?.(payload);
-        return invoke('plugin:drag|start_drag', { item: [path], image: pngDataUrl, onEvent });
+        const base64 = String(pngDataUrl).replace(/^data:image\/png;base64,/, '');
+        const image = Array.from(atob(base64), (c) => c.charCodeAt(0));
+        return invoke('start_file_drag', { path, image, onEvent });
     },
     async revealInFolder(path) {
         return invoke('reveal_in_folder', { path });

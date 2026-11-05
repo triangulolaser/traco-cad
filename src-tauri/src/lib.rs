@@ -57,6 +57,78 @@ fn sync_file_locks(paths: Vec<String>, state: tauri::State<'_, FileLocksState>) 
     }
 }
 
+#[derive(Clone, Serialize)]
+pub struct DragOutcome {
+    pub result: String,
+}
+
+/// No Windows o arraste sai de uma cópia local em %TEMP%: o shell do Windows não monta o
+/// objeto de arraste de caminho de rede (unidade mapeada ou \\servidor) e o crate entra em pânico.
+#[cfg(target_os = "windows")]
+fn drag_source_path(path: &str) -> Result<PathBuf, String> {
+    let src = std::path::Path::new(path);
+    let name = src.file_name().ok_or_else(|| "Caminho sem nome de arquivo.".to_string())?;
+    let dir = std::env::temp_dir().join("traco-arraste");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let local = dir.join(name);
+    std::fs::copy(src, &local).map_err(|e| e.to_string())?;
+    Ok(local)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn drag_source_path(path: &str) -> Result<PathBuf, String> {
+    let p = PathBuf::from(path);
+    if !p.is_file() {
+        return Err("Arquivo não encontrado.".to_string());
+    }
+    Ok(p)
+}
+
+/// Balão do WBLOCK: arrasta o arquivo gravado para fora do Traço. Qualquer pânico do arraste
+/// nativo vira erro devolvido ao JavaScript, sem derrubar o aplicativo.
+#[tauri::command]
+async fn start_file_drag(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    path: String,
+    image: Vec<u8>,
+    on_event: tauri::ipc::Channel<DragOutcome>,
+) -> Result<(), String> {
+    let local = off_main_thread(move || drag_source_path(&path)).await?;
+    let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    app.run_on_main_thread(move || {
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<(), String> {
+            #[cfg(target_os = "linux")]
+            let target = window.gtk_window().map_err(|e| e.to_string())?;
+            #[cfg(not(target_os = "linux"))]
+            let target = window.clone();
+            let channel = on_event.clone();
+            drag::start_drag(
+                &target,
+                drag::DragItem::Files(vec![local]),
+                drag::Image::Raw(image),
+                move |result, _pos| {
+                    let result = match result {
+                        drag::DragResult::Dropped => "dropped",
+                        drag::DragResult::Cancel => "cancel",
+                    };
+                    let _ = channel.send(DragOutcome { result: result.to_string() });
+                },
+                drag::Options::default(),
+            )
+            .map_err(|e| e.to_string())
+        }));
+        let _ = tx.send(match outcome {
+            Ok(r) => r,
+            Err(_) => Err("Falha interna no arraste do sistema.".to_string()),
+        });
+    })
+    .map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || rx.recv().unwrap_or_else(|_| Err("Arraste interrompido.".to_string())))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// "Mostrar na pasta" do balão do WBLOCK: abre o gerenciador de arquivos com o arquivo marcado.
 #[tauri::command]
 fn reveal_in_folder(path: String) -> Result<(), String> {
@@ -342,8 +414,7 @@ pub fn run() {
         .manage(FileLocksState::default())
         .manage(PendingLinksState::default())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_drag::init())
-        .invoke_handler(tauri::generate_handler![get_pending_open_files, get_pending_open_links, write_file, write_file_binary, file_exists, read_file_text, read_file_binary, convert_dwg_to_dxf, read_cad_clipboard, read_cad_clipboard_seq, sync_file_locks, reveal_in_folder])
+        .invoke_handler(tauri::generate_handler![get_pending_open_files, get_pending_open_links, write_file, write_file_binary, file_exists, read_file_text, read_file_binary, convert_dwg_to_dxf, read_cad_clipboard, read_cad_clipboard_seq, sync_file_locks, reveal_in_folder, start_file_drag])
         .setup(|app| {
             #[cfg(desktop)]
             {
