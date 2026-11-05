@@ -57,6 +57,24 @@ fn sync_file_locks(paths: Vec<String>, state: tauri::State<'_, FileLocksState>) 
     }
 }
 
+/// "Mostrar na pasta" do balão do WBLOCK: abre o gerenciador de arquivos com o arquivo marcado.
+#[tauri::command]
+fn reveal_in_folder(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err("Arquivo não encontrado.".to_string());
+    }
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("explorer").arg(format!("/select,{}", path)).spawn();
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg("-R").arg(&path).spawn();
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let result = std::process::Command::new("xdg-open")
+        .arg(p.parent().unwrap_or(std::path::Path::new("/")))
+        .spawn();
+    result.map(|_| ()).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn get_pending_open_files(state: tauri::State<'_, PendingFilesState>) -> Vec<OpenedFile> {
     let mut lock = state.0.lock().unwrap();
@@ -324,7 +342,8 @@ pub fn run() {
         .manage(FileLocksState::default())
         .manage(PendingLinksState::default())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_pending_open_files, get_pending_open_links, write_file, write_file_binary, file_exists, read_file_text, read_file_binary, convert_dwg_to_dxf, read_cad_clipboard, read_cad_clipboard_seq, sync_file_locks])
+        .plugin(tauri_plugin_drag::init())
+        .invoke_handler(tauri::generate_handler![get_pending_open_files, get_pending_open_links, write_file, write_file_binary, file_exists, read_file_text, read_file_binary, convert_dwg_to_dxf, read_cad_clipboard, read_cad_clipboard_seq, sync_file_locks, reveal_in_folder])
         .setup(|app| {
             #[cfg(desktop)]
             {

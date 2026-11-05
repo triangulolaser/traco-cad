@@ -1774,3 +1774,25 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-hatch-palette-grid canvas { width: 72px; height: 56px; background: var(--cad-panel); border-radius: 3px; }
 .cad-hatch-palette-grid span { font-size: .75rem; }
 .cad-hatch-palette-desc { margin: 10px 0 0; font-size: .8rem; color: var(--cad-muted); min-height: 1.2em; }
+
+/* Balão do WBLOCK: arquivo recém-gravado no canto do desenho, para arrastar. */
+.cad-export-balloon { position: fixed; right: 18px; bottom: 96px; z-index: 60; width: 300px; display: flex; gap: 12px; align-items: center; padding: 12px 12px 14px; border: 1px solid var(--cad-border-strong); border-radius: 12px; background: var(--cad-panel); color: var(--cad-text); font-family: var(--cad-font); font-size: 13px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); animation: cad-export-balloon-in 160ms ease-out; }
+@keyframes cad-export-balloon-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.cad-export-balloon.is-dragging { opacity: 0.45; }
+.cad-export-balloon-thumb { flex: none; width: 78px; height: 78px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--cad-border); border-radius: 8px; background: #ffffff; cursor: grab; user-select: none; -webkit-user-drag: element; }
+.cad-export-balloon-thumb:active { cursor: grabbing; }
+.cad-export-balloon-thumb img { max-width: 72px; max-height: 72px; pointer-events: none; }
+.cad-export-balloon-icon { font: 600 13px var(--cad-mono); color: var(--cad-accent); }
+.cad-export-balloon-info { flex: 1; min-width: 0; }
+.cad-export-balloon-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 14px; }
+.cad-export-balloon-meta { margin-top: 2px; font-size: 12px; color: var(--cad-muted); }
+.cad-export-balloon-hint { margin-top: 6px; font-size: 12px; line-height: 1.35; }
+.cad-export-balloon-actions { display: flex; gap: 6px; margin-top: 8px; }
+.cad-export-balloon-actions button { padding: 4px 8px; border: 0; border-radius: 6px; background: var(--cad-accent-soft); color: var(--cad-text); font: inherit; font-size: 12px; cursor: pointer; }
+.cad-export-balloon-actions button:hover { background: var(--cad-accent); color: #fff; }
+.cad-export-balloon-close { position: absolute; top: 4px; right: 6px; padding: 2px 6px; border: 0; background: none; color: var(--cad-muted); font-size: 16px; line-height: 1; cursor: pointer; }
+.cad-export-balloon-close:hover { color: var(--cad-text); }
+.cad-export-balloon-bar { position: absolute; left: 12px; right: 12px; bottom: 5px; height: 3px; overflow: hidden; border-radius: 2px; background: var(--cad-border); }
+.cad-export-balloon-bar i { display: block; height: 100%; background: var(--cad-accent); transform-origin: left; animation: cad-export-balloon-time linear forwards; }
+.cad-export-balloon.is-paused .cad-export-balloon-bar i { animation-play-state: paused; }
+@keyframes cad-export-balloon-time { from { transform: scaleX(1); } to { transform: scaleX(0); } }

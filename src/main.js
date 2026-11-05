@@ -1,6 +1,6 @@
 import './styles/desktop.css';
 import './cad.js';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -50,6 +50,15 @@ window.desktopBridge = {
     },
     async closeWindow() {
         return getCurrentWindow().destroy();
+    },
+    // Balão do WBLOCK: arrastar o arquivo gravado para fora do Traço como arquivo de verdade.
+    async startFileDrag(path, pngDataUrl, onResult) {
+        const onEvent = new Channel();
+        onEvent.onmessage = (payload) => onResult?.(payload);
+        return invoke('plugin:drag|start_drag', { item: [path], image: pngDataUrl, onEvent });
+    },
+    async revealInFolder(path) {
+        return invoke('reveal_in_folder', { path });
     },
 };
 
@@ -130,7 +139,11 @@ if (document.readyState === 'loading') {
 getCurrentWebview()
     .onDragDropEvent(async (event) => {
         if (event.payload?.type !== 'drop') return;
-        for (const path of event.payload.paths || []) {
+        // Bloco do balão do WBLOCK solto de volta no desenho: insere como bloco no ponto.
+        const ratio = window.devicePixelRatio || 1;
+        const pos = event.payload.position;
+        const paths = (event.payload.paths || []).filter((path) => !(pos && window.tracoCad?.dropExportedFile?.(path, pos.x / ratio, pos.y / ratio)));
+        for (const path of paths) {
             try {
                 const bytes = await invoke('read_file_binary', { path });
                 const name = path.split(/[\\/]/).pop() || 'desenho.dxf';

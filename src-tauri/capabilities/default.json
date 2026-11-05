@@ -8,6 +8,7 @@
   "permissions": [
     "core:default",
     "dialog:default",
+    "drag:default",
     "updater:default",
     "process:allow-restart",
     "core:window:allow-destroy"

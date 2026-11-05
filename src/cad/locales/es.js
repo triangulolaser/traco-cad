@@ -1596,5 +1596,15 @@ export default {
     "A ponta precisa ficar fora do centro.": "El extremo debe estar fuera del centro.",
     "Largura inválida: precisa ser maior que zero e menor que o dobro do raio, sem as pontas se tocarem.": "Ancho no válido: debe ser mayor que cero y menor que el doble del radio, sin que los extremos se toquen.",
     "Ranhura {0} × raio {1}, {2}°, {3} na linha de centro.": "Ranura {0} × radio {1}, {2}°, {3} en la línea central.",
-    "A ponta final precisa ficar em outro ângulo.": "El extremo final debe estar en otro ángulo."
+    "A ponta final precisa ficar em outro ângulo.": "El extremo final debe estar en otro ángulo.",
+    "Não foi possível inserir o bloco: {0}": "No se pudo insertar el bloque: {0}",
+    "As unidades dos desenhos diferem. Ajuste as unidades antes de inserir o bloco.": "Los dibujos usan unidades distintas. Ajuste las unidades antes de insertar el bloque.",
+    "Bloco {0} inserido.": "Bloque {0} insertado.",
+    "{0} objeto(s) copiado(s); use Ctrl+V para inserir.": "{0} objeto(s) copiado(s); use Ctrl+V para insertar.",
+    "Arraste o arquivo": "Arrastre el archivo",
+    "Bloco · {2} entidades · {3}": "Bloque · {2} entidades · {3}",
+    "Arraste para uma pasta, e-mail, chat ou outro desenho": "Arrastre a una carpeta, correo, chat u otro dibujo",
+    "Não foi possível abrir a pasta: {0}": "No se pudo abrir la carpeta: {0}",
+    "Não foi possível arrastar o arquivo: {0}": "No se pudo arrastrar el archivo: {0}",
+    "Mostrar na pasta": "Mostrar en la carpeta"
 };

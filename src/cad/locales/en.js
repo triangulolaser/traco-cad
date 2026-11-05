@@ -1596,5 +1596,15 @@ export default {
     "A ponta precisa ficar fora do centro.": "The end must be away from the center.",
     "Largura inválida: precisa ser maior que zero e menor que o dobro do raio, sem as pontas se tocarem.": "Invalid width: it must be greater than zero and less than twice the radius, without the ends touching.",
     "Ranhura {0} × raio {1}, {2}°, {3} na linha de centro.": "Slot {0} × radius {1}, {2}°, {3} along the centerline.",
-    "A ponta final precisa ficar em outro ângulo.": "The final end must be at another angle."
+    "A ponta final precisa ficar em outro ângulo.": "The final end must be at another angle.",
+    "Não foi possível inserir o bloco: {0}": "Could not insert the block: {0}",
+    "As unidades dos desenhos diferem. Ajuste as unidades antes de inserir o bloco.": "The drawings use different units. Adjust the units before inserting the block.",
+    "Bloco {0} inserido.": "Block {0} inserted.",
+    "{0} objeto(s) copiado(s); use Ctrl+V para inserir.": "{0} object(s) copied; press Ctrl+V to insert.",
+    "Arraste o arquivo": "Drag the file",
+    "Bloco · {2} entidades · {3}": "Block · {2} entities · {3}",
+    "Arraste para uma pasta, e-mail, chat ou outro desenho": "Drag to a folder, e-mail, chat or another drawing",
+    "Não foi possível abrir a pasta: {0}": "Could not open the folder: {0}",
+    "Não foi possível arrastar o arquivo: {0}": "Could not drag the file: {0}",
+    "Mostrar na pasta": "Show in folder"
 };

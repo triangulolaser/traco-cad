@@ -1,3 +1,4 @@
+import { showExportBalloon } from './export-balloon.js';
 import { usage } from '../usage-telemetry.js';
 import {openPrintDialog} from './print.js';
 import { openWblockDialog, confirmOverwrite } from './wblock-dialog.js';
@@ -3018,6 +3019,9 @@ async function wblock(editor) {
     if (desktop) await saveToDisk(editor, bridge, path, content);
     else editor.downloadText(content, name);
     editor.log(`Bloco exportado: ${desktop ? path : name} (${entities.length} entidades, base ${fmtPoint(base)}).`);
+    // Balão no canto com o arquivo para arrastar (pasta, e-mail, chat ou outro desenho).
+    const balloon = editor.wblockUi?.showBalloon ?? (typeof document !== 'undefined' ? showExportBalloon : null);
+    balloon?.(editor, { name, path: desktop ? path : null, content, entities: doc.entities, layers: doc.layers, base, units: editor.doc.units });
     return null;
 }
 

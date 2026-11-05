@@ -1,3 +1,4 @@
+import { DRAG_TYPE as EXPORT_DRAG_TYPE, exportedByToken, exportedByPath, insertExportedBlock } from './export-balloon.js';
 import { usage } from '../usage-telemetry.js';
 // Editor: liga documento, viewport, renderer, terminal e comandos.
 // Implementa a máquina de prompts (ponto, seleção, número, texto, palavra-chave).
@@ -1183,6 +1184,13 @@ export class Editor {
         });
         canvas.addEventListener('drop', async (event) => {
             event.preventDefault();
+            // Bloco arrastado do balão do WBLOCK: entra como bloco no ponto solto.
+            const token = event.dataTransfer?.getData?.(EXPORT_DRAG_TYPE);
+            const exported = token ? exportedByToken(token) : null;
+            if (exported) {
+                this.dropExportedBlock(exported, this.eventScreen(event));
+                return;
+            }
             const files = Array.from(event.dataTransfer?.files || []);
             if (files.length) await this.openFiles(files);
         });
@@ -1301,6 +1309,27 @@ export class Editor {
         }
         const text = new TextDecoder('utf-8').decode(buffer);
         await this.importDxfText(text, file.name, { filePath: resolvedPath });
+    }
+
+    dropExportedBlock(data, screen) {
+        if (this.pending) this.cancel();
+        try {
+            return insertExportedBlock(this, data, this.viewport.screenToWorld(screen));
+        } catch (err) {
+            this.log(`Não foi possível inserir o bloco: ${err?.message || err}`, 'error');
+            return false;
+        }
+    }
+
+    // Desktop: o arraste nativo do balão volta como arquivo solto na janela. Se for o bloco
+    // gravado agora há pouco e cair sobre o desenho, insere em vez de abrir em outra aba.
+    dropExportedFile(path, clientX, clientY) {
+        const data = exportedByPath(path);
+        if (!data) return false;
+        const rect = this.canvas.getBoundingClientRect();
+        if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return false;
+        this.dropExportedBlock(data, { x: clientX - rect.left, y: clientY - rect.top });
+        return true;
     }
 
     eventScreen(event) {
