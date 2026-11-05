@@ -10,13 +10,25 @@ export const LINE_SPACING=5/3;
 export function fontEm(height){return height/CAP_HEIGHT_RATIO;}
 export function canvasFont(entity,size){return `${entity.italic?'italic ':''}${entity.bold?'bold ':''}${size}px ${fontFamily(entity.fontFamily)}`;}
 let measuringContext;
+const measuredWidths=new Map();
+// Largura real no mundo, a mesma que o canvas desenha; null quando não há canvas para medir (Node, worker).
+export function measuredLineWidth(entity,line){
+ if(measuringContext===undefined)measuringContext=typeof document==='undefined'?null:document.createElement?.('canvas')?.getContext?.('2d')??null;
+ if(typeof measuringContext?.measureText!=='function')return null;
+ const font=canvasFont(entity,100),key=`${font}\n${line}`;
+ let width=measuredWidths.get(key);
+ if(width===undefined){
+  if(measuredWidths.size>=5000)measuredWidths.clear();
+  measuringContext.font=font;width=measuringContext.measureText(line).width;measuredWidths.set(key,width);
+ }
+ return width*fontEm(entity.height)/100;
+}
 export function textWidth(entity){
- if(!measuringContext && typeof document!=='undefined')measuringContext=document.createElement('canvas').getContext('2d');
  const lines=String(entity.text??'').split('\n');
- if(measuringContext){measuringContext.font=canvasFont(entity,100);return Math.max(0,...lines.map(t=>measuringContext.measureText(t).width))*fontEm(entity.height)/100;}
- return Math.max(0,...lines.map(t=>t.length))*fontEm(entity.height)*0.556;
+ return Math.max(0,...lines.map(t=>measuredLineWidth(entity,t)??t.length*fontEm(entity.height)*0.556));
 }
 export async function loadCadFonts(){
  if(typeof document==='undefined'||!document.fonts)return;
  await Promise.all(['Liberation Sans','Liberation Serif','Liberation Mono'].flatMap(f=>['','bold ','italic ','bold italic '].map(w=>document.fonts.load(`${w}16px "${f}"`))));
+ measuredWidths.clear();
 }

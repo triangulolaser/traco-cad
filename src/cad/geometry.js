@@ -2,7 +2,7 @@
 // Tudo em coordenadas de mundo (unidades de desenho, eixo Y para cima).
 // Funções puras, sem dependência de DOM, para permitir teste em Node.
 
-import { fontEm, LINE_SPACING } from './fonts.js';
+import { fontEm, LINE_SPACING, measuredLineWidth } from './fonts.js';
 
 export const EPS = 1e-9;
 export const TWO_PI = Math.PI * 2;
@@ -339,7 +339,7 @@ export function textBox(entity) {
                     currentLine = word;
                 } else {
                     const testLine = currentLine + ' ' + word;
-                    if (testLine.length * approxCharW <= entity.boxWidth) {
+                    if ((measuredLineWidth(entity, testLine) ?? testLine.length * approxCharW) <= entity.boxWidth) {
                         currentLine = testLine;
                     } else {
                         lines.push(currentLine);
@@ -352,9 +352,13 @@ export function textBox(entity) {
         }
     }
     const maxLen = Math.max(...lines.map((l) => l.length), 1);
-    const width = entity.boxWidth && entity.boxWidth > 0
-        ? Math.min(entity.boxWidth, Math.max(maxLen * approxCharW, entity.boxWidth * 0.6))
-        : maxLen * fontEm(entity.height) * 0.556;
+    // Mesma largura que o renderer desenha; a estimativa por caractere fica para quando não há canvas.
+    const measured = lines.map((l) => measuredLineWidth(entity, l));
+    const width = measured.every((w) => w !== null)
+        ? Math.max(...measured)
+        : entity.boxWidth && entity.boxWidth > 0
+            ? Math.min(entity.boxWidth, Math.max(maxLen * approxCharW, entity.boxWidth * 0.6))
+            : maxLen * fontEm(entity.height) * 0.556;
     const lineSpacing = entity.height * LINE_SPACING;
     const height = entity.height + (lines.length - 1) * lineSpacing;
     const halign = entity.halign ?? 'left';
@@ -379,7 +383,8 @@ export function textBox(entity) {
     // No mundo CAD (Y cresce para CIMA):
     if (valign === 'top') oy = -height;
     else if (valign === 'middle') oy = -height / 2;
-    else if (valign === 'bottom' || valign === 'baseline') oy = 0;
+    else if (valign === 'bottom') oy = 0;
+    else oy = -(lines.length - 1) * lineSpacing; // baseline: a primeira linha assenta na posição e as demais descem
 
     const rot = degToRad(entity.rotation ?? 0);
     const corners = [
@@ -388,7 +393,23 @@ export function textBox(entity) {
         { x: ox + width, y: oy + height },
         { x: ox, y: oy + height },
     ];
-    return corners.map((c) => rotatePoint(add(entity.position, c), entity.position, rot));
+    const mirror = entity.mirrored ? -1 : 1; // o renderer espelha em torno da posição
+    return corners.map((c) => rotatePoint(add(entity.position, { x: c.x * mirror, y: c.y }), entity.position, rot));
+}
+
+// Dentro do retângulo orientado do texto: a caixa alinhada aos eixos de um texto girado cobre área vazia.
+export function pointInTextBox(p, entity) {
+    const box = textBox(entity);
+    let sign = 0;
+    for (let i = 0; i < box.length; i += 1) {
+        const a = box[i];
+        const b = box[(i + 1) % box.length];
+        const cross = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+        if (cross === 0) continue;
+        if (sign !== 0 && Math.sign(cross) !== sign) return false;
+        sign = Math.sign(cross);
+    }
+    return true;
 }
 
 export function closestPointOnCurve(p, curve) {

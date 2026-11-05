@@ -19,9 +19,17 @@ function loadImage(src, onReady) {
     imageCache.set(src, img);
     return img;
 }
-import { entityCurves, entityBox, boxesIntersect, polar, curveEndpoints, curveMidpoint, curveQuadrants, pointInBox } from './geometry.js';
+import { entityCurves, polylineCurves, entityBox, boxesIntersect, polar, curveEndpoints, curveMidpoint, curveQuadrants, pointInBox } from './geometry.js';
 import { getEntityGrips, gripsVisible } from './grips.js';
 import { selectionMeasure } from './selection-measure.js';
+import { dashClipFor, pathDashedArc, pathDashedSegment, strokeDashedEllipse, strokeDashedPolyline } from './dash-clip.js';
+
+// Mesma regra de ctx.arc: varredura em [0, 2π), com volta completa a partir de 2π.
+function arcSweep(start, end) {
+    const raw = end - start;
+    if (raw >= Math.PI * 2) return Math.PI * 2;
+    return ((raw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+}
 
 export const THEMES = {
     dark: {
@@ -86,6 +94,27 @@ export const THEMES = {
 };
 
 export const THEME = THEMES.dark;
+
+// Base da primeira linha em relação ao ponto de inserção, em pixels.
+function textStartY(entity, px, lineCount) {
+    const valign = entity.valign ?? (entity.attachmentPoint ? 'top' : 'baseline');
+    const totalHeight = px + (lineCount - 1) * px * LINE_SPACING;
+    if (valign === 'top') return px;
+    if (valign === 'middle') return -totalHeight / 2 + px;
+    if (valign === 'bottom') return -totalHeight + px;
+    return 0;
+}
+
+// Referência horizontal das linhas: o ponto de inserção ou, em MTEXT com largura, a caixa.
+function textAnchorX(entity, scale) {
+    if (!(entity.boxWidth > 0)) return 0;
+    const w = entity.boxWidth * scale;
+    const attachCol = ((entity.attachmentPoint || 1) - 1) % 3; // 0: left, 1: center, 2: right
+    const boxLeft = attachCol === 0 ? 0 : (attachCol === 1 ? -w / 2 : -w);
+    if (entity.halign === 'center') return boxLeft + w / 2;
+    if (entity.halign === 'right') return boxLeft + w;
+    return boxLeft;
+}
 
 export class Renderer {
     constructor(canvas, viewport) {
@@ -208,7 +237,8 @@ export class Renderer {
                 ctx.lineJoin = 'round';
                 ctx.lineCap = 'round';
                 ctx.beginPath();
-                batch.curves.forEach((curve) => this.pathCurve(curve));
+                const clip = dashClipFor(batch.dash, viewport, batch.width);
+                batch.curves.forEach((curve) => this.pathCurve(curve, clip));
                 ctx.stroke();
                 ctx.restore();
             });
@@ -387,7 +417,9 @@ export class Renderer {
         ctx.strokeStyle = style.color;
         ctx.fillStyle = style.color;
         ctx.lineWidth = style.width ?? 1;
-        ctx.setLineDash(style.dashed ? [6, 4] : style.dash ?? []);
+        const dash = style.dashed ? [6, 4] : style.dash ?? [];
+        const clip = dashClipFor(dash, this.viewport, style.width ?? 1);
+        ctx.setLineDash(dash);
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
         if(entity.type==='insert'){
@@ -408,11 +440,11 @@ export class Renderer {
         } else if (entity.type === 'text') {
             this.drawText(entity, style);
         } else if (entity.type === 'dimension') {
-            this.drawDimension(entity, style);
+            this.drawDimension(entity, style, clip);
         } else if (entity.type === 'ellipse') {
-            this.drawEllipse(entity);
+            this.drawEllipse(entity, clip);
         } else if (entity.type === 'spline') {
-            this.drawSpline(entity, style);
+            this.drawSpline(entity, style, clip);
         } else if (entity.type === 'image') {
             this.drawImage(entity, style);
         } else if (entity.type === 'hatch') {
@@ -421,7 +453,7 @@ export class Renderer {
             this.drawTerminal(entity, style);
         } else {
             ctx.beginPath();
-            entityCurves(entity).forEach((curve) => this.pathCurve(curve));
+            entityCurves(entity).forEach((curve) => this.pathCurve(curve, clip));
             ctx.stroke();
         }
         ctx.restore();
@@ -441,22 +473,39 @@ export class Renderer {
         ctx.stroke();
     }
 
-    pathCurve(curve) {
+    // Com clip (linha tracejada), só o trecho visível vai para o canvas; ver dash-clip.js.
+    pathCurve(curve, clip = null) {
         const { ctx, viewport } = this;
         const scale = viewport.scale;
         const ox = viewport.originX;
         const oy = viewport.originY;
         if (curve.kind === 'segment') {
-            ctx.moveTo(curve.a.x * scale + ox, -curve.a.y * scale + oy);
-            ctx.lineTo(curve.b.x * scale + ox, -curve.b.y * scale + oy);
+            const ax = curve.a.x * scale + ox;
+            const ay = -curve.a.y * scale + oy;
+            const bx = curve.b.x * scale + ox;
+            const by = -curve.b.y * scale + oy;
+            if (clip) {
+                pathDashedSegment(ctx, ax, ay, bx, by, clip);
+                return;
+            }
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(bx, by);
             return;
         }
         const cx = curve.center.x * scale + ox;
         const cy = -curve.center.y * scale + oy;
         const r = curve.radius * scale;
         if (curve.kind === 'circle') {
+            if (clip) {
+                pathDashedArc(ctx, cx, cy, r, 0, 1, Math.PI * 2, clip);
+                return;
+            }
             ctx.moveTo(cx + r, cy);
             ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            return;
+        }
+        if (clip) {
+            pathDashedArc(ctx, cx, cy, r, -curve.start, -1, arcSweep(curve.start, curve.end), clip);
             return;
         }
         // Canvas usa Y para baixo: ângulo CCW no mundo vira CW na tela.
@@ -466,12 +515,19 @@ export class Renderer {
         ctx.arc(cx, cy, r, -curve.start, -curve.end, true);
     }
 
-    drawEllipse(entity) {
+    drawEllipse(entity, clip = null) {
         const { ctx, viewport } = this;
         const c = viewport.worldToScreen(entity.center);
         const majorLen = Math.hypot(entity.major.x, entity.major.y) * viewport.scale;
         const minorLen = majorLen * entity.ratio;
         const rotation = -Math.atan2(entity.major.y, entity.major.x);
+        if (clip) {
+            const full = ellipseIsFull(entity);
+            const start = entity.start ?? 0;
+            const sweep = full ? Math.PI * 2 : arcSweep(start, entity.end ?? Math.PI * 2);
+            strokeDashedEllipse(ctx, c.x, c.y, majorLen, minorLen, rotation, full ? 0 : -start, full ? 1 : -1, sweep, clip);
+            return;
+        }
         ctx.beginPath();
         if (ellipseIsFull(entity)) {
             ctx.ellipse(c.x, c.y, majorLen, minorLen, rotation, 0, Math.PI * 2);
@@ -482,7 +538,7 @@ export class Renderer {
         ctx.stroke();
     }
 
-    drawSpline(entity, style) {
+    drawSpline(entity, style, clip = null) {
         const { ctx, viewport } = this;
         if (!entity._sampledPts) {
             entity._sampledPts = sampleSpline(ensureSplineGeometry(entity), 16);
@@ -494,30 +550,35 @@ export class Renderer {
         const ox = viewport.originX;
         const oy = viewport.originY;
 
-        ctx.beginPath();
         // Decimação espacial adaptativa (LOD): ao afastar o zoom, ignora pontos consecutivos com distância em tela < 1px
         const minStepSq = 1.0;
         let lastSx = pts[0].x * scale + ox;
         let lastSy = -pts[0].y * scale + oy;
-        ctx.moveTo(lastSx, lastSy);
+        const screenPts = [{ x: lastSx, y: lastSy }];
 
         const lastIdx = pts.length - 1;
         for (let i = 1; i <= lastIdx; i++) {
             const sx = pts[i].x * scale + ox;
             const sy = -pts[i].y * scale + oy;
             if (i === lastIdx) {
-                ctx.lineTo(sx, sy);
+                screenPts.push({ x: sx, y: sy });
             } else {
                 const dx = sx - lastSx;
                 const dy = sy - lastSy;
                 if (dx * dx + dy * dy >= minStepSq) {
-                    ctx.lineTo(sx, sy);
+                    screenPts.push({ x: sx, y: sy });
                     lastSx = sx;
                     lastSy = sy;
                 }
             }
         }
-        ctx.stroke();
+        if (clip) {
+            strokeDashedPolyline(ctx, screenPts, clip);
+        } else {
+            ctx.beginPath();
+            screenPts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+            ctx.stroke();
+        }
 
         if (style.dashed && entity.fitPoints) {
             ctx.setLineDash([]);
@@ -560,13 +621,18 @@ export class Renderer {
         }
         ctx.restore();
         if (style.dashed) {
+            const corners = imageVisibleCorners(entity).map((c) => viewport.worldToScreen(c));
+            const clip = dashClipFor([6, 4], viewport, style.width ?? 1);
             ctx.beginPath();
-            imageVisibleCorners(entity).forEach((c, i) => {
-                const s = viewport.worldToScreen(c);
-                if (i === 0) ctx.moveTo(s.x, s.y);
-                else ctx.lineTo(s.x, s.y);
-            });
-            ctx.closePath();
+            if (corners.every((c) => c.x >= 0 && c.x <= viewport.width && c.y >= 0 && c.y <= viewport.height)) {
+                corners.forEach((c, i) => (i === 0 ? ctx.moveTo(c.x, c.y) : ctx.lineTo(c.x, c.y)));
+                ctx.closePath();
+            } else {
+                corners.forEach((c, i) => {
+                    const next = corners[(i + 1) % corners.length];
+                    pathDashedSegment(ctx, c.x, c.y, next.x, next.y, clip);
+                });
+            }
             ctx.stroke();
         }
     }
@@ -621,24 +687,27 @@ export class Renderer {
         }
         ctx.restore();
         if (style.dashed) {
+            const clip = dashClipFor([6, 4], viewport, style.width ?? 1);
             ctx.setLineDash([6, 4]);
-            ctx.stroke(path);
+            if (left === Math.min(a.x, b.x) && right === Math.max(a.x, b.x) && top === Math.min(a.y, b.y) && bottom === Math.max(a.y, b.y)) {
+                ctx.stroke(path);
+            } else {
+                // Borda saindo da tela: recorta. Cada aresta recomeça o padrão, o que não se percebe com esse zoom.
+                ctx.beginPath();
+                entity.loops.forEach((loop) => polylineCurves(loop.vertices, true).forEach((curve) => this.pathCurve(curve, clip)));
+                ctx.stroke();
+            }
         }
     }
 
-    drawDimension(entity, style) {
+    drawDimension(entity, style, clip = null) {
         const { ctx, viewport } = this;
         const g = dimensionGeometry(entity, this.currentDimStyle);
         ctx.beginPath();
-        g.segments.forEach((seg) => {
-            const a = viewport.worldToScreen(seg.a);
-            const b = viewport.worldToScreen(seg.b);
-            ctx.moveTo(a.x, a.y);
-            ctx.lineTo(b.x, b.y);
-        });
+        g.segments.forEach((seg) => this.pathCurve({ kind: 'segment', a: seg.a, b: seg.b }, clip));
         if (g.arcs) {
             g.arcs.forEach((arc) => {
-                this.pathCurve({ kind: 'arc', center: arc.center, radius: arc.radius, start: arc.startAngle, end: arc.endAngle });
+                this.pathCurve({ kind: 'arc', center: arc.center, radius: arc.radius, start: arc.startAngle, end: arc.endAngle }, clip);
             });
         }
         ctx.stroke();
@@ -661,22 +730,29 @@ export class Renderer {
         const px = (entity.height || 2.5) * viewport.scale;
         if (px < 0.75) return;
         const p = viewport.worldToScreen(entity.position);
-        if (px < 3.5) {
-            // Text Greeking (padrão CAD): abaixo de 3.5px os glifos são ilegíveis.
-            // Desenha representação geométrica rápida sem invocar o motor de fontes e medições do canvas.
-            const len = typeof entity.text === 'string' ? entity.text.length : 4;
-            const w = Math.max(len * px * 0.6, 2);
-            ctx.fillStyle = style.color;
-            ctx.fillRect(p.x, p.y - px * 0.8, w, Math.max(px * 0.7, 0.8));
-            return;
-        }
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(-((entity.rotation ?? 0) * Math.PI) / 180);
         if (entity.mirrored) ctx.scale(-1, 1);
+        ctx.fillStyle = style.color;
+        if (px < 3.5) {
+            // Text Greeking (padrão CAD): abaixo de 3.5px os glifos são ilegíveis.
+            // Barra por linha, sem o motor de fontes, no mesmo lugar e ângulo do texto.
+            const greekLines = typeof entity.text === 'string' ? entity.text.split('\n') : ['    '];
+            const anchorX = textAnchorX(entity, viewport.scale);
+            const startY = textStartY(entity, px, greekLines.length);
+            const boxWidthPx = entity.boxWidth > 0 ? entity.boxWidth * viewport.scale : Infinity;
+            greekLines.forEach((line, index) => {
+                const w = Math.min(Math.max(line.length * px * 0.6, 2), boxWidthPx);
+                const halign = entity.halign ?? 'left';
+                const x = halign === 'center' ? anchorX - w / 2 : halign === 'right' ? anchorX - w : anchorX;
+                ctx.fillRect(x, startY + index * px * LINE_SPACING - px * 0.8, w, Math.max(px * 0.7, 0.8));
+            });
+            ctx.restore();
+            return;
+        }
         ctx.font = canvasFont(entity, fontEm(px));
         ctx.textBaseline = 'alphabetic';
-        ctx.fillStyle = style.color;
 
         const rawLines = String(entity.text ?? '').split('\n');
         let lines = rawLines;
@@ -712,35 +788,12 @@ export class Renderer {
         const lineSpacing = px * LINE_SPACING;
         const totalHeight = px + (lines.length - 1) * lineSpacing;
 
-        const baselineOffset = px;
-        let startY = 0;
-        if (valign === 'top') {
-            startY = baselineOffset;
-        } else if (valign === 'middle') {
-            startY = -totalHeight / 2 + baselineOffset;
-        } else if (valign === 'bottom') {
-            startY = -totalHeight + baselineOffset;
-        } else {
-            startY = 0;
-        }
+        const startY = textStartY(entity, px, lines.length);
 
         const measuredWidths = lines.map((l) => ctx.measureText(l).width);
         const maxMeasuredWidth = Math.max(...measuredWidths, 1);
 
-        let anchorX = 0;
-        if (entity.boxWidth && entity.boxWidth > 0) {
-            const w = entity.boxWidth * viewport.scale;
-            const attach = entity.attachmentPoint || 1;
-            const attachCol = (attach - 1) % 3; // 0: left, 1: center, 2: right
-            const boxLeft = attachCol === 0 ? 0 : (attachCol === 1 ? -w / 2 : -w);
-            if (halign === 'center') {
-                anchorX = boxLeft + w / 2;
-            } else if (halign === 'right') {
-                anchorX = boxLeft + w;
-            } else {
-                anchorX = boxLeft;
-            }
-        }
+        const anchorX = textAnchorX(entity, viewport.scale);
 
         lines.forEach((line, index) => {
             const lineWidth = measuredWidths[index];
@@ -822,8 +875,7 @@ export class Renderer {
         (lines ?? []).forEach((line) => {
             ctx.beginPath();
             if (line.kind === 'circle') {
-                const c = viewport.worldToScreen(line.center);
-                ctx.arc(c.x, c.y, line.radius * viewport.scale, 0, Math.PI * 2);
+                this.pathCurve({ kind: 'circle', center: line.center, radius: line.radius }, dashClipFor([6, 4], viewport, 1));
             } else {
                 const dir = { x: Math.cos(line.angle), y: Math.sin(line.angle) };
                 const a = line.kind === 'ray' ? line.origin : { x: line.origin.x - dir.x * reach, y: line.origin.y - dir.y * reach };
@@ -894,8 +946,7 @@ export class Renderer {
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
+        pathDashedSegment(ctx, a.x, a.y, b.x, b.y, dashClipFor([4, 4], viewport, 1));
         ctx.stroke();
         ctx.restore();
     }

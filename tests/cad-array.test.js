@@ -227,3 +227,60 @@ test('replaceEntities mantém desfazer simples: uma entrada só no lugar das ori
     assert.equal(next.entities.length, 1);
     assert.equal(doc.entities.length, 2, 'documento anterior intacto');
 });
+
+const polarInsert = () => createArrayInsert([{ id: 'p', type: 'line', layer: '0', start: { x: 61, y: 0 }, end: { x: 71, y: 0 } }], { mode: 'p', count: 6, fill: 360, rotate: true, center: { x: 0, y: 0 }, associative: true });
+
+test('polar no painel: raio, diâmetro, ângulo entre itens e direção como no BricsCAD', () => {
+    const values = arrayFieldValues(polarInsert());
+    near(values.radius, 66);
+    near(values.diameter, 132);
+    near(values.angleBetween, 60);
+    assert.equal(values.direction, 'ccw');
+});
+
+test('polar: mudar raio ou diâmetro mantém o centro e os itens no círculo novo', () => {
+    const edited = updateArrayField(polarInsert(), 'radius', 80);
+    const values = arrayFieldValues(edited);
+    near(values.radius, 80);
+    near(values.centerX, 0);
+    near(values.centerY, 0);
+    const mid = (e) => ({ x: (e.start.x + e.end.x) / 2, y: (e.start.y + e.end.y) / 2 });
+    edited.definition.entities.forEach((e) => near(Math.hypot(mid(e).x, mid(e).y), 80, 'item fora do círculo'));
+    near(edited.definition.entities[0].end.x - edited.definition.entities[0].start.x, 10, 'item mantém o tamanho');
+    near(arrayFieldValues(updateArrayField(edited, 'diameter', 100)).radius, 50);
+});
+
+test('polar: ângulo entre itens ajusta o preenchimento e volta a fechar o círculo', () => {
+    const narrow = updateArrayField(polarInsert(), 'angleBetween', 30);
+    near(arrayFieldValues(narrow).fill, 150);
+    near(arrayFieldValues(narrow).angleBetween, 30);
+    near(arrayFieldValues(updateArrayField(narrow, 'angleBetween', 60)).fill, 360);
+    assert.throws(() => updateArrayField(polarInsert(), 'angleBetween', 90), /360/);
+    assert.throws(() => updateArrayField(polarInsert(), 'angleBetween', 0), /maior que zero/);
+});
+
+test('polar: direção inverte o giro sem mexer na origem', () => {
+    const insert = updateArrayField(polarInsert(), 'angleBetween', 30);
+    const cw = updateArrayField(insert, 'direction', 'cw');
+    assert.equal(arrayFieldValues(cw).direction, 'cw');
+    near(arrayFieldValues(cw).fill, -150);
+    near(cw.definition.entities[0].start.x, 61);
+    assert.ok(cw.definition.entities[1].start.y < 0, 'primeira cópia gira para baixo');
+    assert.equal(arrayFieldValues(updateArrayField(cw, 'direction', 'ccw')).direction, 'ccw');
+});
+
+test('polar: raio inválido ou origem sobre o centro não destrói a matriz', () => {
+    assert.throws(() => updateArrayField(polarInsert(), 'radius', 0), /maior que zero/);
+    const centered = createArrayInsert([{ id: 'c', type: 'line', layer: '0', start: { x: 0, y: 0 }, end: { x: 10, y: 0 } }], { mode: 'p', count: 4, fill: 360, rotate: true, center: { x: 5, y: 0 }, associative: true });
+    assert.throws(() => updateArrayField(centered, 'radius', 10), /sobre o centro/);
+});
+
+test('polar movida, girada e escalada: raio editado segue em coordenadas do desenho', () => {
+    let insert = polarInsert();
+    insert = { ...insert, position: { x: 500, y: 200 }, rotation: 30, scaleX: 2, scaleY: 2 };
+    near(arrayFieldValues(insert).radius, 132);
+    const edited = updateArrayField(insert, 'radius', 200);
+    near(arrayFieldValues(edited).radius, 200);
+    near(arrayFieldValues(edited).centerX, arrayFieldValues(insert).centerX);
+    near(arrayFieldValues(edited).centerY, arrayFieldValues(insert).centerY);
+});

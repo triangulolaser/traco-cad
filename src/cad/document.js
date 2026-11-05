@@ -326,7 +326,12 @@ export function documentStats(doc) {
 }
 
 // Cache fraco de SpatialIndex associado a cada snapshot imutável do documento
-const spatialIndexCache = new WeakMap();
+let spatialIndexCache = new WeakMap();
+
+// A caixa do texto depende da fonte medida: índice criado antes de a fonte carregar fica defasado.
+export function resetSpatialIndexes() {
+    spatialIndexCache = new WeakMap();
+}
 
 export function getDocumentSpatialIndex(doc) {
     if (!doc) return null;

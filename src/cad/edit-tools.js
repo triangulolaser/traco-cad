@@ -884,6 +884,29 @@ export function createSlotEntity(a, b, width, mode = 'c') {
     };
 }
 
+// Ranhura em arco como polilinha fechada anti-horária: arco externo, ponta, arco interno e
+// ponta. A linha de centro é o arco anti-horário de start a end em torno de center. Devolve
+// null quando a largura não cabe no raio ou quando as pontas se tocariam na volta.
+export function createArcSlotEntity(center, radius, start, end, width) {
+    const r = width / 2;
+    if (!(r > 0) || !(radius > r)) return null;
+    const sweep = sweepCCW(start, end);
+    if (!(sweep > 1e-9)) return null;
+    const gap = 2 * Math.PI - sweep;
+    if (gap < Math.PI && 2 * radius * Math.sin(gap / 2) <= width) return null;
+    const bulge = Math.tan(sweep / 4);
+    return {
+        type: 'polyline',
+        closed: true,
+        vertices: [
+            { ...polar(center, start, radius + r), bulge },
+            { ...polar(center, end, radius + r), bulge: 1 },
+            { ...polar(center, end, radius - r), bulge: -bulge },
+            { ...polar(center, start, radius - r), bulge: 1 },
+        ],
+    };
+}
+
 // Reconhece um oblongo em qualquer polilinha fechada de 4 vértices (do SLOT, do DXF ou
 // montada à mão e unida): dois lados retos paralelos e duas semicircunferências do mesmo
 // diâmetro, em qualquer vértice inicial e sentido. Devolve centros dos arcos e largura.

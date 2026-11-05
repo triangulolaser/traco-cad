@@ -12,6 +12,7 @@ import { parsePointInput, parseNumberInput, matchKeyword, formatOptions, splitCo
 import { tr } from './i18n.js';
 import { COMMANDS, resolveCommand, suggestCommands, CancelError, autoDimSpec, lineDynSpec } from './commands.js';
 import { parseDxf } from './dxf.js';
+import { readDxfFile } from './dxf-binary.js';
 import { kindOf } from './file-types.js';
 import { showCadErrorModal, hideCadErrorModal } from './error-modal.js';
 import { openInlineTextEditor, updateInlineTextEditor, inlineTextEntityId } from './text-editor.js';
@@ -33,7 +34,7 @@ import {
     boxAddPoint,
     boxIsEmpty,
     pointInBox,
-    textBox,
+    pointInTextBox,
     distance,
     angleOf,
     radToDeg,
@@ -87,7 +88,7 @@ const toggleKey = (event) => event.ctrlKey || event.metaKey;
 // escolhidos no painel Propriedades antes de desenhar (CECOLOR/CELTYPE/CELWEIGHT).
 // Edições (COPY, OFFSET, MIRROR...) preservam as propriedades da origem.
 export const DRAW_COMMANDS = new Set([
-    'POINT', 'DONUT', 'LINE', 'CIRCLE', 'ARC', 'PLINE', 'RECTANG', 'REVCLOUD', 'TEXT', 'POLYGON', 'SLOT', 'ELLIPSE', 'SPLINE',
+    'POINT', 'DONUT', 'LINE', 'CIRCLE', 'ARC', 'PLINE', 'RECTANG', 'REVCLOUD', 'TEXT', 'POLYGON', 'SLOT', 'ARCSLOT', 'ELLIPSE', 'SPLINE',
     'BOUNDARY', 'HATCH', '-HATCH', 'RAY', 'XLINE', 'LEADER', 'AI_CIRCTAN',
     'DIM', 'DIMENSION', 'DIMLINEAR', 'DIMHORIZONTAL', 'DIMVERTICAL', 'DIMALIGNED', 'DIMBASELINE', 'DIMCONTINUE',
     'DIMCENTER', 'DIMANGULAR', 'DIMRADIUS', 'DIMDIAMETER',
@@ -870,17 +871,14 @@ export class Editor {
         for (let i = candidates.length - 1; i >= 0; i -= 1) {
             const entity = candidates[i];
             let d;
+            // Dentro da caixa de um texto vale o limite da tolerância: a linha sob o cursor é mais precisa e vence.
             if (entity.type === 'text') {
-                const box = emptyBox();
-                textBox(entity).forEach((p) => boxAddPoint(box, p));
-                d = pointInBox(world, box) ? 0 : Infinity;
+                d = pointInTextBox(world, entity) ? tolerance : Infinity;
             } else if (entity.type === 'point') {
                 d = distance(world, entity.position ?? entity.point);
             } else {
                 d = Math.min(...entityCurves(entity).map((c) => distanceToCurve(world, c)));
-                if(entity.type==='dimension')for(const text of dimensionGeometry(entity,this.doc.dimStyle).texts){
-                    const box=emptyBox();textBox(text).forEach(p=>boxAddPoint(box,p));if(pointInBox(world,box))d=0;
-                }
+                if (entity.type === 'dimension' && dimensionGeometry(entity, this.doc.dimStyle).texts.some((text) => pointInTextBox(world, text))) d = Math.min(d, tolerance);
             }
             if (d <= tolerance && (!best || d < best.d)) best = { entity, d };
         }
@@ -1246,7 +1244,14 @@ export class Editor {
             return;
         }
         if (kind === 'dxf' || /\.dxf$/i.test(file.name)) {
-            const text = await file.text();
+            let text;
+            try {
+                text = await readDxfFile(file);
+            } catch (error) {
+                usage('import_failure');
+                this.log(`Falha ao ler DXF: ${error.message}`, 'error');
+                return;
+            }
             await this.importDxfText(text, file.name, { filePath: resolvedPath });
             if (resolvedPath && this.doc) this.doc.filePath = resolvedPath;
             return;

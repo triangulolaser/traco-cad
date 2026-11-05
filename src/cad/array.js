@@ -3,7 +3,7 @@
 // cópias depois. Os parâmetros ficam no sistema local do bloco: mover, girar, escalar ou espelhar
 // a matriz não invalida nada, e editar só refaz a definição.
 
-import { add, sub, scale, degToRad, polar, rotatePoint, entityBox, translateEntity, rotateEntity, emptyBox, boxAddPoint, boxIsEmpty } from './geometry.js';
+import { add, sub, scale, distance, degToRad, polar, rotatePoint, entityBox, translateEntity, rotateEntity, emptyBox, boxAddPoint, boxIsEmpty } from './geometry.js';
 
 export const ARRAY_XDATA_APP = 'TRACO_ARRAY';
 // Teto de entidades na matriz: acima disso a tela deixa de responder durante a pré-visualização.
@@ -40,6 +40,24 @@ export const ARRAY_FIELDS = {
     ],
 };
 
+export const ARRAY_DIRECTIONS = [
+    { value: 'ccw', label: 'Sentido anti-horário' },
+    { value: 'cw', label: 'Sentido horário' },
+];
+
+// O painel mostra a matriz pronta: raio, diâmetro e ângulo entre itens só existem depois de criada.
+export const ARRAY_PROPERTY_FIELDS = {
+    ...ARRAY_FIELDS,
+    p: [
+        { key: 'direction', label: 'Direção', kind: 'select', options: ARRAY_DIRECTIONS },
+        { key: 'radius', label: 'Raio', kind: 'number' },
+        { key: 'diameter', label: 'Diâmetro', kind: 'number' },
+        ...ARRAY_FIELDS.p.filter((field) => field.key === 'count'),
+        { key: 'angleBetween', label: 'Ângulo entre itens', kind: 'number' },
+        ...ARRAY_FIELDS.p.filter((field) => field.key !== 'count'),
+    ],
+};
+
 export function arrayItemCount(params) {
     if (params.mode === 'r') return params.rows * params.cols;
     return params.count;
@@ -72,6 +90,12 @@ export function arrayParamsError(params, sourceCount = 1) {
     return null;
 }
 
+// Passo em graus, com o sinal do sentido: 360° fecha o círculo, os demais ângulos incluem as duas pontas.
+function polarStep(params) {
+    const full = Math.abs(Math.abs(params.fill) - 360) < 1e-9;
+    return params.fill / (full ? params.count : params.count - 1);
+}
+
 function sourcesBox(sources) {
     const box = emptyBox();
     sources.forEach((entity) => {
@@ -81,6 +105,11 @@ function sourcesBox(sources) {
         boxAddPoint(box, { x: b.maxX, y: b.maxY });
     });
     return box;
+}
+
+function sourcesCenter(sources) {
+    const box = sourcesBox(sources);
+    return { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
 }
 
 /** Cópias da matriz, sem as origens. A primeira posição é a própria origem e não é gerada. */
@@ -96,11 +125,9 @@ export function arrayCopies(sources, params) {
             }
         }
     } else if (params.mode === 'p') {
-        const full = Math.abs(Math.abs(params.fill) - 360) < 1e-9;
-        const step = degToRad(params.fill) / (full ? params.count : params.count - 1);
+        const step = degToRad(polarStep(params));
         // Sem rotação o conjunto anda inteiro: um ponto de referência comum mantém a forma dele.
-        const box = sourcesBox(sources);
-        const base = { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
+        const base = sourcesCenter(sources);
         for (let i = 1; i < params.count; i += 1) {
             const angle = step * i;
             const delta = sub(rotatePoint(base, params.center, angle), base);
@@ -176,14 +203,50 @@ export function arrayFieldValues(insert) {
     if (params.mode === 'r') return { rows: params.rows, cols: params.cols, rowSpacing: params.rowSpacing * ky, colSpacing: params.colSpacing * k };
     if (params.mode === 'l') return { count: params.count, distance: params.distance * k, angle: rotation + flip * params.angle };
     const center = toWorld(params.center);
-    return { count: params.count, fill: params.fill * flip, centerX: center.x, centerY: center.y, rotate: params.rotate };
+    const sources = insert.definition.entities.slice(0, params.sourceCount);
+    const radius = distance(center, toWorld(sourcesCenter(sources)));
+    const fill = params.fill * flip;
+    return {
+        direction: fill < 0 ? 'cw' : 'ccw',
+        radius,
+        diameter: radius * 2,
+        count: params.count,
+        angleBetween: Math.abs(polarStep(params)),
+        fill,
+        centerX: center.x,
+        centerY: center.y,
+        rotate: params.rotate,
+    };
+}
+
+// O centro fica parado e a origem anda na reta que passa por ele; as cópias acompanham ao refazer.
+function sourcesAtRadius(sources, params, toWorld, radius) {
+    if (!Number.isFinite(radius) || radius <= 0) throw new Error('O raio deve ser maior que zero.');
+    const base = sourcesCenter(sources);
+    const current = distance(toWorld(params.center), toWorld(base));
+    if (current < 1e-9) throw new Error('A origem está sobre o centro: mude o centro antes de alterar o raio.');
+    const delta = scale(sub(base, params.center), radius / current - 1);
+    return sources.map((entity) => translateEntity(entity, delta));
+}
+
+function fillForStep(params, step) {
+    if (!Number.isFinite(step) || step <= 0) throw new Error('O ângulo entre itens deve ser maior que zero.');
+    const sign = params.fill < 0 ? -1 : 1;
+    if (Math.abs(step * params.count - 360) < 1e-6) return 360 * sign;
+    const fill = step * (params.count - 1);
+    if (fill > 360) throw new Error('Com esse ângulo entre itens a matriz passaria de 360°.');
+    return fill * sign;
 }
 
 /** Refaz a matriz com um valor alterado do painel. Lança erro quando o valor é inválido. */
 export function updateArrayField(insert, key, value) {
     const params = { ...insert.array };
     const { k, ky, flip, rotation, toLocal, toWorld } = insertFrame(insert);
-    if (['rows', 'cols', 'count', 'rotate'].includes(key)) params[key] = value;
+    let sources = insert.definition.entities.slice(0, params.sourceCount);
+    if (key === 'radius' || key === 'diameter') sources = sourcesAtRadius(sources, params, toWorld, key === 'diameter' ? value / 2 : value);
+    else if (key === 'angleBetween') params.fill = fillForStep(params, value);
+    else if (key === 'direction') params.fill = Math.abs(params.fill) * flip * (value === 'cw' ? -1 : 1);
+    else if (['rows', 'cols', 'count', 'rotate'].includes(key)) params[key] = value;
     else if (key === 'rowSpacing') params.rowSpacing = value / ky;
     else if (key === 'colSpacing' || key === 'distance') params[key] = value / k;
     else if (key === 'fill') params.fill = value * flip;
@@ -195,7 +258,6 @@ export function updateArrayField(insert, key, value) {
     const sourceCount = params.sourceCount;
     const error = arrayParamsError(params, sourceCount);
     if (error) throw new Error(error);
-    const sources = insert.definition.entities.slice(0, sourceCount);
     // Nome novo: cópias da mesma matriz dividem o bloco e não podem mudar junto.
     return {
         ...insert,

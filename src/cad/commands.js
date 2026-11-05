@@ -65,6 +65,7 @@ import {
 } from './geometry.js';
 import { addEntities, removeEntities, replaceEntities, updateEntities, editableEntities, setCurrentLayer, updateLayer, layerOf, createDocument, documentStats, hexToAci, aciToHex, BYLAYER } from './document.js';
 import { parseDxf, writeDxf } from './dxf.js';
+import { readDxfFile } from './dxf-binary.js';
 import { chooseLinearKind, autoDimensionFor, dimensionGeometry, DIMENSION_LAYER, ensureDimensionSetup, computeAutoDimScale, getDrawingContentBox, resolveAngularQuadrant, placeDimensionText } from './dimensions.js';
 import { interpolateSpline, sampleSpline } from './splines.js';
 import { ellipsePoint, imageLocalPoint, ensureSplineGeometry } from './extra-entities.js';
@@ -75,7 +76,7 @@ import { openHatchDialog } from './hatch-dialog.js';
 import { arrayCopies, arrayDefaults, arrayEntityCount, arrayItemCount, arrayParamsError, createArrayInsert, rememberArray } from './array.js';
 import { openArrayDialog } from './array-dialog.js';
 import { DRAWING_ACCEPT, DRAWING_KINDS, IMAGE_ACCEPT, kindOf } from './file-types.js';
-import { createRectangleEntity, createSlotEntity, polylineFillet, createRevcloudFromEntity, distanceToEntity, polygonAreaAndPerimeter, polylineArea, getEntityAreaAndPerimeter, pointInPolygon } from './edit-tools.js';
+import { createRectangleEntity, createSlotEntity, createArcSlotEntity, polylineFillet, createRevcloudFromEntity, distanceToEntity, polygonAreaAndPerimeter, polylineArea, getEntityAreaAndPerimeter, pointInPolygon } from './edit-tools.js';
 
 export class CancelError extends Error {
     constructor() {
@@ -2527,6 +2528,125 @@ async function slot(editor, args = []) {
     }
 }
 
+// Ranhura em arco, como no SolidWorks: define a linha de centro e por último a largura.
+// Modo 3p: as duas pontas e um ponto do arco. Modo c: centro, ponta inicial e ponta final;
+// o sentido acompanha o caminho do cursor e, sem movimento, é anti-horário.
+async function arcSlot(editor, args = []) {
+    editor.memory = editor.memory ?? {};
+    const preset = String((Array.isArray(args) ? args[0] : args) || '').toLowerCase();
+    let mode = preset === '3p' || preset === 'c' ? preset : (editor.memory.arcSlotMode ?? '3p');
+    let first;
+    for (;;) {
+        const res = await editor.getPoint(mode === 'c' ? 'Centro do arco da ranhura' : 'Primeira ponta da ranhura', {
+            options: [
+                { key: '3p', label: '3 pontos' },
+                { key: 'c', label: 'Centro' },
+            ],
+        });
+        if (!res) return null;
+        if (res.keyword === '3p' || res.keyword === 'c') { mode = res.keyword; continue; }
+        if (res.point) { first = res.point; break; }
+        return null;
+    }
+    editor.memory.arcSlotMode = mode;
+    const axis = mode === 'c' ? await arcSlotAxisByCenter(editor, first) : await arcSlotAxisByThreePoints(editor, first);
+    if (!axis) return null;
+
+    const axisArc = { type: 'arc', ...axis };
+    let width = editor.memory.arcSlotWidth ?? 10;
+    const widthAt = (point) => 2 * Math.abs(distance(axis.center, point) - axis.radius);
+    const build = (w) => createArcSlotEntity(axis.center, axis.radius, axis.start, axis.end, w);
+    for (;;) {
+        const res = await editor.getPoint('Largura da ranhura', {
+            allowNumber: true,
+            defaultValue: width,
+            preview: (cursor) => {
+                const e = build(widthAt(cursor));
+                return e ? [axisArc, e] : [axisArc];
+            },
+        });
+        if (!res) return null;
+        const w = res.number !== undefined ? res.number : res.point ? widthAt(res.point) : undefined;
+        if (w === undefined) return null;
+        const entity = build(w);
+        if (!entity) {
+            editor.log('Largura inválida: precisa ser maior que zero e menor que o dobro do raio, sem as pontas se tocarem.', 'error');
+            continue;
+        }
+        editor.memory.arcSlotWidth = w;
+        const sweep = sweepCCW(axis.start, axis.end);
+        editor.log(`Ranhura ${fmt(w)} × raio ${fmt(axis.radius)}, ${fmt((sweep * 180) / Math.PI)}°, ${fmt(sweep * axis.radius)} na linha de centro.`);
+        return editor.commit('Ranhura em arco', addEntities(editor.doc, [entity]));
+    }
+}
+
+async function arcSlotAxisByThreePoints(editor, first) {
+    const second = await editor.getPoint('Segunda ponta da ranhura', {
+        reference: first,
+        preview: (cursor) => [{ type: 'line', start: first, end: cursor }],
+    });
+    if (!second?.point) return null;
+    for (;;) {
+        const res = await editor.getPoint('Ponto do arco da ranhura', {
+            preview: (cursor) => {
+                const a = arcFromThreePoints(first, cursor, second.point);
+                return a ? [{ type: 'arc', ...a }] : [{ type: 'line', start: first, end: second.point }];
+            },
+        });
+        if (!res?.point) return null;
+        const a = arcFromThreePoints(first, res.point, second.point);
+        if (a) return a;
+        editor.log('Pontos colineares; arco não definido.', 'error');
+    }
+}
+
+async function arcSlotAxisByCenter(editor, center) {
+    let startPoint;
+    for (;;) {
+        const res = await editor.getPoint('Ponta inicial da ranhura', {
+            reference: center,
+            preview: (cursor) => [{ type: 'line', start: center, end: cursor }],
+        });
+        if (!res?.point) return null;
+        if (distance(center, res.point) > 1e-9) { startPoint = res.point; break; }
+        editor.log('A ponta precisa ficar fora do centro.', 'error');
+    }
+    const radius = distance(center, startPoint);
+    const startAngle = angleOf(center, startPoint);
+    let lastAngle = startAngle;
+    let travelled = 0;
+    let moved = false;
+    const follow = (point) => {
+        const angle = angleOf(center, point);
+        let delta = normalizeAngle(angle - lastAngle);
+        if (delta > Math.PI) delta -= 2 * Math.PI;
+        travelled = (travelled + delta) % (2 * Math.PI);
+        lastAngle = angle;
+        moved = true;
+        return angle;
+    };
+    const axisTo = (angle) => {
+        const ccw = !moved || travelled >= 0;
+        return { center, radius, start: normalizeAngle(ccw ? startAngle : angle), end: normalizeAngle(ccw ? angle : startAngle) };
+    };
+    for (;;) {
+        const res = await editor.getPoint('Ponta final da ranhura', {
+            reference: center,
+            preview: (cursor) => {
+                if (distance(center, cursor) < 1e-9) return [];
+                const axis = axisTo(follow(cursor));
+                return sweepCCW(axis.start, axis.end) > 1e-9 ? [{ type: 'arc', ...axis }] : [];
+            },
+        });
+        if (!res?.point) return null;
+        if (distance(center, res.point) > 1e-9) {
+            const axis = axisTo(moved ? follow(res.point) : angleOf(center, res.point));
+            if (sweepCCW(axis.start, axis.end) > 1e-9) return axis;
+        }
+        editor.log('A ponta final precisa ficar em outro ângulo.', 'error');
+    }
+}
+
 function polygonFromEdge(sides, a, b) {
     const edge = distance(a, b);
     const interior = ((sides - 2) * Math.PI) / sides;
@@ -4236,17 +4356,16 @@ async function openSingle(editor, file, filePath) {
         await editor.importEpsBuffer(await file.arrayBuffer(), file.name, { filePath });
         return;
     }
-    const text = await file.text();
     if (kind === 'elmt') {
-        await editor.importElmtText(text, file.name);
+        await editor.importElmtText(await file.text(), file.name);
         return;
     }
     if (kind === 'qet') {
-        await editor.importQetText(text, file.name);
+        await editor.importQetText(await file.text(), file.name);
         return;
     }
-    if (kind === 'svg') await editor.importSvgText(text, file.name);
-    else await editor.importDxfText(text, file.name, { filePath });
+    if (kind === 'svg') await editor.importSvgText(await file.text(), file.name);
+    else await editor.importDxfText(await readDxfFile(file), file.name, { filePath });
 }
 
 async function openLxds(editor) {
@@ -4754,7 +4873,7 @@ async function importDxf(editor) {
     const file = await editor.pickFile('.dxf');
     if (!file) return;
     try {
-        const parsed = parseDxf(await file.text(),{preserveBlocks:true,preserveDimensions:true});
+        const parsed = parseDxf(await readDxfFile(file),{preserveBlocks:true,preserveDimensions:true});
         let doc = editor.doc;
         parsed.layers.forEach((l) => {
             if (!layerOf(doc, l.name)) doc = { ...doc, layers: [...doc.layers, l] };
@@ -4943,6 +5062,7 @@ export const COMMANDS = {
     RECTANG: { dimInput: true, aliases: ['REC', 'RECT', 'RECTANGLE'], run: rectangle, description: 'Retângulo por dois cantos' },
     REVCLOUD: { dimInput: true, aliases: ['REV', 'NUVEMREV'], run: revcloud, description: 'Criar nuvem de revisão em forma de arcos sequenciais' },
     TEXT: { aliases: ['T', 'DT', 'DTEXT'], run: text, description: 'Texto de linha única' },
+    ARCSLOT: { dimInput: true, aliases: ['RANHURA', 'RANHURAARCO', 'SLOTARCO'], run: arcSlot, description: 'Ranhura em arco por 3 pontos ou centro e pontas, com largura no final' },
     SLOT: { dimInput: true, aliases: ['OBLONGO', 'OBL', 'RASGO'], run: slot, description: 'Furo oblongo por largura e dois pontos, centro a centro ou borda a borda' },
     POLYGON: { dimInput: true, aliases: ['POL', 'POLIGONO'], run: polygon, description: 'Polígono regular por lados, inscrito/circunscrito ou por aresta' },
     ELLIPSE: { dimInput: true, aliases: ['EL', 'ELIPSE'], run: ellipse, description: 'Elipse por eixo e distância ou centro' },

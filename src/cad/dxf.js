@@ -363,6 +363,10 @@ function parseEntity(type, groups) {
             };
         }
         case 'MTEXT': {
+            // A partir do R2018 vem um bloco "Embedded Object" (101) depois do texto. Nele os códigos
+            // reaproveitam outro sentido: 10/20 é a direção e 11/21 é a posição, não a direção.
+            const embedded = groups.findIndex((g) => g.code === 101);
+            if (embedded >= 0) groups = groups.slice(0, embedded);
             const height = num(first(groups, 40, 2.5));
             const rawText = all(groups, 3).join('') + (first(groups, 1) ?? '');
             const attach = num(first(groups, 71, 1)); // 1 = Top-Left (padrão MTEXT)

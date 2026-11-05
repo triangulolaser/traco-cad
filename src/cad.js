@@ -2,10 +2,11 @@ import { bootUsage, usage } from './usage-telemetry.js';
 import {FONT_FAMILIES,loadCadFonts} from './cad/fonts.js';
 import {geometryFields,setGeometryField,slotParams,resizeSlot} from './cad/edit-tools.js';
 import { HATCH_PATTERNS, upgradeHatch, setHatchProps } from './cad/hatch.js';
-import {isEntityEditable,replaceEntities} from './cad/document.js';
-import { ARRAY_FIELDS, ARRAY_TITLES, arrayFieldValues, arrayItemCount, isArrayInsert, updateArrayField } from './cad/array.js';
+import {isEntityEditable,replaceEntities,resetSpatialIndexes} from './cad/document.js';
+import { ARRAY_PROPERTY_FIELDS, ARRAY_TITLES, arrayFieldValues, arrayItemCount, isArrayInsert, updateArrayField } from './cad/array.js';
 // Entrada do app Traço CAD.
 import { Editor } from './cad/editor.js';
+import { readDxfFile } from './cad/dxf-binary.js';
 import { LINETYPES, LINEWEIGHTS, aciToHex, hexToAci, createDocument, History, updateEntities, ensureEntityIds } from './cad/document.js';
 import { entityLength, distance, radToDeg, angleOf, setLineLength } from './cad/geometry.js';
 
@@ -656,12 +657,13 @@ function renderProperties(editor, root) {
         title.textContent = ARRAY_TITLES[arrayEntity.array.mode];
         const locked = !isEntityEditable(editor.doc, arrayEntity) ? 'disabled' : '';
         const values = arrayFieldValues(arrayEntity);
-        html += section('Matriz') + ARRAY_FIELDS[arrayEntity.array.mode].map((field) => {
+        html += section('Matriz') + ARRAY_PROPERTY_FIELDS[arrayEntity.array.mode].map((field) => {
             const key = `<span class="cad-prop-key">${field.label}</span>`;
+            if (field.kind === 'select') return `<div class="cad-prop-row">${key}<span class="cad-prop-value"><select data-array-field="${field.key}" ${locked}>${field.options.map((option) => `<option value="${option.value}" ${values[field.key] === option.value ? 'selected' : ''}>${option.label}</option>`).join('')}</select></span></div>`;
             if (field.kind === 'bool') return `<div class="cad-prop-row">${key}<span class="cad-prop-value"><input type="checkbox" data-array-field="${field.key}" ${values[field.key] ? 'checked' : ''} ${locked}></span></div>`;
             return `<div class="cad-prop-row">${key}<span class="cad-prop-value"><input type="text" inputmode="${field.kind === 'int' ? 'numeric' : 'decimal'}" data-array-field="${field.key}" data-array-kind="${field.kind}" value="${field.kind === 'int' ? values[field.key] : fmt(values[field.key])}" ${locked}></span></div>`;
         }).join('')
-            + row('Itens', String(arrayItemCount(arrayEntity.array)))
+            + (arrayEntity.array.mode === 'r' ? row('Itens', String(arrayItemCount(arrayEntity.array))) : '')
             + `<div class="cad-prop-row"><span class="cad-prop-key"></span><span class="cad-prop-value"><button type="button" class="cad-btn" data-array-explode ${locked} title="Transforma a matriz em objetos comuns">Desagrupar</button></span></div>`;
     }
 
@@ -742,9 +744,10 @@ function renderProperties(editor, root) {
         const apply = () => {
             const entity = editor.doc.entities.find((x) => x.id === selected[0]?.id);
             if (!entity || !isArrayInsert(entity) || !isEntityEditable(editor.doc, entity)) return;
-            const value = input.type === 'checkbox' ? input.checked : parseDecimalInput(input.value);
+            const raw = input.tagName === 'SELECT' ? input.value : null;
+            const value = raw ?? (input.type === 'checkbox' ? input.checked : parseDecimalInput(input.value));
             try {
-                if (input.type !== 'checkbox' && !Number.isFinite(value)) throw new Error('Valor inválido.');
+                if (raw === null && input.type !== 'checkbox' && !Number.isFinite(value)) throw new Error('Valor inválido.');
                 editor.commit('Editar matriz', replaceEntities(editor.doc, new Map([[entity.id, updateArrayField(entity, input.dataset.arrayField, value)]])));
             } catch (error) {
                 editor.log(error.message, 'error');
@@ -2284,7 +2287,7 @@ if (typeof document !== 'undefined') {
 }
 
 if (typeof window !== 'undefined') {
-    loadCadFonts().then(()=>window.tracoCad?.invalidate()).catch(()=>{});
+    loadCadFonts().then(()=>{resetSpatialIndexes();window.tracoCad?.invalidate();}).catch(()=>{});
 }
 
 export { TabManager, initCad, boot };
