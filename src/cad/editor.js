@@ -6,12 +6,12 @@ import { usage } from '../usage-telemetry.js';
 import { Viewport } from './viewport.js';
 import { Renderer } from './renderer.js';
 import { Terminal } from './terminal.js';
-import { History, createDocument, addEntities, removeEntities, updateEntities, editableEntities, visibleEntities, entityColor, layerOf, isEntityEditable, aciToHex, getDocumentSpatialIndex, ensureEntityIds } from './document.js';
+import { History, createDocument, addEntities, removeEntities, updateEntities, replaceEntities, editableEntities, visibleEntities, entityColor, layerOf, isEntityEditable, aciToHex, getDocumentSpatialIndex, ensureEntityIds } from './document.js';
 import { findSnap, findCenterHints, findOverrideSnap, parseSnapOverride, SNAP_OVERRIDE_PROMPTS, applyOrtho, applyPolar, applyAngleLock, findSoftAxis, defaultSnapSettings, SNAP_MODES } from './snaps.js';
 import { findTrackingSnap, mergeSnaps, trackingPointFromSnap, addTrackingPoint } from './tracking.js';
 import { parsePointInput, parseNumberInput, matchKeyword, formatOptions, splitCommandLine } from './input.js';
 import { tr } from './i18n.js';
-import { COMMANDS, resolveCommand, suggestCommands, CancelError, autoDimSpec, lineDynSpec } from './commands.js';
+import { COMMANDS, resolveCommand, suggestCommands, CancelError, autoDimSpec, lineDynSpec, arcMidRadiusDynSpec } from './commands.js';
 import { parseDxf } from './dxf.js';
 import { readDxfFile } from './dxf-binary.js';
 import { kindOf } from './file-types.js';
@@ -19,6 +19,7 @@ import { showCadErrorModal, hideCadErrorModal } from './error-modal.js';
 import { openInlineTextEditor, updateInlineTextEditor, inlineTextEntityId } from './text-editor.js';
 import { lxdsToEntities, looksLikeLxds, LXDS_TRAVEL_LAYER, LXDS_LEAD_LAYER } from './lxds.js';
 import { dimensionGeometry } from './dimensions.js';
+import { getFilletGrips, filletRadiusFromCursor, filletAtCorner, niceRadiusStep } from './fillet-grip.js';
 import { getEntityGrips, applyGripMove, findGripAt, gripsVisible, dimensionTextCenterSnap } from './grips.js';
 import './extra-entities.js';
 import './hatch.js';
@@ -40,6 +41,7 @@ import {
     angleOf,
     radToDeg,
     formatNumber,
+    polar,
 } from './geometry.js';
 
 const PICK_PIXELS = 6;
@@ -92,7 +94,7 @@ export const DRAW_COMMANDS = new Set([
     'POINT', 'DONUT', 'LINE', 'CIRCLE', 'ARC', 'PLINE', 'RECTANG', 'REVCLOUD', 'TEXT', 'POLYGON', 'SLOT', 'ARCSLOT', 'ELLIPSE', 'SPLINE',
     'BOUNDARY', 'HATCH', '-HATCH', 'RAY', 'XLINE', 'LEADER', 'AI_CIRCTAN',
     'DIM', 'DIMENSION', 'DIMLINEAR', 'DIMHORIZONTAL', 'DIMVERTICAL', 'DIMALIGNED', 'DIMBASELINE', 'DIMCONTINUE',
-    'DIMCENTER', 'DIMANGULAR', 'DIMRADIUS', 'DIMDIAMETER',
+    'DIMCENTER', 'DIMANGULAR', 'DIMRADIUS', 'DIMDIAMETER', 'DIMARC',
 ]);
 
 const isByLayer = (value) => value === undefined || value === null || value === 'bylayer';
@@ -145,6 +147,7 @@ export class Editor {
         this.hover = null;
         this.hoverGrip = null;
         this.activeGrip = null;
+        this.filletDrag = null;
         this.gripOriginalEntity = null;
         this.window = null;
         this.rubber = null;
@@ -500,8 +503,10 @@ export class Editor {
             hoverGrip: this.hoverGrip,
             activeGrip: this.activeGrip,
             gripGhost: this.activeGrip ? this.gripOriginalEntity : null,
-            ghostIds: !inlineTextEntityId(this) && this.pending?.hide?.length ? new Set(this.pending.hide) : null,
-            hiddenIds: inlineTextEntityId(this) ? new Set([inlineTextEntityId(this)]) : this.pending?.hide ? new Set(this.pending.hide) : (this.activeGrip ? new Set([this.activeGrip.entityId]) : null),
+            ghostIds: this.filletDrag ? new Set(this.activeGrip.entityIds) : !inlineTextEntityId(this) && this.pending?.hide?.length ? new Set(this.pending.hide) : null,
+            hiddenIds: inlineTextEntityId(this) ? new Set([inlineTextEntityId(this)]) : this.pending?.hide ? new Set(this.pending.hide) : this.filletDrag ? new Set(this.activeGrip.entityIds) : (this.activeGrip ? new Set([this.activeGrip.entityId]) : null),
+            filletGrips: this.filletDrag ? [this.activeGrip] : (this.pending || this.activeGrip ? [] : this.getFilletSelectionGrips?.() ?? []),
+            filletLabel: this.filletDrag?.label ?? null,
             collaborators: this.collaborators,
         });
         updateInlineTextEditor(this);
@@ -730,6 +735,8 @@ export class Editor {
         if (!this.cursorWorld) return;
         const isPointPrompt = this.pending && ['point', 'pointOrEntity'].includes(this.pending.mode);
         if (!isPointPrompt && !this.activeGrip) return;
+        // Alça de concordância: o raio sai da posição livre do mouse, sem encaixe.
+        if (this.filletDrag) return;
         // Ponto interno da hachura: encaixar numa borda tornaria o clique ambíguo.
         if (this.pending?.freePoint && !this.activeGrip) return;
         const tolerance = this.viewport.pixelsToWorld(SNAP_PIXELS);
@@ -915,7 +922,85 @@ export class Editor {
                 grips.push(...getEntityGrips(entity, this.doc.dimStyle));
             }
         }
+        grips.push(...this.getFilletSelectionGrips());
         return grips;
+    }
+
+    // Duas linhas/arcos selecionados com canto comum: alça que cria a concordância ao ser arrastada.
+    getFilletSelectionGrips() {
+        if (this.selection.size !== 2) return [];
+        const entities = [...this.selection].map((id) => this.doc.entities.find((e) => e.id === id));
+        if (entities.some((e) => !e || !isEntityEditable(this.doc, e))) return [];
+        return getFilletGrips(entities, this.viewport.pixelsToWorld(1));
+    }
+
+    filletDragResult(radius) {
+        const drag = this.filletDrag;
+        if (!drag) return null;
+        const step = niceRadiusStep(this.viewport.pixelsToWorld(1));
+        return filletAtCorner(drag.e1, drag.e2, radius, { step: drag.exact ? 0 : step, corner: drag.corner });
+    }
+
+    startFilletGrip(grip) {
+        const [e1, e2] = grip.entityIds.map((id) => this.doc.entities.find((e) => e.id === id));
+        if (!e1 || !e2 || !isEntityEditable(this.doc, e1) || !isEntityEditable(this.doc, e2)) return;
+        this.activeGrip = grip;
+        this.gripJustActivated = true;
+        this.gripOriginalEntity = null;
+        this.filletDrag = { e1: JSON.parse(JSON.stringify(e1)), e2: JSON.parse(JSON.stringify(e2)), corner: grip.corner, result: null, label: null };
+        this.rubber = null;
+        this.preview = [];
+        this.terminal.setPrompt('** CONCORDÂNCIA ** Arraste para dentro do canto ou digite o raio [Cancelar]:');
+        this.log('Alça de concordância: arraste para aumentar o raio, clique para aplicar ou digite o raio e Enter.');
+        this.updateFilletGrip();
+    }
+
+    updateFilletGrip() {
+        const drag = this.filletDrag;
+        if (!drag) return;
+        const cursor = this.cursorWorld ?? this.activeGrip.point;
+        const result = this.filletDragResult(filletRadiusFromCursor(this.activeGrip.corner, cursor));
+        drag.result = result;
+        this.preview = result ? [result.first, result.second, result.arc] : [drag.e1, drag.e2];
+        drag.label = result ? { point: cursor, text: `R ${formatNumber(result.radius, 3)}` } : null;
+        this.invalidate();
+    }
+
+    finishFilletGrip(radius = null) {
+        const drag = this.filletDrag;
+        if (!drag) return;
+        let result = drag.result;
+        if (radius !== null) {
+            drag.exact = true;
+            result = this.filletDragResult(radius);
+            if (!result) {
+                this.log('Esse raio não cabe nessas duas curvas.', 'error');
+                return;
+            }
+            if (Math.abs(result.radius - radius) > 1e-9) {
+                this.log(`Raio ${formatNumber(radius, 3)} não cabe nas curvas; o maior possível é ${formatNumber(result.radius, 3)}.`, 'error');
+                drag.exact = false;
+                return;
+            }
+        }
+        const ids = this.activeGrip.entityIds;
+        this.filletDrag = null;
+        this.activeGrip = null;
+        this.gripJustActivated = false;
+        this.preview = [];
+        this.rubber = null;
+        this.terminal.setPrompt('Comando:');
+        if (!result) {
+            this.log('*Concordância cancelada*', 'warn');
+            this.invalidate();
+            return;
+        }
+        let nextDoc = replaceEntities(this.doc, new Map([[ids[0], result.first], [ids[1], result.second]]));
+        nextDoc = addEntities(nextDoc, [result.arc]);
+        this.commit('Concordância', nextDoc);
+        this.log(`Concordância com raio ${formatNumber(result.radius, 3)}.`);
+        this.updateSnap();
+        this.invalidate();
     }
 
     updateHoverGrip(screen) {
@@ -938,6 +1023,7 @@ export class Editor {
 
     startGripDrag(grip) {
         if (!grip) return;
+        if (grip.type === 'fillet') return this.startFilletGrip(grip);
         const entity = this.doc.entities.find((e) => e.id === grip.entityId);
         if (!entity || !isEntityEditable(this.doc, entity)) return;
 
@@ -950,6 +1036,10 @@ export class Editor {
         if (entity.type === 'line' && (grip.type === 'start' || grip.type === 'end')) {
             this.openDynInput(lineDynSpec(this, grip.type === 'start' ? entity.end : entity.start));
         }
+        // Meio do arco: pontas paradas, raio pelo cursor ou digitado.
+        if (entity.type === 'arc' && grip.type === 'mid') {
+            this.openDynInput(arcMidRadiusDynSpec(this, polar(entity.center, entity.start, entity.radius), polar(entity.center, entity.end, entity.radius)));
+        }
         this.terminal.setPrompt('** ALÇA ** Ponto de destino [Cancelar]:');
         this.log(`Alça ativa em (${formatNumber(grip.point.x, 2)}, ${formatNumber(grip.point.y, 2)}). Arraste ou clique no novo ponto.`);
         this.updateSnap();
@@ -957,6 +1047,7 @@ export class Editor {
     }
 
     updateGripDrag() {
+        if (this.filletDrag) return this.updateFilletGrip();
         if (!this.activeGrip || !this.gripOriginalEntity) return;
         const cursor = this.effectiveCursor() ?? this.cursorWorld ?? this.activeGrip.point;
         const target = this.dyn ? this.dyn.spec.resolve(cursor) : cursor;
@@ -967,6 +1058,11 @@ export class Editor {
     }
 
     finishGripDrag(targetPoint = null) {
+        if (this.filletDrag) {
+            if (targetPoint) this.cursorWorld = targetPoint;
+            if (targetPoint) this.updateFilletGrip();
+            return this.finishFilletGrip();
+        }
         if (!this.activeGrip || !this.gripOriginalEntity) return;
         const cursor = this.effectiveCursor() ?? this.cursorWorld ?? this.activeGrip.point;
         const target = targetPoint ?? (this.dyn ? this.dyn.spec.resolve(cursor) : cursor);
@@ -992,6 +1088,7 @@ export class Editor {
     cancelGripDrag() {
         if (!this.activeGrip) return;
         this.closeDynInput();
+        this.filletDrag = null;
         this.activeGrip = null;
         this.gripJustActivated = false;
         this.gripOriginalEntity = null;
@@ -1660,6 +1757,11 @@ export class Editor {
             if (/^(c|cancel|cancelar)$/i.test(value)) {
                 this.cancelGripDrag();
                 return;
+            }
+            if (this.filletDrag) {
+                const radius = parseNumberInput(value);
+                if (radius === null || !(radius > 0)) return this.log('Digite um raio maior que zero.', 'warn');
+                return this.finishFilletGrip(radius);
             }
             const ref = this.activeGrip.point;
             const parsed = parsePointInput(value, { last: ref, dynamic: true });

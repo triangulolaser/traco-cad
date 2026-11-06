@@ -168,8 +168,10 @@ test('DXF: APPID declara a aplicação do XDATA e a string cabe no limite', () =
     const lines = text.split(/\r?\n/).map((l) => l.trim());
     const table = lines.findIndex((l, i) => l === 'APPID' && lines[i - 1] === '2');
     const count = lines.findIndex((l, i) => i > table && l === '70');
-    assert.equal(lines[count + 1], '2');
     const end = lines.indexOf('ENDTAB', table);
+    // ACAD, TRACO_ARRAY e TRACO_ARCDIM (cota de arco): o contador bate com os registros.
+    assert.equal(Number(lines[count + 1]), lines.slice(table + 1, end).filter((l) => l === 'APPID').length);
+    assert.equal(lines[count + 1], '3');
     assert.equal(lines.slice(table, end).filter((l) => l === 'TRACO_ARRAY').length, 1);
     const xdata = lines.lastIndexOf('TRACO_ARRAY');
     assert.equal(lines[xdata - 1], '1001');

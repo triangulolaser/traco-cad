@@ -64,6 +64,7 @@ import {
     joinCurves,
     joinCurveGroups,
 } from './geometry.js';
+import { arcMidForRadius } from './grips.js';
 import { addEntities, removeEntities, replaceEntities, updateEntities, editableEntities, setCurrentLayer, updateLayer, layerOf, createDocument, documentStats, hexToAci, aciToHex, BYLAYER } from './document.js';
 import { parseDxf, writeDxf } from './dxf.js';
 import { readDxfFile } from './dxf-binary.js';
@@ -274,6 +275,29 @@ export function angleDynamicInput(base, cursor, locked = {}, offset = 20, refAng
     const mid = refAngle + (ccw ? span : -((2 * Math.PI - span) % (2 * Math.PI))) / 2;
     const anchor = { x: base.x + Math.cos(mid) * arcR * 1.3, y: base.y + Math.sin(mid) * arcR * 1.3 };
     return { end: tip, values: { v: deg }, anchors: { v: anchor }, guides: guides.map(asDimGuide) };
+}
+
+// Alça do meio do arco: campo de raio. Sem valor digitado, o cursor manda; com valor, o meio
+// vai para o arco de mesmo raio entre as pontas, do lado do cursor.
+export function arcMidRadiusDynSpec(editor, a, b) {
+    const spec = {
+        fields: [{ key: 'r', label: 'Raio' }],
+        locked: {},
+        calc: (cursor) => {
+            const mid = Number.isFinite(spec.locked.r) ? (arcMidForRadius(a, b, spec.locked.r, cursor) ?? cursor) : cursor;
+            const fit = arcFromThreePoints(a, mid, b);
+            const radius = fit ? fit.radius : 0;
+            const offset = editor.viewport.pixelsToWorld(22);
+            const guides = fit ? [asDimGuide({ type: 'line', start: fit.center, end: mid })] : [];
+            const anchor = fit ? add(mid, scale(normalize(sub(mid, fit.center)), offset)) : cursor;
+            return { end: mid, values: { r: radius }, anchors: { r: anchor }, guides };
+        },
+        values: (cursor) => spec.calc(cursor).values,
+        anchors: (cursor) => spec.calc(cursor).anchors,
+        resolve: (cursor) => spec.calc(cursor).end,
+        guides: (cursor) => spec.calc(cursor).guides,
+    };
+    return spec;
 }
 
 export function angleDynSpec(editor, base, refAngle = 0) {
@@ -3859,6 +3883,32 @@ async function dimRadial(editor, kind) {
     return placeDimension(editor, { kind, center: base.center, radius: base.radius }, kind === 'radius' ? 'Posição do texto do raio' : 'Posição do texto do diâmetro');
 }
 
+// Cota de comprimento de arco (DIMARC): arco solto ou trecho em arco de polilinha.
+export function arcLengthDimensionFor(entity, pickPoint) {
+    let arc = null;
+    if (entity?.type === 'arc') arc = { center: entity.center, radius: entity.radius, start: entity.start, end: entity.end };
+    else if (entity?.type === 'polyline' && pickPoint) {
+        let best = null;
+        polylineCurves(entity.vertices, entity.closed).forEach((c) => {
+            if (c.kind !== 'arc') return;
+            const d = Math.abs(distance(pickPoint, c.center) - c.radius);
+            if (!best || d < best.d) best = { c, d };
+        });
+        arc = best?.c ?? null;
+    }
+    if (!arc) return null;
+    return { kind: 'arclength', center: arc.center, radius: arc.radius, p1: polar(arc.center, arc.start, arc.radius), p2: polar(arc.center, arc.end, arc.radius) };
+}
+
+async function dimArc(editor) {
+    ensureDimensionSetup(editor);
+    const pick = await editor.getEntity('Selecione o arco ou trecho em arco da polilinha', { filter: (e) => e.type === 'arc' || (e.type === 'polyline' && e.vertices?.some((v) => v.bulge)) });
+    if (!pick) return null;
+    const base = arcLengthDimensionFor(pick.entity, pick.point);
+    if (!base) return editor.log('Selecione um arco ou uma polilinha com trecho em arco.', 'warn');
+    return placeDimension(editor, base, 'Posição do arco de cota');
+}
+
 async function dimAngular(editor) {
     ensureDimensionSetup(editor);
     const first = await editor.getPointOrEntity('Selecione primeiro objeto (linha ou arco) ou [Enter para 3 pontos]:', { allowEnter: true });
@@ -5106,6 +5156,7 @@ export const COMMANDS = {
     DIMANGULAR: { aliases: ['DAN', 'COTAANGULAR', 'ANG'], run: dimAngular, description: 'Cota angular entre duas linhas, 3 pontos ou arco' },
     DIMRADIUS: { aliases: ['DRA', 'DIMRAD'], run: (editor) => dimRadial(editor, 'radius'), description: 'Cota de raio' },
     DIMDIAMETER: { aliases: ['DDI', 'DIMDIA'], run: (editor) => dimRadial(editor, 'diameter'), description: 'Cota de diâmetro' },
+    DIMARC: { aliases: ['DAR'], run: dimArc, description: 'Cota de comprimento de arco' },
     DIMSCALE: { aliases: [], run: dimScale, description: 'Escala de texto e setas das cotas' },
     DIMPRECISION: { aliases: ['DIMDEC'], run: dimPrecision, description: 'Casas decimais das cotas' },
     MEASUREGEOM: { aliases: ['MEDIRGEOM', 'MGEOM'], run: measureGeom, description: 'Medição unificada de distância, raio, ângulo, área e propriedades rápidas' },

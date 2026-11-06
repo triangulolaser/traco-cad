@@ -66,6 +66,20 @@ function insertArrayXdata(groups) {
     return start >= 0 && groups[start + 1]?.code === 1000 ? { __arrayXdata: groups[start + 1].value } : {};
 }
 
+// Cota de comprimento de arco gravada pelo Traço como angular de 3 pontos (ver writeDimension).
+export const ARC_DIMENSION_XDATA_APP = 'TRACO_ARCDIM';
+function arcDimensionXdata(groups) {
+    const start = groups.findIndex((p) => p.code === 1001 && p.value === ARC_DIMENSION_XDATA_APP);
+    if (start < 0) return null;
+    const raw = groups[start + 1]?.code === 1000 ? groups[start + 1].value : '{}';
+    try {
+        const data = JSON.parse(raw);
+        return data && typeof data === 'object' ? data : {};
+    } catch {
+        return {};
+    }
+}
+
 function first(groups, code, fallback = undefined) {
     const g = groups.find((p) => p.code === code);
     return g ? g.value : fallback;
@@ -504,6 +518,12 @@ function parseEntitiesSection(cursor, stopAt, preserveDimensions = false, dimens
                     const a=pt(10),b=pt(15),center=kind===3?{x:(a.x+b.x)/2,y:(a.y+b.y)/2}:a;
                     const radius=Math.hypot(b.x-center.x,b.y-center.y);
                     entities.push({...base,kind:kind===3?'diameter':'radius',center,radius,linePoint:first(groups,11)!==undefined?pt(11):b});continue;
+                }
+                const arcXdata=kind===5?arcDimensionXdata(groups):null;
+                if(arcXdata && first(groups,15)!==undefined){
+                    const {textOverride:_literal,__measured:_measured,...arcBase}=base;
+                    const center=pt(15),p1=pt(13);
+                    entities.push({...arcBase,kind:'arclength',center,radius:Number.isFinite(arcXdata.r)&&arcXdata.r>0?arcXdata.r:Math.hypot(p1.x-center.x,p1.y-center.y),p1,p2:pt(14),...(typeof arcXdata.o==='string'?{textOverride:arcXdata.o}:{})});continue;
                 }
                 if(kind===5 && first(groups,15)!==undefined){entities.push({...base,kind:'angular',vertex:pt(15),p1:pt(13),p2:pt(14)});continue;}
             }
@@ -1118,14 +1138,20 @@ function writeDimension(entity,dimStyle){
     const name=dimensionBlocks.get(entity);
     if(!name)return writeDimensionGraphics(entity,dimStyle);
     const pt=(code,p)=>pair(code,fmt(p.x))+pair(code+10,fmt(p.y))+pair(code+20,0);
-    const code={horizontal:0,vertical:0,rotated:0,aligned:1,diameter:3,radius:4,angular:5}[entity.kind]??1;
+    const code={horizontal:0,vertical:0,rotated:0,aligned:1,diameter:3,radius:4,angular:5,arclength:5}[entity.kind]??1;
     let point=entity.linePoint;
     if(code===4)point=entity.center;
     if(code===3)point={x:entity.center.x-entity.radius,y:entity.center.y};
-    let out=entityHeader('DIMENSION',entity,'AcDbDimension')+pair(2,name)+pt(10,point)+pt(11,entity.textPosition??entity.linePoint)+pair(70,32+code+(entity.textPosition?128:0))+pair(1,encodeText(entity.textOverride??'<>'))+pair(3,outputDimensionStyles.get(entity)?.name??styleName({...dimStyle,...entity.style,...entity}));
+    // Cota de arco: o R2000 não tem ARC_DIMENSION. Sai como angular de 3 pontos com o número já escrito
+    // (outros CADs mostram o comprimento, não graus) e o XDATA TRACO_ARCDIM devolve a cota viva ao Traço.
+    const arcLength=entity.kind==='arclength';
+    const arcMeasure=arcLength?dimensionGeometry(entity,dimStyle):null;
+    const textValue=arcLength?(entity.textOverride??arcMeasure.text):(entity.textOverride??'<>');
+    let out=entityHeader('DIMENSION',entity,'AcDbDimension')+pair(2,name)+pt(10,point)+pt(11,entity.textPosition??entity.linePoint)+pair(70,32+code+(entity.textPosition?128:0))+pair(1,encodeText(textValue))+(arcLength?pair(42,fmt(arcMeasure.measurement)):'')+pair(3,outputDimensionStyles.get(entity)?.name??styleName({...dimStyle,...entity.style,...entity}));
     if(code===0||code===1){out+=pair(100,'AcDbAlignedDimension')+pt(13,entity.p1)+pt(14,entity.p2);if(code===0)out+=pair(100,'AcDbRotatedDimension')+pair(50,entity.kind==='vertical'?90:entity.kind==='rotated'?fmt(entity.rotation??0):0);}
     if(code===3||code===4)out+=pair(100,code===3?'AcDbDiametricDimension':'AcDbRadialDimension')+pt(15,{x:entity.center.x+entity.radius,y:entity.center.y})+pair(40,0);
     if(code===5)out+=pair(100,'AcDb3PointAngularDimension')+pt(13,entity.p1)+pt(14,entity.p2)+pt(15,entity.vertex??entity.center);
+    if(arcLength)out+=pair(1001,ARC_DIMENSION_XDATA_APP)+pair(1000,JSON.stringify({r:entity.radius??null,o:entity.textOverride??null}));
     return out;
 }
 function writeBlock(name,definition,dimStyle,graphics=null){
@@ -1417,11 +1443,13 @@ export function writeDxf(doc, { view = doc.view } = {}) {
     out += pair(0, 'TABLE') + pair(2, 'UCS') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTable') + pair(70, 0) + pair(0, 'ENDTAB');
 
     // 5. APPID
-    out += pair(0, 'TABLE') + pair(2, 'APPID') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTable') + pair(70, 2)
+    out += pair(0, 'TABLE') + pair(2, 'APPID') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTable') + pair(70, 3)
         + pair(0, 'APPID') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTableRecord') + pair(100, 'AcDbRegAppTableRecord')
         + pair(2, 'ACAD') + pair(70, 0)
         + pair(0, 'APPID') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTableRecord') + pair(100, 'AcDbRegAppTableRecord')
-        + pair(2, ARRAY_XDATA_APP) + pair(70, 0) + pair(0, 'ENDTAB');
+        + pair(2, ARRAY_XDATA_APP) + pair(70, 0)
+        + pair(0, 'APPID') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTableRecord') + pair(100, 'AcDbRegAppTableRecord')
+        + pair(2, ARC_DIMENSION_XDATA_APP) + pair(70, 0) + pair(0, 'ENDTAB');
 
     // 6. DIMSTYLE
     out += pair(0, 'TABLE') + pair(2, 'DIMSTYLE') + pair(5, nextHandle()) + pair(100, 'AcDbSymbolTable') + pair(70, outputDimensionStyles.size) + pair(100, 'AcDbDimStyleTable');

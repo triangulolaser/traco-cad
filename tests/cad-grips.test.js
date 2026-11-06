@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getEntityGrips, applyGripMove, findGripAt, dimensionTextCenterSnap } from '../src/cad/grips.js';
+import { getEntityGrips, applyGripMove, findGripAt, dimensionTextCenterSnap, arcMidForRadius } from '../src/cad/grips.js';
 
 test('getEntityGrips returns correct grips for line', () => {
     const line = { id: 'l1', type: 'line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 } };
@@ -73,9 +73,63 @@ test('getEntityGrips and applyGripMove for arc', () => {
     const startAdjusted = applyGripMove(arc, startGrip, { x: 0, y: -10 }); // angle -PI/2 = 3PI/2
     assert.ok(Math.abs(startAdjusted.start - (3 * Math.PI) / 2) < 1e-4);
 
-    // Adjusting radius via mid grip
+    // Alça do meio: pontas paradas, o arco passa pelo cursor.
     const radiusAdjusted = applyGripMove(arc, midGrip, { x: 15, y: 15 });
-    assert.ok(Math.abs(radiusAdjusted.radius - Math.hypot(15, 15)) < 1e-4);
+    const onArc = (a, pt) => Math.abs(Math.hypot(pt.x - a.center.x, pt.y - a.center.y) - a.radius) < 1e-6;
+    assert.ok(onArc(radiusAdjusted, startGrip.point) && onArc(radiusAdjusted, endGrip.point) && onArc(radiusAdjusted, { x: 15, y: 15 }));
+});
+
+test('alça do meio do arco muda raio e centro sem mexer nas pontas', () => {
+    // Semicírculo para cima, pontas em (-10,0) e (10,0).
+    const arc = { id: 'a3', type: 'arc', center: { x: 0, y: 0 }, radius: 10, start: 0, end: Math.PI };
+    const grips = getEntityGrips(arc);
+    const midGrip = grips.find((g) => g.type === 'mid');
+    const a = { x: 10, y: 0 };
+    const b = { x: -10, y: 0 };
+    const tip = (e, ang) => ({ x: e.center.x + Math.cos(ang) * e.radius, y: e.center.y + Math.sin(ang) * e.radius });
+    const ends = (e) => [tip(e, e.start), tip(e, e.end)];
+    const same = (p, q) => Math.hypot(p.x - q.x, p.y - q.y) < 1e-9;
+    const keepsEnds = (e) => {
+        const [s, t] = ends(e);
+        return (same(s, a) && same(t, b)) || (same(s, b) && same(t, a));
+    };
+
+    // Puxar para cima: arco maior que meia-volta, centro sobe, raio cresce.
+    const up = applyGripMove(arc, midGrip, { x: 0, y: 16 });
+    assert.ok(keepsEnds(up));
+    assert.ok(up.center.y > 0 && up.radius > 10, JSON.stringify(up));
+    assert.ok(Math.abs(up.center.x) < 1e-9);
+
+    // Puxar para baixo: arco mais raso, centro desce, raio cresce.
+    const flat = applyGripMove(arc, midGrip, { x: 0, y: 4 });
+    assert.ok(keepsEnds(flat));
+    assert.ok(flat.center.y < 0 && flat.radius > 10, JSON.stringify(flat));
+    // O meio do arco novo é o ponto puxado.
+    const sweep = ((flat.end - flat.start) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+    assert.ok(same(tip(flat, flat.start + sweep / 2), { x: 0, y: 4 }));
+
+    // Cursor sobre a corda não define arco: fica o original.
+    assert.deepEqual(applyGripMove(arc, midGrip, { x: 3, y: 0 }), arc);
+});
+
+test('raio digitado na alça do meio leva ao arco de mesmo raio do lado do cursor', () => {
+    const a = { x: 10, y: 0 };
+    const b = { x: -10, y: 0 };
+    const arc = { id: 'a4', type: 'arc', center: { x: 0, y: 0 }, radius: 10, start: 0, end: Math.PI };
+    const midGrip = getEntityGrips(arc).find((g) => g.type === 'mid');
+    const check = (radius, cursor, expectY) => {
+        const mid = arcMidForRadius(a, b, radius, cursor);
+        assert.ok(Math.abs(mid.x) < 1e-9 && Math.abs(mid.y - expectY) < 1e-9, `${radius} ${JSON.stringify(cursor)} → ${JSON.stringify(mid)}`);
+        const out = applyGripMove(arc, midGrip, mid);
+        assert.ok(Math.abs(out.radius - Math.max(radius, 10)) < 1e-9);
+    };
+    // R 25: sagita menor 25-√525 ≈ 2,087; maior 25+√525 ≈ 47,91.
+    check(25, { x: 0, y: 3 }, 25 - Math.sqrt(525));
+    check(25, { x: 0, y: 40 }, 25 + Math.sqrt(525));
+    check(25, { x: 0, y: -3 }, -(25 - Math.sqrt(525)));
+    // Raio menor que meia corda vira meia-volta.
+    check(4, { x: 0, y: 3 }, 10);
+    assert.equal(arcMidForRadius(a, a, 5, { x: 0, y: 1 }), null);
 });
 
 test('alça da ponta do arco aumenta e diminui o raio passando pela outra ponta e pelo meio', () => {

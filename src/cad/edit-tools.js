@@ -53,6 +53,8 @@ export function stretchEntity(e, box, delta) {
     if (e.type === 'line') return { ...e, start: pointInBox(e.start, box) ? add(e.start, delta) : e.start, end: pointInBox(e.end, box) ? add(e.end, delta) : e.end };
     if (e.type === 'polyline') return { ...e, vertices: e.vertices.map(p => pointInBox(p, box) ? { ...p, ...add(p, delta) } : p) };
     // Furos parcialmente selecionados não são deformados. Círculos inteiros movem acima.
+    // Cota de arco: o arco medido não estica; só o arco de cota acompanha a janela.
+    if (e.type === 'dimension' && e.kind === 'arclength') return e.linePoint && pointInBox(e.linePoint, box) ? { ...e, linePoint: add(e.linePoint, delta) } : e;
     if (e.type === 'dimension') return Object.fromEntries(Object.entries(e).map(([k, v]) => [k, ['p1', 'p2', 'linePoint', 'center'].includes(k) && v && pointInBox(v, box) ? add(v, delta) : v]));
     return e;
 }

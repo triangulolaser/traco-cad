@@ -430,7 +430,7 @@ function bindDrawProps(editor, root, box) {
 }
 
 // Comandos que criam cotas: o painel "Desenhando" ganha as opções da cota a criar.
-const DIM_DRAW_COMMANDS = new Set(['DIM', 'DIMENSION', 'DIMLINEAR', 'DIMHORIZONTAL', 'DIMVERTICAL', 'DIMALIGNED', 'DIMBASELINE', 'DIMCONTINUE', 'DIMANGULAR', 'DIMRADIUS', 'DIMDIAMETER', 'LEADER']);
+const DIM_DRAW_COMMANDS = new Set(['DIM', 'DIMENSION', 'DIMLINEAR', 'DIMHORIZONTAL', 'DIMVERTICAL', 'DIMALIGNED', 'DIMBASELINE', 'DIMCONTINUE', 'DIMANGULAR', 'DIMRADIUS', 'DIMDIAMETER', 'DIMARC', 'LEADER']);
 
 const DIM_DRAW_DEFAULTS = { textHeight: 2.5, arrowSize: 2.5, scale: 1, precision: 2, measurementScale: 1 };
 

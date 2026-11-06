@@ -275,6 +275,9 @@ export class Renderer {
             if (entity) this.drawGrips(entity, state.hoverGrip, state.activeGrip);
         });
 
+        if (state.filletGrips?.length) this.drawFilletGrips(state.filletGrips, state.hoverGrip, state.activeGrip);
+        if (state.filletLabel) this.drawFilletLabel(state.filletLabel);
+
         if (state.selection.size === 2 && !state.activeGrip && !state.rubber) {
             const [a, b] = [...state.selection].map((id) => state.doc.entities.find((e) => e.id === id));
             const measure = selectionMeasure(a, b);
@@ -820,6 +823,50 @@ export class Renderer {
 
             ctx.strokeRect(boxX, boxY, maxMeasuredWidth, totalHeight);
         }
+        ctx.restore();
+    }
+
+    // Alça de concordância: círculo com um arco desenhado dentro, para diferenciar das alças quadradas.
+    drawFilletGrips(grips, hoverGrip, activeGrip) {
+        const { ctx, viewport } = this;
+        ctx.save();
+        ctx.setLineDash([]);
+        grips.forEach((g) => {
+            const s = viewport.worldToScreen(g.point);
+            const isActive = Boolean(activeGrip && activeGrip.id === g.id);
+            const isHover = !isActive && Boolean(hoverGrip && hoverGrip.id === g.id);
+            const r = isActive || isHover ? 6 : 5;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+            ctx.fillStyle = isActive ? '#ff3b30' : isHover ? '#ff9500' : this.theme.gripFill;
+            ctx.strokeStyle = isActive || isHover ? '#ffffff' : this.theme.grip;
+            ctx.lineWidth = 1;
+            ctx.fill();
+            ctx.stroke();
+            // Pequeno arco voltado para o canto, como ícone de concordância.
+            const toCorner = Math.atan2(-g.corner.bisector.y, g.corner.bisector.x) + Math.PI;
+            ctx.beginPath();
+            ctx.arc(s.x - Math.cos(toCorner) * 1.5, s.y - Math.sin(toCorner) * 1.5, r - 2.5, toCorner - Math.PI / 2.4, toCorner + Math.PI / 2.4);
+            ctx.strokeStyle = isActive || isHover ? '#ffffff' : this.theme.grip;
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+        });
+        ctx.restore();
+    }
+
+    drawFilletLabel(label) {
+        const { ctx, viewport } = this;
+        const s = viewport.worldToScreen(label.point);
+        ctx.save();
+        ctx.font = '12px system-ui, sans-serif';
+        const w = ctx.measureText(label.text).width + 10;
+        const x = s.x + 14;
+        const y = s.y + 14;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(x, y, w, 18);
+        ctx.fillStyle = '#ffffff';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label.text, x + 5, y + 9);
         ctx.restore();
     }
 

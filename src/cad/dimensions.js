@@ -1,7 +1,8 @@
 import {textWidth} from './fonts.js';
 // Cotas: geometria de renderização, medição e escolha automática de tipo.
-// Entidade: { type: 'dimension', kind: 'horizontal'|'vertical'|'aligned'|'radius'|'diameter',
+// Entidade: { type: 'dimension', kind: 'horizontal'|'vertical'|'aligned'|'radius'|'diameter'|'angular'|'arclength',
 //             p1, p2, linePoint, center?, radius?, textOverride? }
+// arclength: p1→p2 anti-horário em volta de center, radius do arco medido.
 
 import {
     distance,
@@ -571,6 +572,70 @@ function angularGeometry(entity, style) {
     };
 }
 
+/**
+ * Cota de comprimento de arco (DIMARC do AutoCAD/BricsCAD): mede o arco de p1 a p2 no sentido
+ * anti-horário em volta de `center`. A cota é um arco concêntrico que passa por linePoint, com
+ * chamadas radiais, setas tangentes e o símbolo de arco desenhado sobre o número (não depende de fonte).
+ */
+export function arcLengthSweep(entity) {
+    const start = normalizeAngle(angleOf(entity.center, entity.p1));
+    const end = normalizeAngle(angleOf(entity.center, entity.p2));
+    let sweep = normalizeAngle(end - start);
+    if (sweep < 1e-9) sweep = Math.PI * 2;
+    const radius = entity.radius ?? distance(entity.center, entity.p1);
+    return { start, end, sweep, radius, length: radius * sweep };
+}
+
+function arcLengthGeometry(entity, style) {
+    const { center } = entity;
+    const { start, end, sweep, radius: source, length } = arcLengthSweep(entity);
+    const radius = Math.max(distance(center, entity.linePoint ?? entity.p1), style.arrowSize * 2);
+    const text = dimensionText(entity.textOverride, length * measurementFactor(style), style, entity.prefix ?? '', entity.suffix ?? '');
+    const segments = [];
+    const arrows = [];
+    const arcs = [{ center, radius, startAngle: start, endAngle: end, ccw: true }];
+    const at = (a, r) => ({ x: center.x + r * Math.cos(a), y: center.y + r * Math.sin(a) });
+    const pStart = at(start, radius);
+    const pEnd = at(end, radius);
+    const tStart = { x: -Math.sin(start), y: Math.cos(start) };
+    const tEnd = { x: -Math.sin(end), y: Math.cos(end) };
+    if (radius * sweep >= style.arrowSize * 3) {
+        arrows.push(arrowAt(pStart, scale(tStart, -1), style.arrowSize));
+        arrows.push(arrowAt(pEnd, tEnd, style.arrowSize));
+    } else {
+        arrows.push(arrowAt(pStart, tStart, style.arrowSize));
+        arrows.push(arrowAt(pEnd, scale(tEnd, -1), style.arrowSize));
+        const tail = (style.arrowSize * 2) / radius;
+        arcs.push({ center, radius, startAngle: normalizeAngle(start - tail), endAngle: start, ccw: true });
+        arcs.push({ center, radius, startAngle: end, endAngle: normalizeAngle(end + tail), ccw: true });
+    }
+    // Chamadas radiais da ponta do arco até além da cota, com o afastamento do objeto (DIMEXO/DIMEXE).
+    [start, end].forEach((a) => {
+        const gap = radius >= source ? 1 : -1;
+        if (Math.abs(radius - source) <= style.extOffset) return;
+        segments.push({ a: at(a, source + gap * style.extOffset), b: at(a, radius + gap * style.extBeyond) });
+    });
+    // Número por fora do arco de cota, no meio do arco, lido da esquerda para a direita.
+    const mid = normalizeAngle(start + sweep / 2);
+    const outward = { x: Math.cos(mid), y: Math.sin(mid) };
+    const textAngle = readableAngle(mid + Math.PI / 2);
+    const up = { x: -Math.sin(textAngle), y: Math.cos(textAngle) };
+    const flipped = dot(up, outward) < 0;
+    // Símbolo ⌒ acima do número (DIMARCSYM=1), desenhado como arco para sair igual em qualquer leitor.
+    const width = textWidth({ text, height: style.textHeight, fontFamily: style.fontFamily, bold: style.bold, italic: style.italic });
+    const chord = Math.max(style.textHeight, Math.min(width * 0.8, style.textHeight * 3));
+    const half = Math.PI / 3;
+    const symbolRadius = chord / (2 * Math.sin(half));
+    const symbolLift = style.textHeight + style.textGap * 0.6;
+    // Texto lido de cabeça para cima do lado do centro: número e símbolo inteiros ficam por fora do arco de cota.
+    const clearance = flipped ? symbolLift + symbolRadius * (1 - Math.cos(half)) : 0;
+    const textCenter = add(center, scale(outward, radius + style.textGap + clearance));
+    const top = add(textCenter, scale(up, symbolLift));
+    const upAngle = Math.atan2(up.y, up.x);
+    arcs.push({ center: sub(top, scale(up, symbolRadius * Math.cos(half))), radius: symbolRadius, startAngle: normalizeAngle(upAngle - half), endAngle: normalizeAngle(upAngle + half), ccw: true });
+    return { segments, arcs, arrows, texts: [textEntityAt(textCenter, textAngle, text, style, entity.id)], measurement: length, text };
+}
+
 function leaderGeometry(e,style){
     const text=e.textOverride??'';
     return {segments:[{a:e.p1,b:e.p2},{a:e.p2,b:e.linePoint}],arrows:[arrowAt(e.p1,normalize(sub(e.p1,e.p2)),style.arrowSize)],texts:[{type:'text',position:add(e.linePoint,{x:0,y:style.textGap}),height:style.textHeight,rotation:0,text,fontFamily:style.fontFamily,bold:style.bold,italic:style.italic}],measurement:0,text};
@@ -580,6 +645,7 @@ export function dimensionGeometry(entity, style) {
     const s = effectiveStyle(style, entity);
     if(entity.kind==='leader')return leaderGeometry(entity,s);
     if (entity.kind === 'angular') return angularGeometry(entity, s);
+    if (entity.kind === 'arclength') return arcLengthGeometry(entity, s);
     if (entity.kind === 'radius' || entity.kind === 'diameter') return radialGeometry(entity, s);
     return linearGeometry(entity, s);
 }
@@ -625,6 +691,10 @@ export function transformDimension(entity, fn, mirror) {
         const straight = delta < 1e-6 || Math.abs(delta - Math.PI) < 1e-6;
         if (quarter) e.kind = entity.kind === 'horizontal' ? 'vertical' : 'horizontal';
         else if (!straight && !mirror) e.kind = 'aligned';
+    }
+    if (entity.kind === 'arclength' && mirror) {
+        // Espelhar inverte o sentido: o arco medido continua o mesmo trocando as pontas.
+        [e.p1, e.p2] = [e.p2, e.p1];
     }
     if (entity.kind === 'rotated' && !mirror) {
         // A direção de medição acompanha a rotação aplicada à geometria.

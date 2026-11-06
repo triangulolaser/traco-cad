@@ -82,6 +82,11 @@ export function getEntityGrips(entity, dimStyle) {
             break;
 
         case 'dimension':
+            // Cota de arco: só a posição do arco de cota; mover ponta ou centro descolaria a medida do arco.
+            if (entity.kind === 'arclength') {
+                if (entity.linePoint) grips.push({ id: `${entity.id}:linePoint`, entityId: entity.id, type: 'linePoint', point: entity.linePoint });
+                break;
+            }
             // Alças das setas vêm antes: findGripAt prefere a última em empate, então linePoint continua ganhando quando coincide.
             if (LINEAR_DIMENSION_KINDS.includes(entity.kind) && entity.p1 && entity.p2 && entity.linePoint) {
                 const { d1, d2 } = linearDimensionEnds(entity);
@@ -211,8 +216,13 @@ export function applyGripMove(entity, grip, targetPoint, dimStyle) {
                 return { ...entity, [grip.type]: angle };
             }
             if (grip.type === 'mid') {
-                const newRadius = Math.max(distance(entity.center, p), 1e-4);
-                return { ...entity, radius: newRadius };
+                // Pontas paradas: o arco passa a ir da ponta inicial à final pelo cursor, e o centro
+                // e o raio saem disso. Cursor sobre a corda não define arco; fica o original.
+                const a = polar(entity.center, entity.start, entity.radius);
+                const b = polar(entity.center, entity.end, entity.radius);
+                const fit = arcFromThreePoints(a, p, b);
+                if (!fit || !Number.isFinite(fit.radius)) return entity;
+                return { ...entity, ...fit };
             }
             break;
 
@@ -349,4 +359,26 @@ export function findGripAt(grips, screenPos, worldToScreen, tolerance = 8) {
         }
     }
     return closest;
+}
+
+/**
+ * Ponto do meio de um arco de raio dado entre as pontas a e b, do lado do cursor.
+ * Entre o arco menor e o maior, fica o de meio mais perto do cursor. Raio menor que meia
+ * corda vira meia-volta. Devolve null se as pontas coincidirem.
+ */
+export function arcMidForRadius(a, b, radius, cursor) {
+    const half = distance(a, b) / 2;
+    if (half < 1e-12) return null;
+    const m = midpoint(a, b);
+    const dir = scale(sub(b, a), 1 / (2 * half));
+    const n = { x: -dir.y, y: dir.x };
+    const side = dot(sub(cursor, m), n);
+    const sign = side < 0 ? -1 : 1;
+    const r = Math.max(radius, half);
+    const rise = Math.sqrt(Math.max(r * r - half * half, 0));
+    const minor = r - rise;
+    const major = r + rise;
+    const along = Math.abs(side);
+    const s = Math.abs(along - minor) <= Math.abs(along - major) ? minor : major;
+    return add(m, scale(n, sign * s));
 }
