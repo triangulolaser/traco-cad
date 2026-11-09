@@ -4884,9 +4884,10 @@ function imageSize(src) {
 }
 
 async function pdfImport(editor) {
-    const file = await editor.pickFile('.pdf,application/pdf');
-    if (!file) return null;
     try {
+        const { pickPdfFile } = await import('./pdf-file.js');
+        const file = await pickPdfFile(editor);
+        if (!file) return null;
         editor.log('Carregando PDF...', 'info');
         const { openPdf, pdfPageToImage, pdfPageToEntities } = await import('./pdfimport.js');
         let opened;
