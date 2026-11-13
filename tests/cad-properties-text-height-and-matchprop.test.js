@@ -448,3 +448,33 @@ test('MATCHPROP: com Shift o clique ou a caixa devolve as propriedades originais
     assert.equal(by('l1').color, 1, 'soltar o Shift volta a aplicar');
     assert.equal(snapshot.find((x) => x.id === 'l2').color, 1);
 });
+
+test('MATCHPROP: vários objetos selecionados por caixa antes do MA viram os destinos', async () => {
+    let doc = addEntities(createDocument(), [
+        { id: 'src', type: 'line', a: { x: 0, y: 0 }, b: { x: 1, y: 0 }, layer: 'CORTE', color: 1 },
+        { id: 'l1', type: 'line', a: { x: 0, y: 5 }, b: { x: 1, y: 5 }, layer: '0', color: 7 },
+        { id: 'l2', type: 'line', a: { x: 0, y: 9 }, b: { x: 1, y: 9 }, layer: '0', color: 3 },
+        { id: 'fora', type: 'line', a: { x: 50, y: 50 }, b: { x: 51, y: 50 }, layer: '0', color: 3 },
+    ]);
+    doc.layers.push({ name: 'CORTE', color: 1, visible: true, locked: false });
+    let commits = 0;
+    let refPrompt = '';
+    const editor = {
+        get doc() { return doc; },
+        selection: new Set(['l1', 'l2']),
+        canvas: { classList: { add() {}, remove() {} } },
+        log() {},
+        async getEntity(prompt) { refPrompt = prompt; return { entity: doc.entities.find((x) => x.id === 'src') }; },
+        async getEntityOrWindow() { return null; },
+        commit(label, next) { commits++; doc = next; },
+    };
+    await EDIT_COMMANDS.MATCHPROP.run(editor);
+    assert.match(refPrompt, /2 selecionados/);
+    assert.equal(commits, 1);
+    for (const id of ['l1', 'l2']) {
+        const x = doc.entities.find((e) => e.id === id);
+        assert.equal(x.layer, 'CORTE');
+        assert.equal(x.color, 1);
+    }
+    assert.equal(doc.entities.find((e) => e.id === 'fora').color, 3);
+});

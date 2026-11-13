@@ -435,3 +435,22 @@ test('suggestCommands: nome mais curto primeiro (ESC sugere ESCALA antes de ESCA
     const { suggestCommands } = await import('../src/cad/commands.js');
     assert.deepEqual(suggestCommands('esc').slice(0, 2).map((s) => s.name), ['SCALE', 'DIMSCALE']);
 });
+
+test('extend por janela: janela que só atravessa a linha estende a ponta mais próxima dela', async () => {
+    const { extendInsideBox } = await import('../src/cad/commands.js');
+    const wall = [{ kind: 'segment', a: { x: 0, y: -50 }, b: { x: 0, y: 50 } }];
+    const line = { id: 'h', type: 'line', layer: '0', start: { x: 2, y: 0 }, end: { x: 100, y: 0 } };
+    // Janela em x 10..30: não contém ponta, mas atravessa a linha perto da ponta esquerda.
+    const ext = extendInsideBox(line, wall, { minX: 10, minY: -5, maxX: 30, maxY: 5 });
+    assert.ok(ext && closePoint(ext.start, { x: 0, y: 0 }) && closePoint(ext.end, { x: 100, y: 0 }));
+    // Ponta dentro da janela continua tendo prioridade.
+    const inside = extendInsideBox(line, wall, { minX: 1, minY: -5, maxX: 3, maxY: 5 });
+    assert.ok(closePoint(inside.start, { x: 0, y: 0 }));
+    // Polilinha aberta estende pela ponta; fechada não tem ponta livre.
+    const open = { id: 'p', type: 'polyline', layer: '0', closed: false, vertices: [{ x: 2, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 20 }] };
+    const pe = extendInsideBox(open, wall, { minX: 1, minY: -5, maxX: 5, maxY: 5 });
+    assert.ok(pe, 'polilinha aberta estende');
+    assert.equal(extendInsideBox({ ...open, closed: true }, wall, { minX: 1, minY: -5, maxX: 5, maxY: 5 }), undefined);
+    // Sem limite na direção: nada muda.
+    assert.equal(extendInsideBox(line, [], { minX: 10, minY: -5, maxX: 30, maxY: 5 }), undefined);
+});

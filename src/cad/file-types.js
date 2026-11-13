@@ -14,6 +14,7 @@ export const FILE_TYPES = {
     eps: { kind: 'eps', icon: 'palette' },
     elmt: { kind: 'elmt', icon: 'diagram-3' },
     qet: { kind: 'qet', icon: 'diagram-2' },
+    traco: { kind: 'traco', icon: 'diagram-3' },
     pdf: { kind: 'pdf', icon: 'file-earmark-pdf' },
     bmp: { kind: 'image', icon: 'image' },
     png: { kind: 'image', icon: 'image' },
@@ -22,7 +23,7 @@ export const FILE_TYPES = {
 };
 
 // Formatos que viram desenho direto; imagem e PDF passam por comando próprio.
-export const DRAWING_KINDS = ['dwg', 'dxf', 'lxds', 'cdr', 'svg', 'eps', 'elmt', 'qet'];
+export const DRAWING_KINDS = ['dwg', 'dxf', 'lxds', 'cdr', 'svg', 'eps', 'elmt', 'qet', 'traco'];
 
 export const OPENABLE_EXTENSIONS = new Set(Object.keys(FILE_TYPES));
 
@@ -33,7 +34,7 @@ export function extensionOf(name) {
     return m ? m[1].toLowerCase() : '';
 }
 
-// 'dwg' | 'dxf' | 'lxds' | 'cdr' | 'svg' | 'eps' | 'pdf' | 'image' | null
+// 'dwg' | 'dxf' | 'lxds' | 'cdr' | 'svg' | 'eps' | 'elmt' | 'qet' | 'traco' | 'pdf' | 'image' | null
 export function kindOf(nameOrExtension) {
     const raw = String(nameOrExtension ?? '').toLowerCase();
     const ext = raw.includes('.') ? extensionOf(raw) : raw;

@@ -5,7 +5,7 @@ import { FILE_TYPES, OPENABLE_EXTENSIONS, DRAWING_ACCEPT, DRAWING_KINDS, kindOf,
 import { COMMANDS } from '../src/cad/commands.js';
 
 test('toda extensão conhecida abre, tem ícone e tem tipo válido', () => {
-    const tipos = new Set(['dwg', 'dxf', 'lxds', 'pdf', 'image', 'svg', 'eps', 'cdr', 'elmt', 'qet']);
+    const tipos = new Set(['dwg', 'dxf', 'lxds', 'pdf', 'image', 'svg', 'eps', 'cdr', 'elmt', 'qet', 'traco']);
     Object.entries(FILE_TYPES).forEach(([ext, t]) => {
         assert.ok(tipos.has(t.kind), `${ext} com tipo desconhecido: ${t.kind}`);
         assert.ok(t.icon && t.icon.length > 0, `${ext} sem ícone`);

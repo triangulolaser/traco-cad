@@ -8,6 +8,7 @@
 import { registerEntityProvider, polylineCurves, entityCurves, curveBox, emptyBox, boxAddPoint, distance, sweepCCW, polar, rotatePoint, degToRad } from './geometry.js';
 import { ellipseSamples, ellipseIsFull, ensureSplineGeometry } from './extra-entities.js';
 import { sampleSpline } from './splines.js';
+import { extractPlanarLoops, buildJordanIslandTree, detectHatchBoundary, loopSignedArea, loopAreaExact, pointInLoopExact, rayLoopIntersections, buildPlanarArrangement } from './topology-dcel.js';
 
 const IN = 25.4;
 const pat = (rows) => rows.map(([angle, x, y, dx, dy, ...dashes]) => ({ angle, x: x * IN, y: y * IN, dx: dx * IN, dy: dy * IN, dashes: dashes.map((d) => d * IN) }));
@@ -138,7 +139,10 @@ export function forEachPatternPiece(families, box, emit, { maxLines = 6000, maxP
 export const MAX_HATCH_EDGES=20000;
 
 // Endpoint graph: unlike greedy JOIN, shuffled contours do not require O(n²) scans.
-export function closedHatchChains(entities,tolerance=1e-6){
+// Para malhas planas com cruzamentos T/X (grau >= 3), linhas secantes ou micro-gaps (HPGAPTOL),
+// delega a extração topológica para o arranjo planar DCEL (`extractPlanarLoops`).
+export function closedHatchChains(entities,tolerance=1e-6,options={}){
+    const gapTolerance=typeof options==='number'?options:(options?.gapTolerance??0);
     const curves=entities.flatMap(e=>entityCurves(e));
     if(curves.length>MAX_HATCH_EDGES)throw new Error(`Hachura limitada a ${MAX_HATCH_EDGES} segmentos por operação; divida a seleção.`);
     const cells=new Map(),nodes=[];
@@ -154,11 +158,16 @@ export function closedHatchChains(entities,tolerance=1e-6){
         const edge={curve:c,a,b,used:false};a.edges.push(edge);b.edges.push(edge);return edge;
     });
     const loops=[];
+    let hasNonSimpleComponent=false;
     for(const seed of edges){
         if(seed.used)continue;
         const component=[],queue=[seed.a],visited=new Set();
         for(let q=0;q<queue.length;q++){const node=queue[q];if(visited.has(node))continue;visited.add(node);component.push(node);for(const edge of node.edges){if(!visited.has(edge.a))queue.push(edge.a);if(!visited.has(edge.b))queue.push(edge.b);}}
-        if(component.some(n=>n.edges.length!==2)){for(const n of component)for(const e of n.edges)e.used=true;continue;}
+        if(component.some(n=>n.edges.length!==2)){
+            hasNonSimpleComponent=true;
+            for(const n of component)for(const e of n.edges)e.used=true;
+            continue;
+        }
         const vertices=[];let current=seed.a,edge=seed;
         do{
             const forward=edge.a===current,c=edge.curve;
@@ -166,6 +175,14 @@ export function closedHatchChains(entities,tolerance=1e-6){
             edge.used=true;current=forward?edge.b:edge.a;edge=current.edges.find(e=>!e.used);
         }while(edge && vertices.length<=MAX_HATCH_EDGES);
         if(current===seed.a && vertices.length>=2)loops.push({vertices});
+    }
+    if((hasNonSimpleComponent || gapTolerance>0) && curves.length<=2000){
+        const dcelLoops=extractPlanarLoops(entities,{tolerance,gapTolerance,includeOuterEnvelopes:true});
+        const seen=new Set(loops.map(l=>loopKey(l)));
+        for(const dl of dcelLoops){
+            const k=loopKey(dl);
+            if(!seen.has(k)){seen.add(k);loops.push(dl);}
+        }
     }
     return loops;
 }
@@ -178,7 +195,9 @@ export function hatchLineRange(min,max,spacing,maxLines=6000){
     return {first,count:Math.max(0,Math.min(Math.floor(maxLines)+1,6001,last-first+1))};
 }
 
-export function loopsFromEntities(entities) {
+export function loopsFromEntities(entities, options = {}) {
+    const tolerance = options?.tolerance ?? 1e-6;
+    const gapTolerance = options?.gapTolerance ?? 0;
     const complexity=entities.reduce((n,e)=>n+(e.type==='polyline'?e.vertices.length:e.type==='hatch'?e.loops.reduce((a,l)=>a+l.vertices.length,0):e.type==='spline'?(e.controlPoints?.length??e.fitPoints?.length??0)*16:2),0);
     if(complexity>MAX_HATCH_EDGES)throw new Error(`Contorno muito complexo para uma hachura (${complexity} segmentos estimados). Divida a seleção.`);
     const loops = [];
@@ -197,6 +216,8 @@ export function loopsFromEntities(entities) {
                     const pts = ellipseSamples(e, 96);
                     pts.pop();
                     loops.push({ vertices: pts.map((p) => ({ x: p.x, y: p.y, bulge: 0 })) });
+                } else {
+                    chainable.push(e);
                 }
                 break;
             case 'spline': {
@@ -205,6 +226,8 @@ export function loopsFromEntities(entities) {
                 if (pts.length > 2 && (e.closed || distance(pts[0], pts[pts.length - 1]) < 1e-6)) {
                     pts.pop();
                     loops.push({ vertices: pts.map((p) => ({ x: p.x, y: p.y, bulge: 0 })) });
+                } else {
+                    chainable.push(e);
                 }
                 break;
             }
@@ -219,8 +242,22 @@ export function loopsFromEntities(entities) {
                 break;
         }
     });
-    if (chainable.length >= 2) {
-        loops.push(...closedHatchChains(chainable));
+    if (chainable.length >= 2 || (chainable.length >= 1 && gapTolerance > 0)) {
+        const chained = closedHatchChains(chainable, tolerance, { gapTolerance });
+        loops.push(...chained);
+    }
+    // Se há entidades abertas (ex.: retas secantes dividindo um retângulo/círculo fechado)
+    // e o total de curvas é moderado, extrai também as faces subdivididas pelo arranjo DCEL.
+    if (chainable.length >= 1 && loops.length >= 1 && complexity <= 1000) {
+        const dcelLoops = extractPlanarLoops(entities, { tolerance, gapTolerance, includeOuterEnvelopes: true });
+        const seen = new Set(loops.map((l) => loopKey(l)));
+        for (const dl of dcelLoops) {
+            const k = loopKey(dl);
+            if (!seen.has(k)) {
+                seen.add(k);
+                loops.push(dl);
+            }
+        }
     }
     return loops;
 }
@@ -421,26 +458,13 @@ export function pointInPolygonPoints(p, points) {
 }
 
 // "Escolha pontos internos" do BricsCAD: o menor contorno fechado em volta do ponto e as ilhas
-// dentro dele. islands: 'nested' (aninhado, par/ímpar), 'outer' (só as ilhas externas) ou 'ignore'.
+// dentro dele. islands: 'nested' (aninhado, par/ímpar em árvore de Jordan N níveis), 'outer' (só as ilhas externas) ou 'ignore'.
 export function boundaryLoopsAt(point, loops, islands = 'nested') {
-    const shapes = loops.map((loop) => {
-        const poly = loopPolygon(loop);
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        poly.forEach((p) => { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); });
-        return { loop, poly, area: polygonArea(poly), box: { minX, minY, maxX, maxY } };
-    }).filter((s) => s.poly.length >= 3 && s.area > 1e-9);
-    const contains = (s, p) => p.x >= s.box.minX && p.x <= s.box.maxX && p.y >= s.box.minY && p.y <= s.box.maxY && pointInPolygonPoints(p, s.poly);
-    const outer = shapes.filter((s) => contains(s, point)).sort((a, b) => a.area - b.area)[0];
-    if (!outer) return [];
-    if (islands === 'ignore') return [outer.loop];
-    const inside = (s, host) => s !== host && s.area < host.area && s.poly.every((p, i) => i % 4 !== 0 || contains(host, p));
-    let candidates = shapes.filter((s) => inside(s, outer) && !contains(s, point));
-    // Contornos repetidos (polilinha sobre polilinha) contariam duas vezes no par/ímpar.
-    const seen = new Set([loopKey(outer.loop)]);
-    candidates = candidates.filter((s) => { const key = loopKey(s.loop); if (seen.has(key)) return false; seen.add(key); return true; });
-    if (islands === 'outer') candidates = candidates.filter((s) => !candidates.some((h) => inside(s, h)));
-    return [outer.loop, ...candidates.map((s) => s.loop)];
+    const res = buildJordanIslandTree(point, loops, islands);
+    return Array.isArray(res) ? res : (res?.loops ?? []);
 }
+
+export { detectHatchBoundary, loopSignedArea, loopAreaExact, pointInLoopExact, rayLoopIntersections, buildPlanarArrangement, extractPlanarLoops, buildJordanIslandTree };
 
 export function loopKey(loop) {
     const pts = loop.vertices.map((v) => `${v.x.toFixed(6)},${v.y.toFixed(6)},${(v.bulge ?? 0).toFixed(6)}`);

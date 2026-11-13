@@ -106,3 +106,27 @@ test('SpatialIndex: suporta coordenadas negativas e desenho industrial denso', (
     // Deve pegar x: -50, -40, -30 e y: -50, -40, -30 => 3 x 3 = 9 pontos
     assert.equal(res.length, 9);
 });
+
+// Onda 3 (11/11/2026): o delta do índice guardava o documento pai e prendia todas as versões anteriores.
+test('getDocumentSpatialIndex: documento antigo não fica preso pelo delta do índice', async () => {
+    const v8 = await import('node:v8');
+    const vm = await import('node:vm');
+    v8.setFlagsFromString('--expose-gc');
+    const gc = vm.runInNewContext('gc');
+    const { createDocument, addEntities, getDocumentSpatialIndex } = await import('../src/cad/document.js');
+    let doc = createDocument();
+    doc = addEntities(doc, [{ type: 'line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 } }]);
+    getDocumentSpatialIndex(doc);
+    const first = new WeakRef(doc);
+    for (let i = 1; i <= 20; i += 1) {
+        doc = addEntities(doc, [{ type: 'line', start: { x: 0, y: i }, end: { x: 10, y: i } }]);
+        getDocumentSpatialIndex(doc);
+    }
+    const hits = getDocumentSpatialIndex(doc).search({ minX: -1, minY: -1, maxX: 11, maxY: 21 });
+    assert.equal(hits.length, 21);
+    for (let i = 0; i < 5 && first.deref(); i += 1) {
+        await new Promise(resolve => setImmediate(resolve));
+        gc();
+    }
+    assert.equal(first.deref(), undefined);
+});

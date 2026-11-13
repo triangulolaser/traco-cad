@@ -1048,13 +1048,22 @@ export const EDIT_COMMANDS = {
     },
     MATCHPROP:{aliases:['MA','COPIARPROP'],description:'Copiar layer, cor, tipo, espessura e propriedades de texto/cota',async run(e){
         // Com um objeto já selecionado (como no BricsCAD), ele é a referência e o comando vai direto ao pincel.
+        // Com vários já selecionados (caixa antes do comando), eles são os destinos: pede só a referência.
+        const preset=e.selection?.size>1?e.doc.entities.filter(x=>e.selection.has(x.id)):[];
         const pre=e.selection?.size===1?e.doc.entities.find(x=>e.selection.has(x.id)):null;
-        const src=pre?{entity:pre}:await e.getEntity('Objeto de referência');if(!src)return;
+        const src=pre?{entity:pre}:await e.getEntity(preset.length?`Objeto de referência para os ${preset.length} selecionados`:'Objeto de referência');if(!src)return;
         const source=structuredClone(src.entity);
         e.canvas.classList.add('cad-property-brush');
         // Estado de cada destino antes do pincel: com Shift, clique ou caixa devolve o objeto a ele.
         const originals=new Map();
         try {
+            const presetTargets=preset.filter((x)=>x.id!==src.entity.id&&isEntityEditable(e.doc,x));
+            if(presetTargets.length){
+                presetTargets.forEach((x)=>originals.set(x.id,structuredClone(x)));
+                e.commit('Copiar propriedades',replaceEntities(e.doc,new Map(presetTargets.map((x)=>[x.id,matchProperties(e,source,x)]))));
+                for(const [from,to] of e.lastRenamedIds??[]){if(originals.has(from)){originals.set(to,originals.get(from));originals.delete(from);}}
+                e.log(`Propriedades copiadas para ${presetTargets.length} objeto(s).`);
+            }
             for(;;){
                 // Clique num destino ou caixa de seleção (esquerda→direita janela, direita→esquerda crossing).
                 const pick=await e.getEntityOrWindow('Pincel: clique no destino ou arraste uma caixa; Shift desfaz; Enter/Esc encerra',{allowEnter:true,directional:true});

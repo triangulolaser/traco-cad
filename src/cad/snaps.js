@@ -9,14 +9,22 @@ import {
     curveQuadrants,
     intersectCurves,
     perpendicularFoot,
+    perpendicularFeet,
     tangentPoints,
     commonTangents,
     closestPointOnCurve,
     distanceToCurve,
     curveBox,
     boxesIntersect,
+    entityBox,
     entityProvider,
 } from './geometry.js';
+import { PackedSpatialEngine } from './spatial-packed.js';
+import { SpatialSnapHash, entityCurvesInBox } from './snap-hash.js';
+
+export { SpatialSnapHash, entityCurvesInBox };
+
+const entityListSpatialCache = new WeakMap();
 
 export const SNAP_ICONS = {
     end: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="0.5" /></svg>',
@@ -61,9 +69,26 @@ function within(p, cursor, tol) {
 export function findSnap(entities, cursor, tolerance, settings, { reference = null, exclude = new Set() } = {}) {
     const candidates = [];
     const searchBox = { minX: cursor.x - tolerance, minY: cursor.y - tolerance, maxX: cursor.x + tolerance, maxY: cursor.y + tolerance };
+    const curveQueryBox = {
+        minX: cursor.x - tolerance * 2,
+        minY: cursor.y - tolerance * 2,
+        maxX: cursor.x + tolerance * 2,
+        maxY: cursor.y + tolerance * 2,
+    };
     const nearCurves = [];
 
-    entities.forEach((entity) => {
+    let targetEntities = entities;
+    if (Array.isArray(entities) && entities.length > 256) {
+        let engine = entityListSpatialCache.get(entities);
+        if (!engine) {
+            engine = new PackedSpatialEngine({ getBBox: entityBox });
+            engine.load(entities);
+            entityListSpatialCache.set(entities, engine);
+        }
+        targetEntities = engine.search(curveQueryBox);
+    }
+
+    targetEntities.forEach((entity) => {
         if (exclude.has(entity.id)) return;
         const provider = entityProvider(entity.type);
         if (provider?.snapPoints) {
@@ -86,7 +111,11 @@ export function findSnap(entities, cursor, tolerance, settings, { reference = nu
             const g = geometricCenter(entity);
             if (g && within(g, cursor, tolerance * 1.5)) candidates.push({ mode: 'gcen', point: g, entity });
         }
-        entityCurves(entity).forEach((curve) => {
+        const canUseSubBVH = (entity.type === 'polyline' || entity.type === 'lwpolyline')
+            && entity.vertices?.length >= 32
+            && !entity.vertices.some((v) => v.bulge);
+        const curves = canUseSubBVH ? entityCurvesInBox(entity, curveQueryBox) : entityCurves(entity);
+        curves.forEach((curve) => {
             const box = curveBox(curve);
             const expanded = { minX: box.minX - tolerance, minY: box.minY - tolerance, maxX: box.maxX + tolerance, maxY: box.maxY + tolerance };
             if (!boxesIntersect(expanded, searchBox)) return;
@@ -110,8 +139,9 @@ export function findSnap(entities, cursor, tolerance, settings, { reference = nu
             }
             if (settings.qua && near) curveQuadrants(curve).forEach((p) => within(p, cursor, tolerance) && candidates.push({ mode: 'qua', point: p, entity }));
             if (settings.per && reference && near) {
-                const foot = perpendicularFoot(reference, curve);
-                if (foot && within(foot, cursor, tolerance)) candidates.push({ mode: 'per', point: foot, entity });
+                perpendicularFeet(reference, curve).forEach((foot) => {
+                    if (within(foot, cursor, tolerance)) candidates.push({ mode: 'per', point: foot, entity });
+                });
             }
             if (settings.tan && reference && near) {
                 tangentPoints(reference, curve).forEach((p) => within(p, cursor, tolerance) && candidates.push({ mode: 'tan', point: p, entity }));
@@ -124,7 +154,26 @@ export function findSnap(entities, cursor, tolerance, settings, { reference = nu
             for (let j = i + 1; j < nearCurves.length; j += 1) {
                 // Segmentos de aproximação vizinhos da mesma elipse/spline "se cruzam" no vértice comum: não é interseção.
                 if (nearCurves[i].curve.approx && nearCurves[j].curve.approx && nearCurves[i].entity === nearCurves[j].entity) continue;
+                const sameBezierEntity = nearCurves[i].entity === nearCurves[j].entity
+                    && nearCurves[i].curve.kind === 'bezier'
+                    && nearCurves[j].curve.kind === 'bezier';
+                const adjacentBezier = sameBezierEntity
+                    && Math.abs((nearCurves[i].curve.segmentIndex ?? -2) - (nearCurves[j].curve.segmentIndex ?? -4)) === 1;
                 intersectCurves(nearCurves[i].curve, nearCurves[j].curve).forEach((p) => {
+                    if (adjacentBezier) {
+                        const c1 = nearCurves[i].curve;
+                        const c2 = nearCurves[j].curve;
+                        const p1End = c1.points[c1.points.length - 1];
+                        const p1Start = c1.points[0];
+                        const p2End = c2.points[c2.points.length - 1];
+                        const p2Start = c2.points[0];
+                        if (
+                            (distance(p, p1End) < 1e-6 && distance(p, p2Start) < 1e-6)
+                            || (distance(p, p2End) < 1e-6 && distance(p, p1Start) < 1e-6)
+                        ) {
+                            return;
+                        }
+                    }
                     if (within(p, cursor, tolerance)) candidates.push({ mode: 'int', point: p, entity: nearCurves[i].entity });
                 });
             }

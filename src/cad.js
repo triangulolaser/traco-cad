@@ -1,6 +1,6 @@
 import { bootUsage, usage } from './usage-telemetry.js';
 import {FONT_FAMILIES,loadCadFonts} from './cad/fonts.js';
-import {geometryFields,setGeometryField,slotParams,resizeSlot} from './cad/edit-tools.js';
+import {geometryFields,geometryFieldDisplay,setGeometryField,slotParams,resizeSlot} from './cad/edit-tools.js';
 import { HATCH_PATTERNS, upgradeHatch, setHatchProps } from './cad/hatch.js';
 import {isEntityEditable,replaceEntities,resetSpatialIndexes} from './cad/document.js';
 import { ARRAY_PROPERTY_FIELDS, ARRAY_TITLES, arrayFieldValues, arrayItemCount, isArrayInsert, updateArrayField } from './cad/array.js';
@@ -21,6 +21,8 @@ import { showCadErrorModal, hideCadErrorModal } from './cad/error-modal.js';
 import { snapIconSvg } from './cad/snaps.js';
 import { saveFormatOf } from './cad/commands.js';
 import { LOCALES, detectLocale, getLocale, saveLocale, setLocale, t, tr, translateDom } from './cad/i18n.js';
+import { setupSchematicUi } from './cad/schematic-ui.js';
+import { schematicPropertiesHtml, bindSchematicProperties } from './cad/schematic-panel.js';
 
 const STANDARD_ACI = [[1, 'Vermelho'], [2, 'Amarelo'], [3, 'Verde'], [4, 'Ciano'], [5, 'Azul'], [6, 'Magenta'], [7, 'Branco']];
 
@@ -371,7 +373,7 @@ function entityRows(editor, e) {
 const GEOMETRY_LABELS = { 'center.x': 'Centro X', 'center.y': 'Centro Y', 'start.x': 'Início X', 'start.y': 'Início Y', 'end.x': 'Fim X', 'end.y': 'Fim Y', 'position.x': 'Posição X', 'position.y': 'Posição Y', radius: 'Raio', diameter: 'Diâmetro', height: 'Altura', rotation: 'Rotação', ratio: 'Razão', length: 'Comprimento' };
 const geometryLabel = (field) => GEOMETRY_LABELS[field.key] ?? (field.key === 'start' || field.key === 'end' ? `${field.key === 'start' ? 'Início' : 'Fim'} (°)` : field.key);
 
-const TYPE_LABELS = { line: 'Linha', circle: 'Círculo', arc: 'Arco', polyline: 'Polilinha', ellipse: 'Elipse', spline: 'Spline', text: 'Texto', dimension: 'Cota', image: 'Imagem' };
+const TYPE_LABELS = { line: 'Linha', circle: 'Círculo', arc: 'Arco', polyline: 'Polilinha', ellipse: 'Elipse', spline: 'Spline', text: 'Texto', dimension: 'Cota', image: 'Imagem', symbol: 'Símbolo', link: 'Ligação', junction: 'Junção' };
 
 // Cor, tipo de linha e espessura dos próximos objetos desenhados. Ficam valendo
 // até serem trocados, como CECOLOR/CELTYPE/CELWEIGHT.
@@ -510,7 +512,7 @@ function renderProperties(editor, root) {
     if (selected.length === 0) {
         title.textContent = 'Sem seleção';
         const doc = editor.doc;
-        box.innerHTML = section('Desenho')
+        box.innerHTML = schematicPropertiesHtml(doc, []) + section('Desenho')
             + row('Nome', escapeHtml(doc.name || 'Sem título.dxf'))
             + row('Unidades', doc.units === 'in' ? 'polegadas' : 'milímetros')
             + row('Entidades', String(doc.entities.length))
@@ -528,6 +530,7 @@ function renderProperties(editor, root) {
             + row('Orto / Polar', `${editor.settings.ortho ? 'ligado' : 'desligado'} / ${editor.settings.polar ? 'ligado' : 'desligado'}`);
 
         bindDrawProps(editor, root, box);
+        bindSchematicProperties(editor, box);
         for (const [prop, field] of [['dimTextHeight', 'textHeight'], ['dimArrowSize', 'arrowSize'], ['dimOverallScale', 'scale']]) {
             const input = box.querySelector(`[data-global-prop="${prop}"]`);
             if (!input) continue;
@@ -691,7 +694,7 @@ function renderProperties(editor, root) {
         html += section('Geometria');
         entityRows(editor, selected[0]).forEach(([k, v]) => { html += row(k, escapeHtml(String(v))); });
         const locked = !isEntityEditable(editor.doc, selected[0]);
-        for (const field of geometryFields(selected[0])) html += `<div class="cad-prop-row"><label class="cad-prop-key">${escapeHtml(geometryLabel(field))}</label><span class="cad-prop-value"><input type="number" step="any" data-geometry="${escapeHtml(field.key)}" value="${field.value}" ${locked ? 'disabled' : ''}></span></div>`
+        for (const field of geometryFields(selected[0])) html += `<div class="cad-prop-row"><label class="cad-prop-key">${escapeHtml(geometryLabel(field))}</label><span class="cad-prop-value"><input type="number" step="any" data-geometry="${escapeHtml(field.key)}" value="${geometryFieldDisplay(field)}" ${locked ? 'disabled' : ''}></span></div>`
             + (field.key === 'length' ? `<div class="cad-prop-row"><span class="cad-prop-key">Ponta fixa</span><span class="cad-prop-value"><select data-prop="line-anchor" title="Ponta que fica parada ao mudar o comprimento">${LINE_ANCHORS.map(([v, label]) => `<option value="${v}" ${v === lineLengthAnchor ? 'selected' : ''}>${label}</option>`).join('')}</select></span></div>` : '');
         if (['text', 'dimension'].includes(selected[0].type)) {
             const entity = selected[0];
@@ -719,7 +722,9 @@ function renderProperties(editor, root) {
         html += section('Resumo') + row('Comprimento total', fmt(total));
         kinds.forEach((k) => { html += row(TYPE_LABELS[k] ?? k, String(selected.filter((e) => e.type === k).length)); });
     }
+    html = schematicPropertiesHtml(editor.doc, selected) + html;
     box.innerHTML = html;
+    bindSchematicProperties(editor, box);
 
     for (const [selector, field] of [['[data-font-family]', 'fontFamily'], ['[data-font-bold]', 'bold'], ['[data-font-italic]', 'italic']]) box.querySelector(selector)?.addEventListener('change', (event) => {
         const entity = editor.doc.entities.find((x) => x.id === selected[0]?.id);
@@ -2122,6 +2127,7 @@ function refreshUi(editor, root) {
     const undoButton = root.querySelector('[data-cad-command="UNDO"]');
     const redoButton = root.querySelector('[data-cad-command="REDO"]');
 
+    editor.schematicUi?.refresh();
     if (!hasTabs) {
         editor.startScreen?.render();
         if (title) title.textContent = '';
@@ -2167,7 +2173,7 @@ export async function handlePendingOrUrlImport(editor, tabs = null) {
     if (pending?.text) {
         const name = pending.name || 'desenho.dxf';
         const kind = pending.kind || kindOf(name);
-        if (!['dxf', 'svg', 'elmt', 'qet'].includes(kind) || kindOf(name) !== kind) {
+        if (!['dxf', 'svg', 'elmt', 'qet', 'traco'].includes(kind) || kindOf(name) !== kind) {
             editor.log('Formato não suportado pelo CAD.', 'warn');
             cleanupImportUrl();
             return;
@@ -2190,6 +2196,8 @@ export async function handlePendingOrUrlImport(editor, tabs = null) {
             await editor.importElmtText(pending.text, name);
         } else if (kind === 'qet') {
             await editor.importQetText(pending.text, name);
+        } else if (kind === 'traco') {
+            await editor.importTracoText(pending.text, name);
         } else {
             await editor.importDxfText(pending.text, name);
         }
@@ -2244,6 +2252,7 @@ async function initCad(root) {
     setupLayerSelect(editor, root);
     setupLayerManager(editor, root);
     setupPanels(editor, root);
+    editor.schematicUi = setupSchematicUi(editor, root);
     refreshUi(editor, root);
     window.tracoCad = editor;
     if (root.querySelector('[data-cad-tabs]')) {

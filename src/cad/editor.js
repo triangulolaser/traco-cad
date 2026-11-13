@@ -6,7 +6,7 @@ import { usage } from '../usage-telemetry.js';
 import { Viewport } from './viewport.js';
 import { Renderer } from './renderer.js';
 import { Terminal } from './terminal.js';
-import { History, createDocument, addEntities, removeEntities, updateEntities, replaceEntities, editableEntities, visibleEntities, entityColor, layerOf, isEntityEditable, aciToHex, getDocumentSpatialIndex, ensureEntityIds } from './document.js';
+import { History, createDocument, addEntities, removeEntities, updateEntities, replaceEntities, editableEntities, visibleEntities, entityColor, layerOf, isEntityEditable, isEntityShown, aciToHex, getDocumentSpatialIndex, ensureEntityIds } from './document.js';
 import { findSnap, findCenterHints, findOverrideSnap, parseSnapOverride, SNAP_OVERRIDE_PROMPTS, applyOrtho, applyPolar, applyAngleLock, findSoftAxis, defaultSnapSettings, SNAP_MODES } from './snaps.js';
 import { findTrackingSnap, mergeSnaps, trackingPointFromSnap, addTrackingPoint } from './tracking.js';
 import { parsePointInput, parseNumberInput, matchKeyword, formatOptions, splitCommandLine } from './input.js';
@@ -23,6 +23,8 @@ import { getFilletGrips, filletRadiusFromCursor, filletAtCorner, niceRadiusStep 
 import { getEntityGrips, applyGripMove, findGripAt, gripsVisible, dimensionTextCenterSnap } from './grips.js';
 import './extra-entities.js';
 import './hatch.js';
+import { syncSchematic } from './schematic.js';
+import { documentMode, normalizeSchematicDocument } from './schematic-mode.js';
 import { renameLayer, deleteLayer, updateLayer, ensureLayer } from './document.js';
 import { loadCadSettings, saveCadSettings } from './storage.js';
 import {
@@ -223,7 +225,7 @@ export class Editor {
     }
 
     commit(label, doc) {
-        doc = this.applyDrawProps(doc);
+        doc = syncSchematic(this.applyDrawProps(doc));
         this.history.commit(label, doc);
         usage('edit');
         setEntityContext({ dimStyle: doc.dimStyle });
@@ -264,7 +266,7 @@ export class Editor {
 
     loadDocument(doc) {
         if (this.pending) this.cancel();
-        doc = ensureEntityIds(doc);
+        doc = syncSchematic(ensureEntityIds(doc));
         // Depois de fechar todas as abas, o workspace permanece vazio. Uma
         // importação precisa de uma aba real; só trocar o history mantém canvas
         // e terminal ocultos por is-empty e deixa o desenho fora da persistência.
@@ -471,6 +473,11 @@ export class Editor {
 
     applyRemoteDocument(nextDoc) {
         if (!nextDoc) return;
+        // A folha ativa é vista deste usuário: a mudança remota não troca a aba.
+        if (nextDoc.mode === 'esquema') nextDoc = normalizeSchematicDocument({ ...nextDoc, currentSheet: this.doc?.currentSheet });
+        // Origem do arquivo é local (onde este usuário salva); o documento compartilhado não a carrega.
+        for (const key of ['sourceFormat', 'filePath']) if (this.doc?.[key] !== undefined && nextDoc[key] === undefined) nextDoc = { ...nextDoc, [key]: this.doc[key] };
+        nextDoc = syncSchematic(nextDoc);
         this.history.replace(nextDoc);
         const existingIds = new Set((nextDoc.entities || []).map((e) => e.id));
         this.selection = new Set([...this.selection].filter((id) => existingIds.has(id)));
@@ -744,10 +751,7 @@ export class Editor {
         const spatial = getDocumentSpatialIndex(this.doc);
         const snapReach = Math.max(tolerance * 2, 1);
         const entities = spatial
-            ? spatial.searchRadius(this.cursorWorld, snapReach).filter((e) => {
-                const l = layerOf(this.doc, e.layer);
-                return !l || l.visible;
-            })
+            ? spatial.searchRadius(this.cursorWorld, snapReach).filter((e) => isEntityShown(this.doc, e))
             : visibleEntities(this.doc);
         const reference = this.pending?.reference ?? (this.activeGrip ? this.activeGrip.point : null);
         if (this.pending?.snapOverride) {
@@ -1257,7 +1261,7 @@ export class Editor {
         this.terminal.onSubmit = (value) => this.onTerminalSubmit(value);
         this.terminal.acceptsSpaces = () => this.pending?.mode === 'string';
         this.terminal.onCancel = () => this.cancel();
-        this.terminal.getSuggestions = (value) => (this.pending ? [] : suggestCommands(value));
+        this.terminal.getSuggestions = (value) => (this.pending ? [] : suggestCommands(value, 50, { mode: documentMode(this.doc) }));
         this.terminal.onTab = () => (this.dyn && !this.terminal.value() ? this.focusDynField(this.dyn.active) : this.cycleSnapPriority());
 
         if (typeof window !== 'undefined') {
@@ -1385,6 +1389,10 @@ export class Editor {
             const text = await file.text();
             await this.importElmtText(text, file.name);
             if (resolvedPath && this.doc) this.doc.filePath = resolvedPath;
+            return;
+        }
+        if (kind === 'traco' || /\.traco$/i.test(file.name)) {
+            await this.importTracoText(await file.text(), file.name, { filePath: resolvedPath });
             return;
         }
         if (kind === 'qet' || /\.qet$/i.test(file.name)) {
@@ -2292,6 +2300,27 @@ export class Editor {
         this.zoomExtents();
         const termCount = (doc.entities || []).filter((e) => e.type === 'terminal').length;
         this.log(`Aberto elemento QElectroTech ${name}: ${doc.entities.length} entidades (${termCount} terminal/terminais).`);
+    }
+
+    async importTracoText(text, name = 'esquema.traco', { filePath = null } = {}) {
+        let result;
+        try {
+            const { tracoToDocument } = await import('./traco-file.js');
+            result = tracoToDocument(text, { name });
+        } catch (error) {
+            usage('import_failure');
+            this.log(`Falha ao abrir esquema: ${error.message}`, 'error');
+            return;
+        }
+        if (filePath) result.doc.filePath = filePath;
+        this.loadDocument(result.doc);
+        this.setSourceFile(name, text);
+        usage('import_success');
+        this.resize();
+        this.zoomExtents();
+        result.warnings.forEach((w) => this.log(w, 'warn'));
+        const count = (type) => result.doc.entities.filter((e) => e.type === type).length;
+        this.log(`Aberto esquema ${name}: ${count('symbol')} símbolo(s), ${count('link')} ligação(ões).`);
     }
 
     async importQetText(text, name = 'projeto.qet') {

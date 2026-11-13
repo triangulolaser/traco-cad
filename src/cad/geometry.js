@@ -3,6 +3,49 @@
 // Funções puras, sem dependência de DOM, para permitir teste em Node.
 
 import { fontEm, LINE_SPACING, measuredLineWidth } from './fonts.js';
+import {
+    twoDiff,
+    twoProduct,
+    compensatedCross,
+    compensatedDot,
+    solveQuadraticStable,
+    bulgeToArcRational,
+    evalBulgeArcRational,
+    closestPointOnBulgeArcRational,
+    intersectLineBulgeArcRational,
+    sweepToBulgeRational,
+} from './predicates.js';
+import {
+    evalBezierPoint,
+    closestPointOnBezier,
+    bezierPerpendicularFeet,
+    bezierTangentPoints,
+    bezierQuadrants,
+    bezierBoxExact,
+    bezierLength,
+    splitSplineExact,
+} from './nurbs-exact.js';
+import {
+    evalEllipsePoint,
+    isFullEllipseCurve,
+    ellipseParamInRange,
+    closestPointOnEllipse,
+    ellipsePerpendicularFeet,
+    ellipseTangentPoints,
+    ellipseQuadrants,
+    ellipseBoxExact,
+    ellipseLength,
+    intersectLineEllipse,
+    intersectConics,
+    intersectLineBezier,
+    intersectBezierConic,
+    intersectBezierBezier,
+} from './curve-intersect.js';
+import {
+    offsetEntityPlanar,
+    offsetEntityMultiple,
+    offsetPolylinePlanar,
+} from './offset-planar.js';
 
 export const EPS = 1e-9;
 export const TWO_PI = Math.PI * 2;
@@ -103,14 +146,23 @@ export function distancePointSegment(p, a, b) {
 
 // Interseção de duas retas infinitas. Retorna null se paralelas.
 export function intersectLines(a1, a2, b1, b2) {
-    const r = sub(a2, a1);
-    const s = sub(b2, b1);
-    const denom = cross(r, s);
+    const [rxHi, rxLo] = twoDiff(a2.x, a1.x);
+    const [ryHi, ryLo] = twoDiff(a2.y, a1.y);
+    const [sxHi, sxLo] = twoDiff(b2.x, b1.x);
+    const [syHi, syLo] = twoDiff(b2.y, b1.y);
+    const rx = rxHi + rxLo;
+    const ry = ryHi + ryLo;
+    const sx = sxHi + sxLo;
+    const sy = syHi + syLo;
+    const denom = compensatedCross(rx, ry, sx, sy);
     if (Math.abs(denom) < EPS) return null;
-    const qp = sub(b1, a1);
-    const t = cross(qp, s) / denom;
-    const u = cross(qp, r) / denom;
-    return { point: add(a1, scale(r, t)), t, u };
+    const [qpxHi, qpxLo] = twoDiff(b1.x, a1.x);
+    const [qpyHi, qpyLo] = twoDiff(b1.y, a1.y);
+    const qpx = qpxHi + qpxLo;
+    const qpy = qpyHi + qpyLo;
+    const t = compensatedCross(qpx, qpy, sx, sy) / denom;
+    const u = compensatedCross(qpx, qpy, rx, ry) / denom;
+    return { point: { x: a1.x + rx * t, y: a1.y + ry * t }, t, u };
 }
 
 // Interseção de dois segmentos (t e u dentro de [0,1] com tolerância).
@@ -123,65 +175,89 @@ export function intersectSegments(a1, a2, b1, b2, tol = 1e-9) {
 
 // Interseção de reta infinita com círculo. Retorna lista de pontos (0, 1 ou 2) com parâmetro t na reta.
 export function intersectLineCircle(a, b, center, radius) {
-    const d = sub(b, a);
-    const f = sub(a, center);
-    const A = dot(d, d);
+    const [dxHi, dxLo] = twoDiff(b.x, a.x);
+    const [dyHi, dyLo] = twoDiff(b.y, a.y);
+    const [fxHi, fxLo] = twoDiff(a.x, center.x);
+    const [fyHi, fyLo] = twoDiff(a.y, center.y);
+    const dx = dxHi + dxLo;
+    const dy = dyHi + dyLo;
+    const fx = fxHi + fxLo;
+    const fy = fyHi + fyLo;
+
+    const A = compensatedDot(dx, dy, dx, dy);
     if (A < EPS) return [];
-    const B = 2 * dot(f, d);
-    const C = dot(f, f) - radius * radius;
-    let disc = B * B - 4 * A * C;
-    // Tangência exata em ponto flutuante pode dar discriminante levemente negativo; tolerância relativa à escala.
-    if (disc < -1e-7 * (A * radius * radius + 1)) return [];
-    if (disc < 0) disc = 0;
-    const sq = Math.sqrt(disc);
-    const t1 = (-B - sq) / (2 * A);
-    const t2 = (-B + sq) / (2 * A);
-    const out = [{ point: add(a, scale(d, t1)), t: t1 }];
-    if (sq > EPS) out.push({ point: add(a, scale(d, t2)), t: t2 });
-    return out;
+    const len = Math.sqrt(A);
+    const ux = dx / len;
+    const uy = dy / len;
+
+    // Projeção ortogonal do centro sobre a reta para eliminar cancelamento em tangências rasantes e UTM 10^7:
+    const sProj = -compensatedDot(fx, fy, ux, uy);
+    const perpX = fx + sProj * ux;
+    const perpY = fy + sProj * uy;
+    const dPerp2 = compensatedDot(perpX, perpY, perpX, perpY);
+    const [r2, er2] = twoProduct(radius, radius);
+    let h2 = (r2 - dPerp2) + er2;
+
+    if (h2 < -1e-7 * (r2 + 1)) return [];
+    if (h2 <= 1e-14 * (r2 + 1)) {
+        const t = sProj / len;
+        return [{ point: { x: center.x + perpX, y: center.y + perpY }, t }];
+    }
+    const h = Math.sqrt(h2);
+    const t1 = (sProj - h) / len;
+    const t2 = (sProj + h) / len;
+    return [
+        { point: { x: center.x + perpX - h * ux, y: center.y + perpY - h * uy }, t: t1 },
+        { point: { x: center.x + perpX + h * ux, y: center.y + perpY + h * uy }, t: t2 },
+    ];
 }
 
 export function intersectCircles(c1, r1, c2, r2) {
-    const d = distance(c1, c2);
+    const [dxHi, dxLo] = twoDiff(c2.x, c1.x);
+    const [dyHi, dyLo] = twoDiff(c2.y, c1.y);
+    const dx = dxHi + dxLo;
+    const dy = dyHi + dyLo;
+    const d2 = compensatedDot(dx, dy, dx, dy);
+    const d = Math.sqrt(d2);
     if (d < EPS) return [];
     if (d > r1 + r2 + 1e-9 || d < Math.abs(r1 - r2) - 1e-9) return [];
-    const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
-    let h2 = r1 * r1 - a * a;
+
+    // (r1^2 - r2^2) calculado como (r1 - r2)*(r1 + r2) para evitar perda em raios grandes
+    const [diffR2, ediffR2] = twoProduct(r1 - r2, r1 + r2);
+    const a = ((diffR2 + d2) + ediffR2) / (2 * d);
+    const [r1Sq, er1Sq] = twoProduct(r1, r1);
+    const [aSq, eaSq] = twoProduct(a, a);
+    let h2 = (r1Sq - aSq) + (er1Sq - eaSq);
     if (h2 < 0) h2 = 0;
     const h = Math.sqrt(h2);
-    const dir = normalize(sub(c2, c1));
-    const p = add(c1, scale(dir, a));
-    if (h < EPS) return [p];
-    const n = perpendicular(dir);
-    return [add(p, scale(n, h)), sub(p, scale(n, h))];
+    const ux = dx / d;
+    const uy = dy / d;
+    const px = c1.x + ux * a;
+    const py = c1.y + uy * a;
+    if (h <= 1e-12 * Math.max(1, r1, r2)) return [{ x: px, y: py }];
+    const nx = -uy;
+    const ny = ux;
+    return [
+        { x: px + nx * h, y: py + ny * h },
+        { x: px - nx * h, y: py - ny * h },
+    ];
 }
 
 // ---------------------------------------------------------------------------
 // Curvas primitivas: representação uniforme para hit-test, snaps e trim.
-// Uma "curva" é { kind: 'segment', a, b } ou { kind: 'arc', center, radius, start, end } (CCW)
-// ou { kind: 'circle', center, radius }.
+// Uma "curva" é { kind: 'segment', a, b }, { kind: 'arc', center, radius, start, end } (CCW),
+// { kind: 'circle', center, radius }, { kind: 'ellipse', center, major, ratio, start, end, full }
+// ou { kind: 'bezier', degree, points, weights, t0, t1, closed, isFirst, isLast }.
 
 export function bulgeToArc(a, b, bulge) {
-    // Conversão de bulge de polilinha DXF em arco. bulge = tan(θ/4); sinal indica sentido.
-    const chord = distance(a, b);
-    if (chord < EPS || Math.abs(bulge) < EPS) return null;
-    const theta = 4 * Math.atan(bulge);
-    const radius = Math.abs(chord / (2 * Math.sin(theta / 2)));
-    const mid = midpoint(a, b);
-    const dir = normalize(sub(b, a));
-    const n = perpendicular(dir);
-    const h = (chord / 2) / Math.tan(theta / 2);
-    const center = add(mid, scale(n, h));
-    let start = angleOf(center, a);
-    let end = angleOf(center, b);
-    if (bulge < 0) [start, end] = [end, start];
-    return { kind: 'arc', center, radius, start: normalizeAngle(start), end: normalizeAngle(end) };
+    // Conversão racional invariante à trigonometria de bulge DXF (b = tan(θ/4)) em arco.
+    return bulgeToArcRational(a, b, bulge);
 }
 
 export function arcToBulge(center, radius, start, end, from, to) {
     // Bulge para o trecho de `from` a `to` percorrido no sentido CCW de start→end.
     const sweep = sweepCCW(start, end);
-    const bulge = Math.tan(sweep / 4);
+    const bulge = sweepToBulgeRational(sweep);
     // Se o vértice `from` corresponde ao fim do arco, o sentido no polígono é horário.
     const fromAngle = angleOf(center, from);
     const clockwise = !nearlyEqual(normalizeAngle(fromAngle - start), 0, 1e-6);
@@ -415,6 +491,11 @@ export function pointInTextBox(p, entity) {
 export function closestPointOnCurve(p, curve) {
     if (curve.kind === 'segment') return closestPointOnSegment(p, curve.a, curve.b).point;
     if (curve.kind === 'circle') return closestPointOnCircle(p, curve.center, curve.radius);
+    if (curve.kind === 'ellipse') return closestPointOnEllipse(p, curve);
+    if (curve.kind === 'bezier') return closestPointOnBezier(p, curve).point;
+    if (curve.chordA && curve.chordB && curve.bulge && Math.abs(curve.bulge) < 1e-2) {
+        return closestPointOnBulgeArcRational(p, curve);
+    }
     return closestPointOnArc(p, curve.center, curve.radius, curve.start, curve.end);
 }
 
@@ -424,22 +505,57 @@ export function distanceToCurve(p, curve) {
 
 export function curveEndpoints(curve) {
     if (curve.kind === 'segment') return [curve.a, curve.b];
-    if (curve.kind === 'arc') return [polar(curve.center, curve.start, curve.radius), polar(curve.center, curve.end, curve.radius)];
+    if (curve.kind === 'arc') {
+        if (curve.p0 && curve.p1) return [curve.p0, curve.p1];
+        return [polar(curve.center, curve.start, curve.radius), polar(curve.center, curve.end, curve.radius)];
+    }
+    if (curve.kind === 'ellipse') {
+        if (isFullEllipseCurve(curve)) return [];
+        return [evalEllipsePoint(curve, curve.start ?? 0), evalEllipsePoint(curve, curve.end ?? TWO_PI)];
+    }
+    if (curve.kind === 'bezier') {
+        if (curve.closed) return [];
+        const pts = curve.points;
+        if (!pts || pts.length === 0) return [];
+        const out = [];
+        if (curve.isFirst || curve.isFirst === undefined) out.push(pts[0]);
+        if (curve.isLast || curve.isLast === undefined) out.push(pts[pts.length - 1]);
+        return out;
+    }
     return [];
 }
 
 export function curveMidpoint(curve) {
     if (curve.kind === 'segment') return midpoint(curve.a, curve.b);
-    if (curve.kind === 'arc') return polar(curve.center, curve.start + sweepCCW(curve.start, curve.end) / 2, curve.radius);
+    if (curve.kind === 'arc') {
+        if (curve.chordA && curve.chordB && curve.bulge) {
+            return evalBulgeArcRational(curve.chordA, curve.chordB, curve.bulge, 0);
+        }
+        return polar(curve.center, curve.start + sweepCCW(curve.start, curve.end) / 2, curve.radius);
+    }
+    if (curve.kind === 'ellipse') {
+        if (isFullEllipseCurve(curve)) return null;
+        const s = curve.start ?? 0;
+        const e = curve.end ?? TWO_PI;
+        return evalEllipsePoint(curve, s + sweepCCW(s, e) / 2);
+    }
+    if (curve.kind === 'bezier') {
+        if (curve.closed) return null;
+        if (curve.isFirst && curve.isLast) return evalBezierPoint(curve, 0.5);
+        return null;
+    }
     return null;
 }
 
 export function curveCenter(curve) {
-    return curve.kind === 'segment' ? null : curve.center;
+    if (curve.kind === 'segment' || curve.kind === 'bezier') return null;
+    return curve.center;
 }
 
 export function curveQuadrants(curve) {
     if (curve.kind === 'segment') return [];
+    if (curve.kind === 'ellipse') return ellipseQuadrants(curve);
+    if (curve.kind === 'bezier') return bezierQuadrants(curve);
     const out = [];
     for (const angle of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
         if (curve.kind === 'circle' || angleInArc(angle, curve.start, curve.end)) out.push(polar(curve.center, angle, curve.radius));
@@ -453,18 +569,93 @@ function pointOnCurve(p, curve, tol = 1e-7) {
         return t >= -tol && t <= 1 + tol;
     }
     if (curve.kind === 'circle') return true;
-    return angleInArc(angleOf(curve.center, p), curve.start, curve.end);
+    if (curve.kind === 'ellipse') {
+        if (isFullEllipseCurve(curve)) return true;
+        return ellipseParamInRange(
+            Math.atan2(
+                ((p.x - curve.center.x) * -curve.major.y + (p.y - curve.center.y) * curve.major.x) / (curve.ratio || 1),
+                (p.x - curve.center.x) * curve.major.x + (p.y - curve.center.y) * curve.major.y,
+            ),
+            curve,
+            tol,
+        );
+    }
+    if (curve.kind === 'bezier') {
+        const { u, distSq } = closestPointOnBezier(p, curve);
+        const scale = Math.max(1, Math.hypot(p.x, p.y));
+        return u >= -tol && u <= 1 + tol && distSq <= (1e-5 * scale) ** 2;
+    }
+    if (curve.chordA && curve.chordB && curve.bulge && Math.abs(curve.bulge) < 1e-2) {
+        const { t } = projectOnLine(p, curve.chordA, curve.chordB);
+        return t >= -tol && t <= 1 + tol;
+    }
+    // Ponto na ponta inicial do arco pode cair um ulp antes de start e virar ~2π: aceitar dos dois lados.
+    if (angleInArc(angleOf(curve.center, p), curve.start, curve.end)) return true;
+    return normalizeAngle(angleOf(curve.center, p) - curve.start) >= 2 * Math.PI - 1e-9;
 }
 
 // Interseções entre duas curvas, limitadas à extensão de cada uma.
 export function intersectCurves(c1, c2, { extend1 = false, extend2 = false } = {}) {
+    // 1. Bézier × qualquer curva
+    if (c1.kind === 'bezier' && c2.kind === 'bezier') {
+        return intersectBezierBezier(c1, c2).map((h) => h.point);
+    }
+    if (c1.kind === 'bezier' && c2.kind === 'segment') {
+        return intersectLineBezier(c2.a, c2.b, c1)
+            .filter((h) => (extend1 || (h.u >= -1e-7 && h.u <= 1 + 1e-7)) && (extend2 || (h.t >= -1e-7 && h.t <= 1 + 1e-7)))
+            .map((h) => h.point);
+    }
+    if (c1.kind === 'segment' && c2.kind === 'bezier') {
+        return intersectLineBezier(c1.a, c1.b, c2)
+            .filter((h) => (extend1 || (h.t >= -1e-7 && h.t <= 1 + 1e-7)) && (extend2 || (h.u >= -1e-7 && h.u <= 1 + 1e-7)))
+            .map((h) => h.point);
+    }
+    if (c1.kind === 'bezier') {
+        return intersectBezierConic(c1, c2)
+            .filter((h) => extend2 || pointOnCurve(h.point, c2))
+            .map((h) => h.point);
+    }
+    if (c2.kind === 'bezier') {
+        return intersectBezierConic(c2, c1)
+            .filter((h) => extend1 || pointOnCurve(h.point, c1))
+            .map((h) => h.point);
+    }
+
+    // 2. Elipse × qualquer curva
+    if (c1.kind === 'segment' && c2.kind === 'ellipse') {
+        return intersectLineEllipse(c1.a, c1.b, c2)
+            .filter((h) => (extend1 || (h.t >= -1e-7 && h.t <= 1 + 1e-7)) && (extend2 || ellipseParamInRange(h.theta, c2)))
+            .map((h) => h.point);
+    }
+    if (c1.kind === 'ellipse' && c2.kind === 'segment') {
+        return intersectLineEllipse(c2.a, c2.b, c1)
+            .filter((h) => (extend1 || ellipseParamInRange(h.theta, c1)) && (extend2 || (h.t >= -1e-7 && h.t <= 1 + 1e-7)))
+            .map((h) => h.point);
+    }
+    if (c1.kind === 'ellipse' || c2.kind === 'ellipse') {
+        return intersectConics(c1, c2)
+            .filter((h) => (extend1 || pointOnCurve(h.point, c1)) && (extend2 || pointOnCurve(h.point, c2)))
+            .map((h) => h.point);
+    }
+
+    // 3. Primitivas clássicas (segment, circle, arc)
     let raw = [];
     if (c1.kind === 'segment' && c2.kind === 'segment') {
         const hit = intersectLines(c1.a, c1.b, c2.a, c2.b);
         raw = hit ? [hit.point] : [];
     } else if (c1.kind === 'segment') {
+        if (c2.kind === 'arc' && c2.chordA && c2.chordB && c2.bulge && Math.abs(c2.bulge) < 1e-2) {
+            return intersectLineBulgeArcRational(c1.a, c1.b, c2, extend2)
+                .filter((h) => extend1 || (h.t >= -1e-7 && h.t <= 1 + 1e-7))
+                .map((h) => h.point);
+        }
         raw = intersectLineCircle(c1.a, c1.b, c2.center, c2.radius).map((h) => h.point);
     } else if (c2.kind === 'segment') {
+        if (c1.kind === 'arc' && c1.chordA && c1.chordB && c1.bulge && Math.abs(c1.bulge) < 1e-2) {
+            return intersectLineBulgeArcRational(c2.a, c2.b, c1, extend1)
+                .filter((h) => extend2 || (h.t >= -1e-7 && h.t <= 1 + 1e-7))
+                .map((h) => h.point);
+        }
         raw = intersectLineCircle(c2.a, c2.b, c1.center, c1.radius).map((h) => h.point);
     } else {
         raw = intersectCircles(c1.center, c1.radius, c2.center, c2.radius);
@@ -472,20 +663,35 @@ export function intersectCurves(c1, c2, { extend1 = false, extend2 = false } = {
     return raw.filter((p) => (extend1 || pointOnCurve(p, c1)) && (extend2 || pointOnCurve(p, c2)));
 }
 
-// Foot da perpendicular a partir de p sobre a curva (para OSNAP PER).
-export function perpendicularFoot(p, curve) {
+// Todos os pés de perpendicular a partir de p sobre a curva (para OSNAP PER).
+export function perpendicularFeet(p, curve) {
     if (curve.kind === 'segment') {
         const { point, t } = projectOnLine(p, curve.a, curve.b);
-        return t >= 0 && t <= 1 ? point : null;
+        return t >= -1e-9 && t <= 1 + 1e-9 ? [point] : [];
     }
-    const candidate = closestPointOnCircle(p, curve.center, curve.radius);
-    if (curve.kind === 'circle') return candidate;
-    return angleInArc(angleOf(curve.center, candidate), curve.start, curve.end) ? candidate : null;
+    if (curve.kind === 'ellipse') return ellipsePerpendicularFeet(p, curve);
+    if (curve.kind === 'bezier') return bezierPerpendicularFeet(p, curve);
+    const near = closestPointOnCircle(p, curve.center, curve.radius);
+    const far = sub(scale(curve.center, 2), near);
+    if (curve.kind === 'circle') return [near, far];
+    return [near, far].filter((q) => angleInArc(angleOf(curve.center, q), curve.start, curve.end));
 }
 
-// Pontos de tangência de p a um círculo/arco.
+// Foot da perpendicular a partir de p sobre a curva (para OSNAP PER).
+export function perpendicularFoot(p, curve, cursor = null) {
+    const feet = perpendicularFeet(p, curve);
+    if (feet.length === 0) return null;
+    if (cursor && feet.length > 1) {
+        feet.sort((a, b) => distance(a, cursor) - distance(b, cursor));
+    }
+    return feet[0];
+}
+
+// Pontos de tangência de p a um círculo, arco, elipse ou Bézier/spline.
 export function tangentPoints(p, curve) {
     if (curve.kind === 'segment') return [];
+    if (curve.kind === 'ellipse') return ellipseTangentPoints(p, curve);
+    if (curve.kind === 'bezier') return bezierTangentPoints(p, curve);
     const d = distance(p, curve.center);
     if (d <= curve.radius + EPS) return [];
     const base = angleOf(curve.center, p);
@@ -771,6 +977,8 @@ export function boxIsEmpty(box) {
 }
 
 export function curveBox(curve) {
+    if (curve.kind === 'ellipse') return ellipseBoxExact(curve);
+    if (curve.kind === 'bezier') return bezierBoxExact(curve);
     const box = emptyBox();
     if (curve.kind === 'segment') {
         boxAddPoint(box, curve.a);
@@ -783,6 +991,9 @@ export function curveBox(curve) {
         return box;
     }
     curveEndpoints(curve).forEach((p) => boxAddPoint(box, p));
+    if (curve.kind === 'arc' && curve.chordA && curve.chordB && curve.bulge != null) {
+        boxAddPoint(box, evalBulgeArcRational(curve.chordA, curve.chordB, curve.bulge, 0));
+    }
     curveQuadrants(curve).forEach((p) => boxAddPoint(box, p));
     return box;
 }
@@ -827,6 +1038,12 @@ export function curveIntersectsBox(curve, box) {
     }
     if (curve.kind === 'segment') {
         return pointInBox(curve.a, box) || pointInBox(curve.b, box);
+    }
+    if (curve.kind === 'bezier') {
+        return pointInBox(curve.points[0], box) || pointInBox(curve.points[curve.points.length - 1], box);
+    }
+    if (curve.kind === 'ellipse') {
+        return pointInBox(evalEllipsePoint(curve, curve.start ?? 0), box);
     }
     // Círculo/arco que contém o retângulo inteiro sem cruzar bordas não é seleção crossing.
     return curveEndpoints(curve).some((p) => pointInBox(p, box));
@@ -927,29 +1144,13 @@ export function mirrorEntity(entity, a, b) {
     return transformEntity(entity, (p) => mirrorPoint(p, a, b), { mirror: true });
 }
 
-// Offset paralelo. `side` é um ponto que define o lado.
+// Offset paralelo com resolução planar global (auto-interseções, swallowtails, pinch-off de gargalos em N ilhas e hodógrafo para spline/elipse).
+// `side` é um ponto que define o lado.
 export function offsetEntity(entity, dist, side) {
-    switch (entity.type) {
-        case 'line': {
-            const dir = normalize(sub(entity.end, entity.start));
-            const n = perpendicular(dir);
-            const sign = cross(dir, sub(side, entity.start)) >= 0 ? 1 : -1;
-            const delta = scale(n, dist * sign);
-            return { ...entity, start: add(entity.start, delta), end: add(entity.end, delta) };
-        }
-        case 'circle':
-        case 'arc': {
-            const outward = distance(side, entity.center) > entity.radius;
-            const radius = outward ? entity.radius + dist : entity.radius - dist;
-            if (radius <= EPS) return null;
-            return { ...entity, radius };
-        }
-        case 'polyline':
-            return offsetPolyline(entity, dist, side);
-        default:
-            return null;
-    }
+    return offsetEntityPlanar(entity, dist, side);
 }
+
+export { offsetEntityMultiple, offsetPolylinePlanar };
 
 function closeCoincidentEnds(entity) {
     const vs = entity.vertices;
@@ -1114,13 +1315,71 @@ export function splitEntityAt(entity, rawPoints) {
         pieces.push({ ...entity, id: undefined, start: normalizeAngle(entity.start + cursor), end: entity.end });
         return pieces;
     }
+    if (entity.type === 'ellipse') {
+        const majorLen = Math.hypot(entity.major.x, entity.major.y);
+        const isFull = Math.abs((entity.end ?? TWO_PI) - (entity.start ?? 0)) >= TWO_PI - 1e-6;
+        const fullCurve = { kind: 'ellipse', center: entity.center, major: entity.major, ratio: entity.ratio, start: 0, end: TWO_PI, full: true };
+        if (isFull) {
+            const angles = points.map((p) => normalizeAngle(closestPointOnEllipse(fullCurve, p).t)).sort((a, b) => a - b);
+            if (angles.length > 1 && (angles[0] + TWO_PI - angles[angles.length - 1]) * majorLen < tol) angles.pop();
+            if (angles.length < 2) return [entity];
+            const pieces = [];
+            for (let i = 0; i < angles.length; i += 1) {
+                const s = angles[i];
+                const e = angles[(i + 1) % angles.length];
+                pieces.push({ ...entity, id: undefined, start: s, end: e, _bbox: undefined });
+            }
+            return pieces;
+        }
+        const s0 = normalizeAngle(entity.start ?? 0);
+        const e0 = normalizeAngle(entity.end ?? TWO_PI);
+        const sweep = sweepCCW(s0, e0);
+        const rels = points
+            .map((p) => normalizeAngle(closestPointOnEllipse(fullCurve, p).t - s0))
+            .filter((r) => r * majorLen > tol && (sweep - r) * majorLen > tol)
+            .sort((a, b) => a - b);
+        if (rels.length === 0) return [entity];
+        const pieces = [];
+        let cursor = 0;
+        rels.forEach((r) => {
+            pieces.push({ ...entity, id: undefined, start: normalizeAngle(s0 + cursor), end: normalizeAngle(s0 + r), _bbox: undefined });
+            cursor = r;
+        });
+        pieces.push({ ...entity, id: undefined, start: normalizeAngle(s0 + cursor), end: e0, _bbox: undefined });
+        return pieces;
+    }
+    if (entity.type === 'spline') {
+        const beziers = entityCurves(entity).filter((c) => c.kind === 'bezier');
+        if (beziers.length === 0) return [entity];
+        const params = [];
+        for (const p of points) {
+            let best = null;
+            for (const c of beziers) {
+                const hit = closestPointOnBezier(c, p);
+                if (!best || hit.dist < best.dist) {
+                    const t0 = c.t0 ?? 0;
+                    const t1 = c.t1 ?? 1;
+                    best = { dist: hit.dist, u: t0 + hit.t * (t1 - t0) };
+                }
+            }
+            if (best) params.push(best.u);
+        }
+        return splitSplineExact(entity, params);
+    }
     return [entity];
 }
 
 // Tolerância de corte relativa ao tamanho das coordenadas, a mesma escala usada no TRIM.
 export function splitTolerance(entity) {
-    const pts = entity.type === 'line' ? [entity.start, entity.end] : entity.center ? [entity.center] : [];
-    const reach = Math.max(1, ...pts.map((p) => Math.hypot(p.x, p.y) + (entity.radius ?? 0)));
+    const pts = entity.type === 'line'
+        ? [entity.start, entity.end]
+        : entity.center
+            ? [entity.center]
+            : entity.controlPoints
+                ? entity.controlPoints
+                : entity.fitPoints ?? [];
+    const extraR = entity.radius ?? (entity.major ? Math.hypot(entity.major.x, entity.major.y) : 0);
+    const reach = Math.max(1, ...pts.map((p) => Math.hypot(p.x, p.y) + extraR));
     return 1e-6 * reach;
 }
 
@@ -1129,12 +1388,21 @@ export function isDegenerateEntity(entity) {
     const tol = splitTolerance(entity);
     if (entity.type === 'line') return distance(entity.start, entity.end) < tol;
     if (entity.type === 'arc') return sweepCCW(entity.start, entity.end) * entity.radius < tol;
+    if (entity.type === 'ellipse') {
+        const isFull = Math.abs((entity.end ?? TWO_PI) - (entity.start ?? 0)) >= TWO_PI - 1e-6;
+        if (isFull) return false;
+        const majorLen = Math.hypot(entity.major.x, entity.major.y);
+        return sweepCCW(normalizeAngle(entity.start ?? 0), normalizeAngle(entity.end ?? TWO_PI)) * majorLen < tol;
+    }
+    if (entity.type === 'spline') return entityLength(entity) < tol;
     return false;
 }
 
 export function curveLength(curve) {
     if (curve.kind === 'segment') return distance(curve.a, curve.b);
     if (curve.kind === 'circle') return TWO_PI * curve.radius;
+    if (curve.kind === 'ellipse') return ellipseLength(curve);
+    if (curve.kind === 'bezier') return bezierLength(curve);
     return sweepCCW(curve.start, curve.end) * curve.radius;
 }
 

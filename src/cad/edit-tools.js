@@ -2,7 +2,10 @@ import { add, sub, distance, midpoint, polar, angleOf, normalizeAngle, pointInBo
 import { expandInsert } from './blocks.js';
 import { ellipseIsFull } from './extra-entities.js';
 import { interpolateSpline, sampleSpline } from './splines.js';
+import { bezierPointAtDistance } from './nurbs-exact.js';
+import { ellipsePointAtDistance, evalEllipsePoint } from './curve-intersect.js';
 import { isEntityEditable } from './document.js';
+import { chamferEntitiesUniversal, filletEntitiesUniversal, solveRollingBallFillet, blendEntitiesG2, createQuinticBlendG2, extendEntityExact } from './blend-g2.js';
 
 export function gripsFor(e) {
     const point = (key, label = key) => e[key] ? [{ key, label, point: e[key] }] : [];
@@ -61,9 +64,12 @@ export function stretchEntity(e, box, delta) {
 export function stretchDocument(doc, box, delta) {
     return { ...doc, entities: doc.entities.map(e => isEntityEditable(doc, e) ? stretchEntity(e, box, delta) : e) };
 }
-export function chamferLines(a, b, d1, d2) {
-    if (a.type !== 'line' || b.type !== 'line' || a.id && a.id === b.id) throw new Error('Selecione duas linhas distintas.');
+export function chamferLines(a, b, d1, d2, options = {}) {
+    if (!a || !b || (a.id && a.id === b.id)) throw new Error('Selecione dois objetos distintos.');
     if (!(d1 >= 0 && d2 >= 0 && Number.isFinite(d1) && Number.isFinite(d2))) throw new Error('Distância inválida.');
+    if (a.type !== 'line' || b.type !== 'line') {
+        return chamferEntitiesUniversal(a, b, d1, d2, options);
+    }
     const hit = intersectLines(a.start, a.end, b.start, b.end, false, false);
     if (!hit) throw new Error('Linhas paralelas não formam chanfro.');
     const p = hit.point ?? hit;
@@ -77,6 +83,7 @@ export function chamferLines(a, b, d1, d2) {
     const x = trim(a, d1), y = trim(b, d2);
     return { first: x.entity, second: y.entity, bridge: { type: 'line', start: x.tip, end: y.tip, layer: a.layer, color: a.color } };
 }
+export { chamferEntitiesUniversal, filletEntitiesUniversal, solveRollingBallFillet, blendEntitiesG2, createQuinticBlendG2, extendEntityExact };
 export function breakAtPoint(e, p) {
     if (!['line', 'arc', 'polyline'].includes(e.type)) throw new Error('Quebra por ponto suporta linha, arco e polilinha aberta.');
     if (e.type === 'polyline') {
@@ -106,6 +113,14 @@ export function geometryFields(e) {
     if (e.type === 'line') fields.push({key:'length',value:distance(e.start,e.end)});
     if (e.type === 'polyline') e.vertices.forEach((p,i) => ['x','y','bulge'].forEach(k => fields.push({key:`vertices.${i}.${k}`,value:p[k]??0})));
     return fields;
+}
+// Valor mostrado no campo do painel: 4 casas como o LUPREC padrão (49,99999999 vira 50).
+// Razão, escala e bulge são adimensionais e pedem 6. Só a exibição arredonda; a
+// entidade mantém a precisão total enquanto o campo não for editado.
+export function geometryFieldDisplay(field) {
+    const digits = /^(ratio|scaleX|scaleY)$|\.bulge$/.test(field.key) ? 6 : 4;
+    const s = Number(field.value).toFixed(digits).replace(/\.?0+$/, '');
+    return s === '-0' || s === '' ? '0' : s;
 }
 export function setGeometryField(e, key, raw) {
     const field = geometryFields(e).find(f=>f.key===key); const value=Number(raw);
@@ -156,6 +171,12 @@ export function curvePointAtDistance(curves, dist) {
                 }
                 const point = polar(c.center, ang, c.radius);
                 return { point, angle };
+            }
+            if (c.kind === 'ellipse') {
+                return ellipsePointAtDistance(c, remaining);
+            }
+            if (c.kind === 'bezier') {
+                return bezierPointAtDistance(c, remaining);
             }
         }
         remaining -= len;
@@ -413,9 +434,21 @@ export function measureEntity(entity, segmentLength, pickPoint, { block = null, 
     let reverse = false;
     if (!isClosed && pickPoint && curves.length > 0) {
         const cFirst = curves[0];
-        const pStart = cFirst.kind === 'segment' ? cFirst.a : polar(cFirst.center, cFirst.start, cFirst.radius);
+        const pStart = cFirst.kind === 'segment'
+            ? cFirst.a
+            : cFirst.kind === 'bezier'
+                ? cFirst.points[0]
+                : cFirst.kind === 'ellipse'
+                    ? evalEllipsePoint(cFirst, cFirst.start ?? 0)
+                    : polar(cFirst.center, cFirst.start, cFirst.radius);
         const cLast = curves[curves.length - 1];
-        const pEnd = cLast.kind === 'segment' ? cLast.b : polar(cLast.center, cLast.end, cLast.radius);
+        const pEnd = cLast.kind === 'segment'
+            ? cLast.b
+            : cLast.kind === 'bezier'
+                ? cLast.points[cLast.points.length - 1]
+                : cLast.kind === 'ellipse'
+                    ? evalEllipsePoint(cLast, cLast.end ?? Math.PI * 2)
+                    : polar(cLast.center, cLast.end, cLast.radius);
         if (distance(pickPoint, pEnd) < distance(pickPoint, pStart)) {
             reverse = true;
         }

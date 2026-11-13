@@ -121,7 +121,15 @@ export function getEntityGrips(entity, dimStyle) {
             break;
 
         case 'terminal':
+        case 'symbol':
+        case 'junction':
             grips.push({ id: `${entity.id}:position`, entityId: entity.id, type: 'position', point: entity.position });
+            break;
+
+        case 'link':
+            (entity.vertices ?? []).forEach((v, i) => {
+                grips.push({ id: `${entity.id}:v${i}`, entityId: entity.id, type: 'vertex', index: i, point: { x: v.x, y: v.y } });
+            });
             break;
 
         case 'point': {
@@ -290,8 +298,18 @@ export function applyGripMove(entity, grip, targetPoint, dimStyle) {
             break;
 
         case 'terminal':
+        case 'symbol':
+        case 'junction':
             if (grip.type === 'position') {
                 return { ...entity, position: { x: p.x, y: p.y } };
+            }
+            break;
+
+        case 'link':
+            // Vértice arrastado vira manual: a ligação para de ser refeita sozinha (ADR 0007).
+            if (grip.type === 'vertex' && typeof grip.index === 'number') {
+                const vertices = entity.vertices.map((v, i) => (i === grip.index ? { x: p.x, y: p.y } : { ...v }));
+                return { ...entity, vertices, manual: true };
             }
             break;
 

@@ -99,3 +99,16 @@ test('suggestions: partial name with one match runs the suggested command on spa
     input.value = 'conc'; terminal.refreshSuggestions(); press(' ');
     assert.deepEqual(submitted, ['FILLET']);
 });
+test('eco da resposta traduz o prompt, não o valor digitado', async () => {
+    const { setLocale } = await import('../src/cad/i18n.js');
+    const { terminal } = setup();
+    const lines = [];
+    terminal.log = (text, kind) => lines.push([text, kind]);
+    setLocale('en');
+    try {
+        terminal.echo('Símbolo (nome ou categoria; Enter lista todos)', 'restricao');
+    } finally {
+        setLocale('pt-BR');
+    }
+    assert.deepEqual(lines, [['Symbol (name or category; Enter lists all) restricao', 'echo']]);
+});

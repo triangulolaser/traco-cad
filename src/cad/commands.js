@@ -3,6 +3,9 @@ import { usage } from '../usage-telemetry.js';
 import {openPrintDialog} from './print.js';
 import { openWblockDialog, confirmOverwrite } from './wblock-dialog.js';
 import {BLOCK_COMMANDS} from './block-commands.js';
+import {SCHEMATIC_COMMANDS} from './schematic-commands.js';
+import { SCHEMATIC_ONLY_COMMANDS } from './schematic-mode.js';
+import {SCHEMATIC_TYPES} from './schematic.js';
 import {expandInsert} from './blocks.js';
 import { EDIT_COMMANDS } from './edit-commands.js';
 import { PT_ALIASES, normalizeCommandName } from './pt-aliases.js';
@@ -63,7 +66,15 @@ import {
     curveIntersectsBox,
     joinCurves,
     joinCurveGroups,
+    offsetEntityMultiple,
 } from './geometry.js';
+import {
+    filletEntitiesUniversal,
+    blendEntitiesG2,
+    createQuinticBlendG2,
+    chamferEntitiesUniversal,
+    extendEntityExact,
+} from './blend-g2.js';
 import { arcMidForRadius } from './grips.js';
 import { addEntities, removeEntities, replaceEntities, updateEntities, editableEntities, setCurrentLayer, updateLayer, layerOf, createDocument, documentStats, hexToAci, aciToHex, BYLAYER } from './document.js';
 import { parseDxf, writeDxf } from './dxf.js';
@@ -1698,7 +1709,7 @@ async function offset(editor) {
         }
     }
 
-    const trimmable = (e) => ['line', 'circle', 'arc', 'polyline'].includes(e.type);
+    const trimmable = (e) => ['line', 'circle', 'arc', 'polyline', 'ellipse', 'spline'].includes(e.type);
 
     // Digitar um número em qualquer etapa troca a distância sem sair do comando.
     const setDist = (value) => {
@@ -1739,7 +1750,8 @@ async function offset(editor) {
                     const { result: r } = throughDyn.calc(cursor);
                     if (!r) return [];
                     const targetLayer = layerTarget === 'current' ? editor.doc.currentLayer : sourceEntity.layer;
-                    return [{ ...r, id: undefined, layer: targetLayer }];
+                    const list = r._allIslands?.length > 1 ? r._allIslands : [r];
+                    return list.map((item) => ({ ...item, id: undefined, layer: targetLayer }));
                 },
             });
             if (throughRes?.enter || !throughRes?.point) continue;
@@ -1749,18 +1761,18 @@ async function offset(editor) {
                 editor.log('Ponto sobre a entidade.', 'warn');
                 continue;
             }
-            const result = offsetEntity(sourceEntity, d, throughRes.point);
-            if (!result) {
+            const islands = offsetEntityMultiple(sourceEntity, d, throughRes.point);
+            if (!islands || islands.length === 0) {
                 editor.log('Offset impossível para esse objeto.', 'error');
                 continue;
             }
             const targetLayer = layerTarget === 'current' ? editor.doc.currentLayer : sourceEntity.layer;
-            const newEntity = { ...result, id: undefined, layer: targetLayer };
+            const newEntities = islands.map((item) => ({ ...item, id: undefined, layer: targetLayer }));
 
             if (erase) {
-                editor.commit('Offset (Através, Apagar)', replaceEntities(editor.doc, new Map([[sourceEntity.id, newEntity]])));
+                editor.commit('Offset (Através, Apagar)', replaceEntities(editor.doc, new Map([[sourceEntity.id, newEntities.length === 1 ? newEntities[0] : newEntities]])));
             } else {
-                editor.commit('Offset (Através)', addEntities(editor.doc, [newEntity]));
+                editor.commit('Offset (Através)', addEntities(editor.doc, newEntities));
             }
             continue;
         }
@@ -1788,7 +1800,8 @@ async function offset(editor) {
                     const { result: r } = sideDyn.calc(cursor);
                     if (!r) return [];
                     const targetLayer = layerTarget === 'current' ? editor.doc.currentLayer : sourceEntity.layer;
-                    return [{ ...r, id: undefined, layer: targetLayer }];
+                    const list = r._allIslands?.length > 1 ? r._allIslands : [r];
+                    return list.map((item) => ({ ...item, id: undefined, layer: targetLayer }));
                 },
             });
 
@@ -1812,20 +1825,20 @@ async function offset(editor) {
             if (side.point) {
                 const typed = sideDyn.locked.v;
                 if (typed > 0 && typed !== dist) setDist(typed);
-                const result = offsetEntity(sourceEntity, dist, side.point);
-                if (!result) {
+                const islands = offsetEntityMultiple(sourceEntity, dist, side.point);
+                if (!islands || islands.length === 0) {
                     editor.log('Offset impossível para esse objeto/distância.', 'error');
                     if (!isMultiple) break;
                     continue;
                 }
                 const targetLayer = layerTarget === 'current' ? editor.doc.currentLayer : sourceEntity.layer;
-                const newEntity = { ...result, id: undefined, layer: targetLayer };
+                const newEntities = islands.map((item) => ({ ...item, id: undefined, layer: targetLayer }));
 
                 if (erase) {
-                    editor.commit('Offset', replaceEntities(editor.doc, new Map([[sourceEntity.id, newEntity]])));
+                    editor.commit('Offset', replaceEntities(editor.doc, new Map([[sourceEntity.id, newEntities.length === 1 ? newEntities[0] : newEntities]])));
                     break;
                 } else {
-                    editor.commit('Offset', addEntities(editor.doc, [newEntity]));
+                    editor.commit('Offset', addEntities(editor.doc, newEntities));
                     if (!isMultiple) break;
                 }
             }
@@ -1843,8 +1856,8 @@ const TRIM_EXTEND_MODES = {
     trim: { prompt: 'Selecione objeto para aparar ou abra uma janela (Shift estende)', shiftPrompt: 'Selecione objeto para estender ou abra uma janela (solte Shift para aparar)' },
     extend: { prompt: 'Selecione objeto para estender ou abra uma janela (Shift apara)', shiftPrompt: 'Selecione objeto para aparar ou abra uma janela (solte Shift para estender)' },
 };
-const isTrimmable = (e) => ['line', 'circle', 'arc', 'polyline'].includes(e.type);
-const isExtendable = (e) => ['line', 'arc'].includes(e.type);
+const isTrimmable = (e) => ['line', 'circle', 'arc', 'polyline', 'ellipse', 'spline'].includes(e.type);
+const isExtendable = (e) => ['line', 'arc', 'ellipse', 'spline', 'polyline'].includes(e.type);
 
 async function trimOrExtend(editor, primary) {
     const edgeIds = await editor.getSelection(primary === 'trim'
@@ -1923,8 +1936,14 @@ function splitRemoving(entity, cuts, pickRemoved) {
     if (pieces.length <= 1) return undefined;
     const removed = pickRemoved(pieces);
     if (removed.length === 0) return undefined;
-    const ends = removed.flatMap((p) => curveEndpoints(entityCurves(p)[0]));
-    const tol = 1e-6 * Math.max(1, ...ends.map((p) => Math.hypot(p.x, p.y)));
+    const ends = removed.flatMap((p) => {
+        const cs = entityCurves(p);
+        if (!cs.length) return [];
+        const firstEnds = curveEndpoints(cs[0]);
+        const lastEnds = curveEndpoints(cs[cs.length - 1]);
+        return [firstEnds[0], lastEnds[lastEnds.length - 1]].filter(Boolean);
+    });
+    const tol = 1e-5 * Math.max(1, ...ends.map((p) => Math.hypot(p.x, p.y)));
     const bounding = cuts.filter((c) => ends.some((e) => distance(c, e) <= tol));
     const final = splitEntityAt(entity, bounding.length ? bounding : cuts);
     const gone = new Set(pickRemoved(final));
@@ -1934,7 +1953,8 @@ function splitRemoving(entity, cuts, pickRemoved) {
 const nearestPiece = (pieces, pickPoint) => {
     let nearest = null;
     pieces.forEach((piece) => {
-        const d = distance(pickPoint, closestPointOnCurve(pickPoint, entityCurves(piece)[0]));
+        const cs = entityCurves(piece);
+        const d = cs.length ? Math.min(...cs.map((c) => distance(pickPoint, closestPointOnCurve(pickPoint, c)))) : Infinity;
         if (!nearest || d < nearest.d) nearest = { piece, d };
     });
     return nearest ? [nearest.piece] : [];
@@ -1943,8 +1963,8 @@ const nearestPiece = (pieces, pickPoint) => {
 // TRIM preserva a entidade se o recorte não deixar geometria; exclusão integral pertence ao ERASE.
 // Apara a peça mais próxima do clique. Retorna undefined se não houver recorte válido.
 function trimAtPoint(entity, cutters, pickPoint) {
-    const own = entityCurves(entity)[0];
-    const cuts = cutters.flatMap((c) => intersectCurves(own, c));
+    const ownCurves = entityCurves(entity);
+    const cuts = ownCurves.flatMap((own) => cutters.flatMap((c) => intersectCurves(own, c)));
     if (cuts.length === 0) return undefined;
     const kept = splitRemoving(entity, cuts, (pieces) => nearestPiece(pieces, pickPoint));
     return kept?.length ? kept : undefined;
@@ -1953,9 +1973,11 @@ function trimAtPoint(entity, cutters, pickPoint) {
 // Apara os trechos de uma entidade que cruzam a janela. Polilinhas são explodidas nos segmentos afetados.
 function trimInsideBox(entity, cutters, box) {
     const pieceInsideBox = (piece) => {
-        const curve = entityCurves(piece)[0];
-        const mid = curveMidpoint(curve) ?? curve.center;
-        return pointInBox(mid, box) || curveIntersectsBox(curve, box);
+        const cs = entityCurves(piece);
+        return cs.some((curve) => {
+            const mid = curveMidpoint(curve) ?? curve.center;
+            return (mid && pointInBox(mid, box)) || curveIntersectsBox(curve, box);
+        });
     };
     if (entity.type === 'polyline') {
         const curves = polylineCurves(entity.vertices, entity.closed);
@@ -1972,9 +1994,9 @@ function trimInsideBox(entity, cutters, box) {
         });
         return changed && out.length ? out : undefined;
     }
-    const own = entityCurves(entity)[0];
-    if (!curveIntersectsBox(own, box)) return undefined;
-    const cuts = cutters.flatMap((c) => intersectCurves(own, c));
+    const ownCurves = entityCurves(entity);
+    if (!ownCurves.some((own) => curveIntersectsBox(own, box))) return undefined;
+    const cuts = ownCurves.flatMap((own) => cutters.flatMap((c) => intersectCurves(own, c)));
     if (cuts.length === 0) return undefined;
     const kept = splitRemoving(entity, cuts, (pieces) => pieces.filter(pieceInsideBox));
     return kept?.length ? kept : undefined;
@@ -2007,20 +2029,10 @@ function curveToEntity(curve, source) {
 
 function extendPick(editor, pick, boundaries) {
     if (pick.entities) {
-        // Janela: estende as pontas que estão dentro do retângulo.
         const replacements = new Map();
         pick.entities.forEach((entity) => {
-            const limits = curvesOf(boundaries.filter((e) => e.id !== entity.id));
-            let current = entity;
-            const ends = entity.type === 'line'
-                ? [entity.start, entity.end]
-                : [polar(entity.center, entity.start, entity.radius), polar(entity.center, entity.end, entity.radius)];
-            ends.forEach((end) => {
-                if (!pointInBox(end, pick.box)) return;
-                const result = extendEntity(current, limits, end);
-                if (result) current = result;
-            });
-            if (current !== entity) replacements.set(entity.id, current);
+            const result = extendInsideBox(entity, curvesOf(boundaries.filter((e) => e.id !== entity.id)), pick.box);
+            if (result) replacements.set(entity.id, result);
         });
         if (replacements.size === 0) { editor.log('Nenhuma ponta dentro da janela pôde ser estendida.', 'warn'); return false; }
         editor.commit('Estender', replaceEntities(editor.doc, replacements));
@@ -2031,6 +2043,31 @@ function extendPick(editor, pick, boundaries) {
     if (!result) { editor.log('Nenhum limite encontrado nessa direção.', 'warn'); return false; }
     editor.commit('Estender', replaceEntities(editor.doc, new Map([[pick.entity.id, result]])));
     return true;
+}
+
+const distanceToBox = (p, box) => Math.hypot(
+    Math.max(box.minX - p.x, 0, p.x - box.maxX),
+    Math.max(box.minY - p.y, 0, p.y - box.maxY),
+);
+
+// Janela do EXTEND (crossing, como no AutoCAD): estende as pontas que caem dentro do retângulo.
+// Se a janela só atravessa o objeto, sem pegar ponta nenhuma, estende a ponta mais próxima dela.
+// Polilinha fechada não tem ponta livre. Retorna undefined se nada mudar.
+function extendInsideBox(entity, limits, box) {
+    if (entity.closed) return undefined;
+    const cs = entityCurves(entity);
+    if (!cs.length) return undefined;
+    const ends = [curveEndpoints(cs[0])[0], curveEndpoints(cs[cs.length - 1]).at(-1)].filter(Boolean);
+    let targets = ends.filter((end) => pointInBox(end, box));
+    if (!targets.length && ends.length) {
+        targets = [ends.reduce((a, b) => (distanceToBox(b, box) < distanceToBox(a, box) ? b : a))];
+    }
+    let current = entity;
+    targets.forEach((end) => {
+        const result = extendEntity(current, limits, end);
+        if (result) current = result;
+    });
+    return current !== entity ? current : undefined;
 }
 
 function extendEntity(entity, limits, pickPoint) {
@@ -2066,21 +2103,26 @@ function extendEntity(entity, limits, pickPoint) {
         if (!best) return null;
         return nearStart ? { ...entity, start: normalizeAngle(best.angle) } : { ...entity, end: normalizeAngle(best.angle) };
     }
+    if (['ellipse', 'spline', 'polyline'].includes(entity.type)) {
+        return extendEntityExact(entity, limits, pickPoint);
+    }
     return null;
 }
 
 async function fillet(editor) {
     let radius = editor.memory.fillet ?? 0;
+    let continuity = editor.memory.filletContinuity ?? 'G1';
     let multiple = false;
-    const filter = (e) => ['line', 'arc', 'circle', 'polyline'].includes(e.type);
+    const filter = (e) => ['line', 'arc', 'circle', 'polyline', 'ellipse', 'spline'].includes(e.type);
     for (;;) {
         const options = [
             { key: 'r', label: 'Raio' },
+            { key: 'c', label: `Continuidade (${continuity})` },
             { key: 'p', label: 'PoliLinha' },
             { key: 'm', label: 'Múltiplo' },
             { key: 'u', label: 'Desfazer' },
         ];
-        const first = await editor.getEntity(`Selecione o primeiro objeto (raio=${fmt(radius)}) ou [Raio/PoliLinha/Múltiplo/Desfazer]:`, {
+        const first = await editor.getEntity(`Selecione o primeiro objeto (raio=${fmt(radius)}, ${continuity}) ou [Raio/Continuidade/PoliLinha/Múltiplo/Desfazer]:`, {
             options,
             filter,
         });
@@ -2088,6 +2130,17 @@ async function fillet(editor) {
         if (first.keyword === 'r') {
             radius = await editor.getNumber('Raio do fillet', { defaultValue: radius, min: 0 });
             editor.memory.fillet = radius;
+            continue;
+        }
+        if (first.keyword === 'c') {
+            const kw = await editor.getKeyword('Continuidade da concordância', [
+                { key: 'g1', label: 'G1 (Arco circular tangente)' },
+                { key: 'g2', label: 'G2 (Bézier quíntica com curvatura contínua)' },
+            ], continuity.toLowerCase());
+            if (kw?.key) {
+                continuity = kw.key.toUpperCase();
+                editor.memory.filletContinuity = continuity;
+            }
             continue;
         }
         if (first.keyword === 'm') {
@@ -2120,7 +2173,7 @@ async function fillet(editor) {
             if (multiple) continue;
             return;
         }
-        const result = filletCurves(first.entity, first.point, second.entity, second.point, radius);
+        const result = filletCurves(first.entity, first.point, second.entity, second.point, radius, { continuity });
         if (!result) {
             editor.log('Sem concordância possível: objetos paralelos/concêntricos ou raio incompatível.', 'error');
             if (multiple) continue;
@@ -2128,10 +2181,27 @@ async function fillet(editor) {
         }
         const replacements = new Map([[first.entity.id, result.first], [second.entity.id, result.second]]);
         let doc = replaceEntities(editor.doc, replacements);
-        if (result.arc) doc = addEntities(doc, [result.arc]);
+        const bridge = result.bridge ?? result.arc;
+        if (bridge) doc = addEntities(doc, [bridge]);
         editor.commit('Fillet', doc);
         if (!multiple) return;
     }
+}
+
+async function blend(editor) {
+    const filter = (e) => ['line', 'arc', 'ellipse', 'spline', 'polyline'].includes(e.type);
+    const first = await editor.getEntity('Selecione o primeiro objeto próximo à extremidade para conectar (Blend G2):', { filter });
+    if (!first?.entity) return;
+    const second = await editor.getEntity('Selecione o segundo objeto próximo à extremidade para conectar (Blend G2):', {
+        filter: (e) => filter(e) && e.id !== first.entity.id,
+    });
+    if (!second?.entity) return;
+    const bridge = blendEntitiesG2(first.entity, first.point, second.entity, second.point);
+    if (!bridge) {
+        editor.log('Não foi possível criar curva de transição G2 entre os objetos selecionados.', 'error');
+        return;
+    }
+    editor.commit('Blend G2', addEntities(editor.doc, [bridge]));
 }
 
 // Curva "infinita" de apoio: linha vira reta, arco vira círculo.
@@ -2190,7 +2260,11 @@ function trimToTangent(entity, tangent, pick, corner = null) {
     return entity;
 }
 
-function filletCurves(e1, p1, e2, p2, radius) {
+function filletCurves(e1, p1, e2, p2, radius, options = {}) {
+    const isUniversalType = (e) => ['ellipse', 'spline', 'polyline'].includes(e?.type);
+    if (options.continuity === 'G2' || isUniversalType(e1) || isUniversalType(e2)) {
+        return filletEntitiesUniversal(e1, p1, e2, p2, radius, options);
+    }
     const c1 = supportCurve(e1);
     const c2 = supportCurve(e2);
     const pickMid = midpoint(p1, p2);
@@ -2249,10 +2323,12 @@ function filletCurves(e1, p1, e2, p2, radius) {
     // Sanidade: tangentes precisam estar sobre as curvas de apoio (linha estendida ou círculo).
     if (c1.kind === 'circle' && Math.abs(distance(t1, c1.center) - c1.radius) > 1e-6) return null;
     if (c2.kind === 'circle' && Math.abs(distance(t2, c2.center) - c2.radius) > 1e-6) return null;
+    const arcEntity = { type: 'arc', layer: e1.layer, color: e1.color, center, radius, start: normalizeAngle(a1), end: normalizeAngle(a2) };
     return {
         first,
         second,
-        arc: { type: 'arc', layer: e1.layer, color: e1.color, center, radius, start: normalizeAngle(a1), end: normalizeAngle(a2) },
+        arc: arcEntity,
+        bridge: arcEntity,
     };
 }
 
@@ -4418,6 +4494,10 @@ async function openSingle(editor, file, filePath) {
         await editor.importQetText(await file.text(), file.name);
         return;
     }
+    if (kind === 'traco') {
+        await editor.importTracoText(await file.text(), file.name, { filePath });
+        return;
+    }
     if (kind === 'svg') await editor.importSvgText(await file.text(), file.name);
     else await editor.importDxfText(await readDxfFile(file), file.name, { filePath });
 }
@@ -4519,6 +4599,8 @@ async function terminalCommand(editor) {
 
 // Formato em que o SAVE grava o desenho: o de origem (QElectroTech ou DWG) ou DXF.
 export function saveFormatOf(doc) {
+    // Esquema (ADR 0007): DXF e DWG não guardam conectividade, então símbolo, ligação ou junção salvam em .traco.
+    if (doc?.mode === 'esquema' || doc?.sourceFormat === 'traco' || /\.traco$/i.test(doc?.name || '') || (doc?.entities || []).some((e) => SCHEMATIC_TYPES.has(e.type))) return 'traco';
     for (const ext of ['elmt', 'qet', 'dwg']) {
         if (doc?.sourceFormat === ext || new RegExp(`\\.${ext}$`, 'i').test(doc?.name || '')) return ext;
     }
@@ -4526,6 +4608,16 @@ export function saveFormatOf(doc) {
 }
 
 async function getExportPayload(editor, format = saveFormatOf(editor.doc)) {
+    if (format === 'traco') {
+        const { documentToTraco } = await import('./traco-file.js');
+        const baseName = (editor.doc.name || 'esquema').replace(/\.(dxf|dwg|elmt|qet|svg|cdr|traco)$/i, '');
+        return {
+            content: documentToTraco(editor.doc),
+            name: `${baseName}.traco`,
+            ext: 'traco',
+            filterName: 'Esquema do Traço (*.traco)',
+        };
+    }
     if (format === 'elmt') {
         const { documentToElmt } = await import('./elmt.js');
         const content = documentToElmt(editor.doc);
@@ -4649,7 +4741,7 @@ async function saveAs(editor, args = []) {
     const target = args?.[0] && typeof args[0] === 'object' ? args[0] : null;
     const format = target?.format || saveFormatOf(editor.doc);
     const payload = await getExportPayload(editor, format);
-    const stem = String(target?.name ?? '').trim().replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '');
+    const stem = String(target?.name ?? '').trim().replace(/\.(dxf|dwg|elmt|qet|svg|cdr|traco)$/i, '');
     if (stem) payload.name = `${stem}.${payload.ext}`;
     const changed = Boolean(target) && (format !== saveFormatOf(editor.doc) || payload.name !== editor.doc.name);
     const remember = (fileName, filePath, saved = saveTarget(editor)) => {
@@ -5104,6 +5196,7 @@ async function help(editor) {
 export const COMMANDS = {
     ...EDIT_COMMANDS,
     ...BLOCK_COMMANDS,
+    ...SCHEMATIC_COMMANDS,
     PRINT:{aliases:['PLOT','IMPRIMIR','PDFOUT'],description:'Impressão/PDF técnico em escala com carimbo',run:openPrintDialog},
     COPYCLIP: { aliases: [], run: editor => copyClip(editor), description: 'Copiar seleção para clipboard do desenho' },
     CUTCLIP: { aliases: [], run: editor => copyClip(editor, true), description: 'Recortar seleção para clipboard do desenho' },
@@ -5134,8 +5227,9 @@ export const COMMANDS = {
     SCALE: { aliases: ['SC', 'ESCALAR'], run: scaleCommand, description: 'Escalar objetos' },
     OFFSET: { aliases: ['O', 'DESLOC'], run: offset, description: 'Offset paralelo com opções Através, Apagar, Camada e Múltiplo' },
     TRIM: { aliases: ['TR'], run: trim, description: 'Aparar objetos em arestas de corte' },
-    EXTEND: { aliases: ['EX'], run: extend, description: 'Estender linhas e arcos até um limite' },
-    FILLET: { aliases: ['F'], run: fillet, description: 'Concordância entre duas linhas' },
+    EXTEND: { aliases: ['EX'], run: extend, description: 'Estender linhas, arcos, elipses e splines até um limite' },
+    FILLET: { aliases: ['F'], run: fillet, description: 'Concordância universal G1/G2 entre curvas (linhas, arcos, elipses, splines)' },
+    BLEND: { aliases: ['BL', 'CONECTAR', 'BLENDCURVES'], run: blend, description: 'Conectar extremidades de duas curvas com spline Bézier quíntica G2 contínua em curvatura' },
     EXPLODE: { aliases: ['X'], run: explode, description: 'Explodir polilinhas, splines e blocos' },
     BURST: { aliases: [], run: burst, description: 'Desagrupar blocos preservando atributos como textos' },
     JOIN: { aliases: ['J'], run: join, description: 'Unir linhas e arcos em polilinha' },
@@ -5220,11 +5314,13 @@ for (const [name, pt] of Object.entries(PT_ALIASES)) {
 }
 
 // Sugestões da linha de comando: nome ou apelido que começa com o prefixo digitado.
-export function suggestCommands(prefix, limit = 50) {
+// No CAD, os comandos do esquemático ficam fora do autocompletar (continuam pelo nome inteiro).
+export function suggestCommands(prefix, limit = 50, { mode = 'cad' } = {}) {
     const upper = normalizeCommandName(prefix);
     if (!upper || !/^[A-Z_]/.test(upper)) return [];
     const out = [];
     for (const [name, command] of Object.entries(COMMANDS)) {
+        if (mode !== 'esquema' && SCHEMATIC_ONLY_COMMANDS.has(name)) continue;
         const aliases = command.aliases ?? [];
         const hit = name.startsWith(upper) ? name : aliases.filter((a) => a.startsWith(upper)).sort((a, b) => a.length - b.length)[0];
         if (!hit) continue;
@@ -5244,4 +5340,4 @@ export function resolveCommand(name) {
     return null;
 }
 
-export { polygonFromEdge, alignTransform, filletLines, filletCurves, trimInsideBox, trimAtPoint, extendEntity, joinCurves, polylineArea, tangentBulge, trimPolyline, curveToEntity, boxOf, aciToHex, hexToAci };
+export { polygonFromEdge, alignTransform, filletLines, filletCurves, filletEntitiesUniversal, blendEntitiesG2, createQuinticBlendG2, chamferEntitiesUniversal, extendEntityExact, trimInsideBox, trimAtPoint, extendEntity, extendInsideBox, joinCurves, polylineArea, tangentBulge, trimPolyline, curveToEntity, boxOf, aciToHex, hexToAci };

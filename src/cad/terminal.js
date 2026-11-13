@@ -1,5 +1,7 @@
 // Terminal de comandos (linha de comando estilo BricsCAD).
 
+import { tr } from './i18n.js';
+
 export class Terminal {
     constructor(root) {
         this.root = root;
@@ -160,8 +162,9 @@ export class Terminal {
         this.history.scrollTop = this.history.scrollHeight;
     }
 
+    // O prompt é traduzido aqui: junto com o valor digitado, a linha inteira não bate com a chave do idioma.
     echo(prompt, value) {
-        this.log(`${prompt} ${value}`, 'echo');
+        this.log(`${tr(prompt)} ${value}`, 'echo');
     }
 
     focus() {

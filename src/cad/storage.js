@@ -102,6 +102,7 @@ export function serializeDocument(doc) {
         dimStyle: doc.dimStyle,
         insBase: doc.insBase ?? null,
         sourceFormat: doc.sourceFormat ?? null,
+        ...(doc.mode ? { mode: doc.mode, sheets: doc.sheets ?? [], currentSheet: doc.currentSheet ?? null } : {}),
     };
 }
 

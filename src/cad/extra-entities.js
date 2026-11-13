@@ -3,6 +3,8 @@
 
 import { registerEntityProvider, add, sub, scale, distance, angleOf, rotatePoint, normalizeAngle, degToRad, radToDeg, perpendicular, normalize } from './geometry.js';
 import { sampleSpline, interpolateSpline } from './splines.js';
+import { splineToBeziers } from './nurbs-exact.js';
+import { ellipseQuadrants } from './curve-intersect.js';
 
 // ---------------------------------------------------------------------------
 // Elipse: { center, major: {x,y} (vetor do centro ao fim do eixo maior), ratio (menor/maior), start, end (parâmetros, rad) }
@@ -53,14 +55,37 @@ function ellipseTransform(entity, fn, mirror) {
 }
 
 registerEntityProvider('ellipse', {
-    curves: (entity) => polylineFromSamples(ellipseSamples(entity), ellipseIsFull(entity)),
+    curves: (entity) => [{
+        kind: 'ellipse',
+        center: entity.center,
+        major: entity.major,
+        ratio: entity.ratio,
+        start: entity.start ?? 0,
+        end: entity.end ?? Math.PI * 2,
+        full: ellipseIsFull(entity),
+    }],
     extraPoints: () => [],
     transform: ellipseTransform,
     snapPoints: (entity) => {
         const pts = [{ mode: 'cen', point: entity.center }];
         const full = ellipseIsFull(entity);
+        const curve = {
+            kind: 'ellipse',
+            center: entity.center,
+            major: entity.major,
+            ratio: entity.ratio,
+            start: entity.start ?? 0,
+            end: entity.end ?? Math.PI * 2,
+            full,
+        };
+        ellipseQuadrants(curve).forEach((p) => pts.push({ mode: 'qua', point: p }));
         [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2].forEach((t) => {
-            if (full || paramInRange(t, entity)) pts.push({ mode: 'qua', point: ellipsePoint(entity, t) });
+            if (full || paramInRange(t, entity)) {
+                const p = ellipsePoint(entity, t);
+                if (!pts.some((q) => q.mode === 'qua' && distance(q.point, p) < 1e-9)) {
+                    pts.push({ mode: 'qua', point: p });
+                }
+            }
         });
         if (!full) {
             pts.push({ mode: 'end', point: ellipsePoint(entity, entity.start ?? 0) });
@@ -84,9 +109,12 @@ function paramInRange(t, entity) {
 
 export function ensureSplineGeometry(entity) {
     if (entity.controlPoints && entity.controlPoints.length >= 2 && entity.knots && entity.knots.length) return entity;
-    if (entity.fitPoints && entity.fitPoints.length >= 2) {
-        const built = interpolateSpline(entity.fitPoints, { closed: Boolean(entity.closed) });
-        if (built) return { ...entity, ...built, fitPoints: entity.fitPoints };
+    const fit = (entity.fitPoints && entity.fitPoints.length >= 2)
+        ? entity.fitPoints
+        : (entity.points && entity.points.length >= 2 ? entity.points : null);
+    if (fit) {
+        const built = interpolateSpline(fit, { closed: Boolean(entity.closed) });
+        if (built) return { ...entity, ...built, fitPoints: fit };
     }
     return entity;
 }
@@ -94,6 +122,7 @@ export function ensureSplineGeometry(entity) {
 function splineTransform(entity, fn) {
     const e = { ...entity };
     delete e._sampledPts;
+    delete e._beziers;
     delete e._bbox;
     if (entity.controlPoints) e.controlPoints = entity.controlPoints.map(fn);
     if (entity.fitPoints) e.fitPoints = entity.fitPoints.map(fn);
@@ -102,17 +131,20 @@ function splineTransform(entity, fn) {
 
 registerEntityProvider('spline', {
     curves: (entity) => {
-        if (!entity._sampledPts) {
-            entity._sampledPts = sampleSpline(ensureSplineGeometry(entity), 16);
+        if (!entity._beziers) {
+            entity._beziers = splineToBeziers(ensureSplineGeometry(entity), { minSegments: 12 });
         }
-        return polylineFromSamples(entity._sampledPts, Boolean(entity.closed));
+        return entity._beziers;
     },
     extraPoints: (entity) => entity.controlPoints ?? [],
     transform: splineTransform,
     snapPoints: (entity) => {
-        const pts = entity._sampledPts || sampleSpline(ensureSplineGeometry(entity), 1);
-        if (pts.length === 0) return [];
-        const out = [{ mode: 'end', point: pts[0] }, { mode: 'end', point: pts[pts.length - 1] }];
+        const beziers = entity._beziers || splineToBeziers(ensureSplineGeometry(entity), { minSegments: 1 });
+        if (beziers.length === 0) return [];
+        const first = beziers[0].points[0];
+        const lastSeg = beziers[beziers.length - 1];
+        const last = lastSeg.points[lastSeg.points.length - 1];
+        const out = [{ mode: 'end', point: first }, { mode: 'end', point: last }];
         (entity.fitPoints ?? []).forEach((p) => out.push({ mode: 'nod', point: p }));
         return out;
     },
@@ -166,7 +198,7 @@ registerEntityProvider('image', {
 // Terminal elétrico QElectroTech (.elmt)
 // { type: 'terminal', position: {x,y}, orientation: 'n'|'s'|'e'|'w', name, uuid, terminalType }
 
-function terminalTransform(entity, fn, mirror) {
+export function terminalTransform(entity, fn, mirror) {
     const p = fn(entity.position);
     let orientation = entity.orientation;
     if (mirror) {

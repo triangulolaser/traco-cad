@@ -1,6 +1,20 @@
 // Splines B-spline (NURBS sem pesos): interpolação global de pontos de ajuste, avaliação por de Boor e amostragem.
 
 import { distance } from './geometry.js';
+import {
+    evaluateSplineJet,
+    insertKnotBoehm,
+    splineToBeziers,
+    splitSplineExact,
+    bezierLength,
+} from './nurbs-exact.js';
+
+export {
+    evaluateSplineJet,
+    insertKnotBoehm,
+    splineToBeziers,
+    splitSplineExact,
+};
 
 // Parâmetros por comprimento de corda (NURBS Book 9.1).
 function chordParams(points) {
@@ -173,8 +187,7 @@ export function sampleSpline(spline, perSpan = 12) {
 }
 
 export function splineLength(spline) {
-    const pts = sampleSpline(spline, 24);
-    let len = 0;
-    for (let i = 1; i < pts.length; i += 1) len += distance(pts[i - 1], pts[i]);
-    return len;
+    const beziers = splineToBeziers(spline);
+    if (beziers.length === 0) return 0;
+    return beziers.reduce((sum, bz) => sum + bezierLength(bz), 0);
 }

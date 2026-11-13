@@ -4,19 +4,39 @@ import {expandInsert} from './blocks.js';
 import {dimensionGeometry} from './dimensions.js';
 import {LINE_SPACING,fontEm,fontFamily,loadCadFonts} from './fonts.js';
 import './extra-entities.js';
+import {evalBezierPoint} from './nurbs-exact.js';
+import {evalEllipsePoint} from './curve-intersect.js';
 import {patternGeometry} from './hatch.js';
 export const escapeXml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const n=x=>Number(x.toFixed(6));
 function curvePath(c){
  if(c.kind==='segment')return `M${n(c.a.x)} ${n(c.a.y)}L${n(c.b.x)} ${n(c.b.y)}`;
  if(c.kind==='circle'){const {x,y}=c.center,r=c.radius;return `M${n(x-r)} ${n(y)}a${n(r)} ${n(r)} 0 1 0 ${n(2*r)} 0a${n(r)} ${n(r)} 0 1 0 ${n(-2*r)} 0`;}
+ if(c.kind==='ellipse'){
+  const rx=Math.hypot(c.major.x,c.major.y),ry=rx*(c.ratio??1),rot=n(Math.atan2(c.major.y,c.major.x)*180/Math.PI);
+  if(c.full!==false&&Math.abs((c.end??Math.PI*2)-(c.start??0))>=Math.PI*2-1e-6){
+   const p0=evalEllipsePoint(c,0),p1=evalEllipsePoint(c,Math.PI);
+   return `M${n(p0.x)} ${n(p0.y)}A${n(rx)} ${n(ry)} ${rot} 1 1 ${n(p1.x)} ${n(p1.y)}A${n(rx)} ${n(ry)} ${rot} 1 1 ${n(p0.x)} ${n(p0.y)}`;
+  }
+  const s=c.start??0,e=c.end??Math.PI*2,p0=evalEllipsePoint(c,s),p1=evalEllipsePoint(c,e),sw=sweepCCW(s,e);
+  return `M${n(p0.x)} ${n(p0.y)}A${n(rx)} ${n(ry)} ${rot} ${sw>Math.PI?1:0} 1 ${n(p1.x)} ${n(p1.y)}`;
+ }
+ if(c.kind==='bezier'){
+  const pts=c.points,hasW=Boolean(c.weights&&c.weights.some(w=>Math.abs(w-1)>1e-12));
+  if(!hasW&&pts.length===4)return `M${n(pts[0].x)} ${n(pts[0].y)}C${n(pts[1].x)} ${n(pts[1].y)} ${n(pts[2].x)} ${n(pts[2].y)} ${n(pts[3].x)} ${n(pts[3].y)}`;
+  if(!hasW&&pts.length===3)return `M${n(pts[0].x)} ${n(pts[0].y)}Q${n(pts[1].x)} ${n(pts[1].y)} ${n(pts[2].x)} ${n(pts[2].y)}`;
+  if(!hasW&&pts.length===2)return `M${n(pts[0].x)} ${n(pts[0].y)}L${n(pts[1].x)} ${n(pts[1].y)}`;
+  let out=`M${n(pts[0].x)} ${n(pts[0].y)}`;
+  for(let i=1;i<=16;i+=1){const p=evalBezierPoint(c,i/16);out+=`L${n(p.x)} ${n(p.y)}`;}
+  return out;
+ }
  const a=polar(c.center,c.start,c.radius),b=polar(c.center,c.end,c.radius);
  return `M${n(a.x)} ${n(a.y)}A${n(c.radius)} ${n(c.radius)} 0 ${sweepCCW(c.start,c.end)>Math.PI?1:0} 1 ${n(b.x)} ${n(b.y)}`;
 }
 function textSvg(e){
  return `<g transform="translate(${n(e.position.x)} ${n(e.position.y)}) rotate(${n(e.rotation??0)}) scale(1 -1)"><text font-family="${escapeXml(fontFamily(e.fontFamily))}" font-size="${n(fontEm(e.height))}" font-weight="${e.bold?700:400}" font-style="${e.italic?'italic':'normal'}" stroke="none">${String(e.text??'').split('\n').map((line,i)=>`<tspan x="0" y="${n(i*e.height*LINE_SPACING)}">${escapeXml(line)}</tspan>`).join('')}</text></g>`;
 }
-function entitySvg(e,doc,k,mono){
+export function entitySvg(e,doc,k,mono){
  if(e.type==='insert')return expandInsert(e).filter(x=>layerOf(doc,x.layer)?.visible!==false).map(x=>entitySvg(x,doc,k,mono)).join('');
  const color=mono?'#000000':entityColor(e,doc),stroke=(e.lineWeight??layerOf(doc,e.layer)?.lineWeight??25)/100||0.25;
  let body='';
@@ -56,7 +76,13 @@ export function printSvg(doc,options={}){
  const content=l.entities.map(e=>entitySvg(e,doc,l.factor,options.monochrome!==false)).join('');
  return `<svg xmlns="http://www.w3.org/2000/svg" width="${l.width}mm" height="${l.height}mm" viewBox="0 0 ${l.width} ${l.height}"><rect width="100%" height="100%" fill="white"/><rect x="${l.margin}" y="${l.margin}" width="${l.width-2*l.margin}" height="${l.height-2*l.margin}" fill="none" stroke="black" stroke-width="0.25"/><g data-drawing-scale="${l.factor}" transform="translate(${l.x} ${l.y}) scale(${l.factor} ${-l.factor})">${content}</g><g font-family="Liberation Sans,Arial,sans-serif" font-size="3" fill="black"><path d="M${l.margin} ${l.height-l.margin-25}H${l.width-l.margin}" stroke="black" stroke-width="0.25"/><text x="${l.margin+3}" y="${l.height-l.margin-18}">${escapeXml(title)}</text><text x="${l.margin+3}" y="${l.height-l.margin-11}">Autor: ${escapeXml(author)} · Revisão: ${escapeXml(revision)}</text><text x="${l.margin+3}" y="${l.height-l.margin-4}">Escala 1:${n(l.denominator)} · ${escapeXml(doc.units)} · Traço</text></g></svg>`;
 }
+export function printFontCss(){
+ const fontBase=new URL('/fonts/liberation/',location.origin).href;
+ let css='';for(const [family,slug] of [['Liberation Sans','LiberationSans'],['Liberation Serif','LiberationSerif'],['Liberation Mono','LiberationMono']])for(const [suffix,weight,style]of [['Regular',400,'normal'],['Bold',700,'normal'],['Italic',400,'italic'],['BoldItalic',700,'italic']])css+=`@font-face{font-family:"${family}";src:url("${fontBase}${slug}-${suffix}.ttf");font-weight:${weight};font-style:${style}}`;
+ return css;
+}
 export async function openPrintDialog(editor){
+ if(editor.doc?.mode==='esquema'){const {openSchematicPrintDialog}=await import('./schematic-print.js');return openSchematicPrintDialog(editor);}
  await loadCadFonts();
  const dialog=document.createElement('dialog');dialog.className='cad-print-dialog';
  dialog.innerHTML=`<form method="dialog"><h3>Impressão técnica / PDF</h3><label>Papel <select name="paper"><option>A4</option><option>A3</option></select></label> <label><input name="landscape" type="checkbox" checked>Paisagem</label><label>Escala 1:<input name="denominator" type="number" min="0.01" step="any" value="1"></label><label><input name="fit" type="checkbox">Ajustar à folha (escala indicada no carimbo)</label><label><input name="monochrome" type="checkbox" checked>Preto e branco</label><label>Título <input name="title"></label><label>Autor <input name="author"></label><label>Revisão <input name="revision"></label><p>Na impressão, use tamanho real / 100%, sem cabeçalhos nem margens adicionais. Para PDF, escolha Salvar como PDF.</p><p data-print-error role="alert"></p><div data-print-preview></div><button type="button" data-preview>Atualizar prévia</button><button type="button" data-print>Imprimir / PDF</button><button value="cancel">Fechar</button></form>`;

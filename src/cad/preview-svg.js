@@ -62,7 +62,7 @@ function polylinePath(vertices, closed) {
     return closed ? `${d}Z` : d;
 }
 
-function entityPath(e) {
+export function entityPath(e) {
     switch (e.type) {
         case 'line':
             return `M${fmt(e.start.x)} ${fmt(e.start.y)}L${fmt(e.end.x)} ${fmt(e.end.y)}`;

@@ -1,5 +1,6 @@
 import { SpatialIndex } from './spatial-index.js';
 import { entityBox } from './geometry.js';
+import { entityOnActiveSheet, isSchematicDocument, activeSheetId } from './schematic-mode.js';
 
 // Documento do CAD: entidades, layers e histórico de undo/redo.
 // O estado é tratado como imutável: cada commit gera um novo snapshot.
@@ -163,17 +164,23 @@ export function ensureLayer(doc, name, options = {}) {
 
 export function visibleEntities(doc) {
     const hidden = new Set(doc.layers.filter((l) => !l.visible).map((l) => l.name));
-    return doc.entities.filter((e) => !hidden.has(e.layer));
+    return doc.entities.filter((e) => !hidden.has(e.layer) && entityOnActiveSheet(doc, e));
 }
 
 export function editableEntities(doc) {
     const blocked = new Set(doc.layers.filter((l) => !l.visible || l.locked).map((l) => l.name));
-    return doc.entities.filter((e) => !blocked.has(e.layer));
+    return doc.entities.filter((e) => !blocked.has(e.layer) && entityOnActiveSheet(doc, e));
 }
 
 export function isEntityEditable(doc, entity) {
     const layer = layerOf(doc, entity.layer);
-    return !layer || (layer.visible && !layer.locked);
+    return (!layer || (layer.visible && !layer.locked)) && entityOnActiveSheet(doc, entity);
+}
+
+// Visível na vista: layer ligado e, no esquema com várias folhas, na folha ativa.
+export function isEntityShown(doc, entity) {
+    const layer = layerOf(doc, entity.layer);
+    return (!layer || layer.visible !== false) && entityOnActiveSheet(doc, entity);
 }
 
 // Histórico linear de estados. `present` é o documento atual.
@@ -272,36 +279,63 @@ export function ensureEntityIds(doc) {
 
 // Operações puras sobre o documento. Cada uma retorna um novo documento.
 export function addEntities(doc, entities) {
-    const normalized = entities.map((e) => normalizeEntity(e, doc.currentLayer));
-    return { ...doc, entities: [...doc.entities, ...normalized] };
+    // No esquema, o que entra vai para a folha ativa (só ela está na tela; colar o que veio de
+    // outra folha também cai aqui).
+    const sheet = isSchematicDocument(doc) ? activeSheetId(doc) : null;
+    const normalized = entities.map((e) => {
+        const n = normalizeEntity(e, doc.currentLayer);
+        if (sheet) n.sheet = sheet;
+        return n;
+    });
+    const next = { ...doc, entities: [...doc.entities, ...normalized] };
+    recordSpatialDelta(next, doc, { added: normalized, removedIds: [], updated: [] });
+    return next;
 }
 
 export function removeEntities(doc, ids) {
     const set = new Set(ids);
-    return { ...doc, entities: doc.entities.filter((e) => !set.has(e.id)) };
+    const next = { ...doc, entities: doc.entities.filter((e) => !set.has(e.id)) };
+    recordSpatialDelta(next, doc, { added: [], removedIds: [...set], updated: [] });
+    return next;
 }
 
 export function replaceEntities(doc, replacements) {
     // replacements: Map<id, entity|entity[]|null>
     const out = [];
+    const removedIds = [];
+    const added = [];
     doc.entities.forEach((e) => {
         if (!replacements.has(e.id)) {
             out.push(e);
             return;
         }
+        removedIds.push(e.id);
         const value = replacements.get(e.id);
         if (value === null || value === undefined) return;
         const list = Array.isArray(value) ? value : [value];
         list.forEach((item, index) => {
-            out.push(normalizeEntity({ ...item, id: index === 0 && item.id ? item.id : (index === 0 ? e.id : undefined) }, doc.currentLayer));
+            const norm = normalizeEntity({ ...item, id: index === 0 && item.id ? item.id : (index === 0 ? e.id : undefined) }, doc.currentLayer);
+            out.push(norm);
+            added.push(norm);
         });
     });
-    return { ...doc, entities: out };
+    const next = { ...doc, entities: out };
+    recordSpatialDelta(next, doc, { added, removedIds, updated: [] });
+    return next;
 }
 
 export function updateEntities(doc, ids, fn) {
     const set = new Set(ids);
-    return { ...doc, entities: doc.entities.map((e) => (set.has(e.id) ? normalizeEntity(fn(e), doc.currentLayer) : e)) };
+    const updated = [];
+    const entities = doc.entities.map((e) => {
+        if (!set.has(e.id)) return e;
+        const norm = normalizeEntity(fn(e), doc.currentLayer);
+        updated.push(norm);
+        return norm;
+    });
+    const next = { ...doc, entities };
+    recordSpatialDelta(next, doc, { added: [], removedIds: [...set], updated });
+    return next;
 }
 
 export function setCurrentLayer(doc, name) {
@@ -327,18 +361,35 @@ export function documentStats(doc) {
 
 // Cache fraco de SpatialIndex associado a cada snapshot imutável do documento
 let spatialIndexCache = new WeakMap();
+let spatialDeltaMap = new WeakMap();
 
 // A caixa do texto depende da fonte medida: índice criado antes de a fonte carregar fica defasado.
+// O delta guarda só o índice do pai, nunca o documento: guardar o pai prendia a cadeia inteira de versões
+// (cada uma com seu array de entidades) na memória enquanto o documento atual existisse. Sem índice no pai,
+// não há delta e o próximo índice é montado do zero. Consumido o delta, a entrada sai do mapa.
+function recordSpatialDelta(next, doc, delta) {
+    const parentIndex = spatialIndexCache.get(doc);
+    if (parentIndex) spatialDeltaMap.set(next, { parentIndex, ...delta });
+}
+
 export function resetSpatialIndexes() {
     spatialIndexCache = new WeakMap();
+    spatialDeltaMap = new WeakMap();
 }
 
 export function getDocumentSpatialIndex(doc) {
     if (!doc) return null;
     let index = spatialIndexCache.get(doc);
     if (!index) {
-        index = new SpatialIndex({ getBBox: entityBox });
-        index.load(doc.entities);
+        const delta = spatialDeltaMap.get(doc);
+        spatialDeltaMap.delete(doc);
+        const parentIndex = delta?.parentIndex;
+        if (parentIndex && typeof parentIndex.forkDelta === 'function') {
+            index = parentIndex.forkDelta(delta, doc.entities);
+        } else {
+            index = new SpatialIndex({ getBBox: entityBox });
+            index.load(doc.entities);
+        }
         spatialIndexCache.set(doc, index);
     }
     return index;
