@@ -163,7 +163,7 @@ test('conector de página: referência cruzada com o número da outra folha, der
     assert.equal(isBuiltinLibrary('traco'), true);
     assert.equal(unregisterLibrary('traco'), false);
     const sections = librarySections('');
-    assert.deepEqual(sections.filter((s) => s.builtin).map((s) => s.id), ['iso1219', 'traco']);
+    assert.deepEqual(sections.filter((s) => s.builtin).map((s) => s.id), ['iso1219', 'iec60617', 'traco']);
 });
 
 test('carimbo: campos normalizados, ida e volta no .traco e desenho derivado por folha', () => {

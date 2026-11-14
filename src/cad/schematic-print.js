@@ -8,7 +8,7 @@ import { loadCadFonts } from './fonts.js';
 import { SHEET_FORMATS, sheetsOf, entitySheet, activeSheetId } from './schematic-mode.js';
 import { sheetDecorations, FRAME_MARGIN, TITLE_BLOCK } from './schematic-sheet.js';
 import { symbolChildren, analyzeSchematic, linkPoints, JUNCTION_RADIUS, connectorReferenceTexts } from './schematic.js';
-import { schematicBom, bomCodeLabel, bomCsv } from './schematic-bom.js';
+import { schematicBom, bomCodeLabel, bomCsv, bomSections, formatWireNumber } from './schematic-bom.js';
 
 const n = (x) => Number(Number(x).toFixed(4));
 const PAGE = SHEET_FORMATS.A4;
@@ -63,10 +63,17 @@ function bomRows(doc) {
     const rows = [{ kind: 'title', text: 'Lista de peças' }, { kind: 'head', cells: ['Item', 'Etiquetas', 'Qtd.', 'Peça', 'Descrição', bomCodeLabel(doc)] }];
     if (!bom.parts.length) rows.push({ kind: 'note', text: 'Nenhuma peça no esquema.' });
     for (const p of bom.parts) rows.push({ kind: 'row', cells: [p.item, p.etiquetas.join(', '), p.quantidade, p.nome, p.descricao, p.codigo] });
-    rows.push({ kind: 'title', text: 'Mangueiras' }, { kind: 'head', cells: ['Rótulo', 'Qtd.'] });
-    if (!bom.hoses.length) rows.push({ kind: 'note', text: 'Nenhuma ligação com rótulo de mangueira.' });
-    for (const h of bom.hoses) rows.push({ kind: 'hose', cells: [h.rotulo, h.quantidade] });
-    if (bom.unlabeledLinks) rows.push({ kind: 'note', text: `${bom.unlabeledLinks} ligação(ões) sem rótulo de mangueira.` });
+    const show = bomSections(bom);
+    if (show.hoses) {
+        rows.push({ kind: 'title', text: 'Mangueiras' }, { kind: 'head', cells: ['Rótulo', 'Qtd.'] });
+        if (!bom.hoses.length) rows.push({ kind: 'note', text: 'Nenhuma ligação com rótulo de mangueira.' });
+        for (const h of bom.hoses) rows.push({ kind: 'hose', cells: [h.rotulo, h.quantidade] });
+        if (bom.unlabeledLinks) rows.push({ kind: 'note', text: `${bom.unlabeledLinks} ligação(ões) sem rótulo de mangueira.` });
+    }
+    if (show.wires) {
+        rows.push({ kind: 'title', text: 'Fios' }, { kind: 'wirehead', cells: ['Fio', 'De', 'Para', 'Cor', 'mm²', 'Compr. (mm)'] });
+        for (const w of bom.wires) rows.push({ kind: 'wire', cells: [w.numero, w.de, w.para, w.cor, formatWireNumber(w.secao_mm2), formatWireNumber(w.comprimento_mm)] });
+    }
     return rows;
 }
 
@@ -76,6 +83,7 @@ const TABLE_TOP = PAGE.height - FRAME_MARGIN.top - 6;
 const TABLE_BOTTOM = FRAME_MARGIN.bottom + TITLE_BLOCK.height + 4;
 const COLS = [12, 46, 12, 72, 68, 50];
 const HOSE_COLS = [100, 12];
+const WIRE_COLS = [24, 66, 66, 40, 22, 30];
 
 function fitText(value, width, height) {
     const s = String(value ?? '');
@@ -105,14 +113,16 @@ export function bomPrintSvgs(doc, { firstNumber = 1, total = null } = {}) {
             if (row.kind === 'title') out.push(`<text x="${x0}" y="${n(base)}" font-size="4.2" font-weight="700">${escapeXml(row.text)}</text>`);
             else if (row.kind === 'note') out.push(`<text x="${x0}" y="${n(base)}" font-size="3" font-style="italic">${escapeXml(row.text)}</text>`);
             else {
-                const cols = row.cells.length === 2 ? HOSE_COLS : COLS;
+                const wire = row.kind === 'wire' || row.kind === 'wirehead';
+                const head = row.kind === 'head' || row.kind === 'wirehead';
+                const cols = wire ? WIRE_COLS : row.cells.length === 2 ? HOSE_COLS : COLS;
                 let x = x0;
                 row.cells.forEach((cell, i) => {
-                    out.push(`<text x="${n(x)}" y="${n(base)}" font-size="3"${row.kind === 'head' ? ' font-weight="700"' : ''}>${escapeXml(fitText(cell, cols[i] - 2, 3))}</text>`);
+                    out.push(`<text x="${n(x)}" y="${n(base)}" font-size="3"${head ? ' font-weight="700"' : ''}>${escapeXml(fitText(cell, cols[i] - 2, 3))}</text>`);
                     x += cols[i];
                 });
                 const w = cols.reduce((a, b) => a + b, 0);
-                out.push(`<path d="M${x0 - 1} ${n(y + ROW_H)}h${w}" stroke="black" stroke-width="${row.kind === 'head' ? 0.35 : 0.1}"/>`);
+                out.push(`<path d="M${x0 - 1} ${n(y + ROW_H)}h${w}" stroke="black" stroke-width="${head ? 0.35 : 0.1}"/>`);
             }
             y += ROW_H;
         }
@@ -211,7 +221,11 @@ export function openBomDialog(editor) {
     const hoses = bom.hoses.length
         ? `<table class="cad-bom-table"><thead><tr><th>Mangueira</th><th>Qtd.</th></tr></thead><tbody>${bom.hoses.map((h) => `<tr data-bom-ids="${escapeXml(h.ids.join(' '))}"><td>${escapeXml(h.rotulo)}</td><td>${h.quantidade}</td></tr>`).join('')}</tbody></table>`
         : '<p>Nenhuma ligação com rótulo de mangueira. Selecione a ligação e preencha Mangueira no painel.</p>';
-    dialog.innerHTML = `<form method="dialog"><h3>Lista de peças</h3>${parts}<h4>Mangueiras</h4>${hoses}${bom.unlabeledLinks ? `<p>${bom.unlabeledLinks} ligação(ões) sem rótulo de mangueira.</p>` : ''}<p>Clique numa linha para selecionar as peças no desenho.</p><button type="button" data-csv>Baixar CSV</button><button type="button" data-print>Imprimir com o esquema</button><button value="cancel">Fechar</button></form>`;
+    const show = bomSections(bom);
+    const wires = `<table class="cad-bom-table"><thead><tr><th>Fio</th><th>De</th><th>Para</th><th>Cor</th><th>Seção (mm²)</th><th>Comprimento (mm)</th></tr></thead><tbody>${bom.wires.map((w) => `<tr data-bom-ids="${escapeXml(w.id)}"><td>${escapeXml(w.numero)}</td><td>${escapeXml(w.de)}</td><td>${escapeXml(w.para)}</td><td>${escapeXml(w.cor)}</td><td>${escapeXml(formatWireNumber(w.secao_mm2))}</td><td>${escapeXml(formatWireNumber(w.comprimento_mm))}</td></tr>`).join('')}</tbody></table>`;
+    const hoseSection = show.hoses ? `<h4>Mangueiras</h4>${hoses}${bom.unlabeledLinks ? `<p>${bom.unlabeledLinks} ligação(ões) sem rótulo de mangueira.</p>` : ''}` : '';
+    const wireSection = show.wires ? `<h4>Fios</h4>${wires}` : '';
+    dialog.innerHTML = `<form method="dialog"><h3>Lista de peças</h3>${parts}${hoseSection}${wireSection}<p>Clique numa linha para selecionar as peças no desenho.</p><button type="button" data-csv>Baixar CSV</button><button type="button" data-print>Imprimir com o esquema</button><button value="cancel">Fechar</button></form>`;
     dialog.querySelector('[data-csv]').onclick = () => downloadBomCsv(editor);
     dialog.querySelector('[data-print]').onclick = () => {
         dialog.close();

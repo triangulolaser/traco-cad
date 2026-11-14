@@ -6,7 +6,7 @@
 
 import { createDocument, ensureEntityIds } from './document.js';
 import { getSymbolDef, getLibrary, splitRef } from './schematic-library.js';
-import { syncSchematic, SCHEMATIC_TYPES } from './schematic.js';
+import { syncSchematic, SCHEMATIC_TYPES, normalizeWire } from './schematic.js';
 import { MODE_CAD, MODE_SCHEMATIC, isSchematicDocument, entitySheet, sheetsOf, normalizeSchematicDocument } from './schematic-mode.js';
 import { normalizeTitleBlock } from './schematic-sheet.js';
 
@@ -86,6 +86,8 @@ export function documentToTraco(doc) {
             if (e.manual && (e.vertices ?? []).length) l.vertices = e.vertices.map(point);
             if (e.route) l.tracado = e.route;
             if (String(e.rotulo ?? '').trim()) l.rotulo = String(e.rotulo).trim();
+            const fio = normalizeWire(e.fio);
+            if (fio) l.fio = fio;
             // Pontas são derivadas das portas. Só a ligação solta (símbolo ou junção apagados) grava
             // onde estava, para reabrir no lugar.
             if (e.ends?.length === 2 && (missing(e.from) || missing(e.to))) l.pontas = e.ends.map(point);
@@ -157,6 +159,8 @@ export function tracoToDocument(text, { name = 'esquema.traco' } = {}) {
         }
         if (l.tracado) e.route = l.tracado;
         if (l.rotulo) e.rotulo = String(l.rotulo);
+        const fio = normalizeWire(l.fio);
+        if (fio) e.fio = fio;
         if (l.pontas?.length === 2) e.ends = l.pontas.map((p) => ({ x: p.x, y: p.y }));
         entities.push(e);
     }

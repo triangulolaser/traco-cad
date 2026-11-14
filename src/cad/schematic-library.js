@@ -3,12 +3,14 @@
 // A definição de símbolo é JSON com a geometria do próprio Traço e portas com as chaves do
 // `terminal` (name, position, orientation, type, required). O documento referencia a definição
 // por "<biblioteca>/<id>"; este módulo guarda as bibliotecas carregadas e resolve a referência.
-// A biblioteca ISO 1219 genérica vem embutida; outras entram por arquivo (SIMBIB).
+// As bibliotecas genéricas ISO 1219 (hidráulica) e IEC 60617 (elétrica) vêm embutidas; outras entram
+// por arquivo (SIMBIB).
 
 import iso1219 from './schematic-lib/iso1219.js';
+import iec60617 from './schematic-lib/iec60617.js';
 import tracoLib from './schematic-lib/traco.js';
 
-export const PORT_TYPES = ['pressao', 'retorno', 'succao', 'trabalho', 'piloto', 'dreno', 'passante'];
+export const PORT_TYPES = ['pressao', 'retorno', 'succao', 'trabalho', 'piloto', 'dreno', 'passante', 'eletrico'];
 export const ORIENTATIONS = ['n', 's', 'e', 'w'];
 export const SYMBOL_ENTITY_TYPES = ['line', 'circle', 'arc', 'polyline', 'hatch', 'text'];
 export const PORT_GRID = 5;
@@ -112,7 +114,7 @@ export function buildLibrary(manifest, symbols) {
 }
 
 // Bibliotecas que vêm com o Traço: não saem nem são substituídas pelo SIMBIB.
-export const BUILTIN_LIBRARY_IDS = new Set([iso1219.manifesto.id, tracoLib.manifesto.id]);
+export const BUILTIN_LIBRARY_IDS = new Set([iso1219.manifesto.id, iec60617.manifesto.id, tracoLib.manifesto.id]);
 
 export function isBuiltinLibrary(id) {
     return BUILTIN_LIBRARY_IDS.has(id);
@@ -200,4 +202,5 @@ export function libraryToBundle(library) {
 export const BUILTIN_LIBRARY_ID = iso1219.manifesto.id;
 export const CONNECTOR_REF = `${tracoLib.manifesto.id}/conector-pagina`;
 registerLibrary(libraryFromBundle(iso1219));
+registerLibrary(libraryFromBundle(iec60617));
 registerLibrary(libraryFromBundle(tracoLib));

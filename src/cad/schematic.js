@@ -26,6 +26,8 @@ export const PORT_COMPATIBILITY = {
     succao: ['succao', 'retorno'],
     dreno: ['dreno', 'retorno'],
     piloto: ['piloto'],
+    // Domínio elétrico (decisão 13): só com elétrico. Elétrico com qualquer tipo hidráulico é E2.
+    eletrico: ['eletrico'],
 };
 
 // Pares fora da tabela que não são erro, só aviso A5: piloto de contrabalanço e de retenção pilotada vem
@@ -147,7 +149,17 @@ export function symbolChildren(entity) {
         const fn = symbolLocalFn(entity);
         const mirror = Boolean(entity.espelho);
         const geometria = def.conector ? stretchConnector(def.geometria, connectorBodyEnd(entity, def)) : def.geometria;
-        out = geometria.map((g) => ({ ...transformEntity({ ...g }, fn, { mirror }), layer: entity.layer, color: entity.color }));
+        // Texto do desenho (legenda de porta) no símbolo espelhado: não vira texto espelhado. Fica com a
+        // rotação da instância sem espelho, no ponto espelhado, e o alinhamento troca de lado, como o atributo.
+        const plain = mirror ? symbolLocalFn({ ...entity, espelho: false }) : fn;
+        out = geometria.map((g) => {
+            if (mirror && g.type === 'text') {
+                const t = transformEntity({ ...g }, plain);
+                const halign = g.halign ?? 'left';
+                return { ...t, position: fn(g.position), halign: halign === 'left' ? 'right' : halign === 'right' ? 'left' : halign, layer: entity.layer, color: entity.color };
+            }
+            return { ...transformEntity({ ...g }, fn, { mirror }), layer: entity.layer, color: entity.color };
+        });
         const xFlipped = fn({ x: 1, y: 0 }).x < fn({ x: 0, y: 0 }).x - 1e-9;
         for (const attr of def.atributos) {
             if (!attr.visivel || !attr.posicao) continue;
@@ -598,10 +610,13 @@ export function analyzeSchematic(doc) {
     };
     const linkLineType = new Map();
     const linkNet = new Map();
+    // Ligação elétrica é fio (decisão 13): a rede tem porta elétrica. Linha sempre contínua.
+    const electricLinks = new Set();
     for (const e of links) {
         const root = uf.find(`l:${e.id}`);
         linkNet.set(e.id, root);
         linkLineType.set(e.id, lineTypeOf(root));
+        if (effective.get(root)?.has('eletrico')) electricLinks.add(e.id);
     }
     const problems = [];
     // Primeiro par de erro; sem erro, primeiro par de aviso.
@@ -672,13 +687,35 @@ export function analyzeSchematic(doc) {
             lineType: roots.length === 1 ? lineTypeOf(roots[0]) : 'CONTINUOUS',
         };
     }).sort((a, b) => a.id.localeCompare(b.id));
-    const result = { nets, linkLineType, linkNet, loose, unconnected, problems };
+    const result = { nets, linkLineType, linkNet, electricLinks, loose, unconnected, problems };
     analysisCache.set(key, result);
     return result;
 }
 
 function emptyAnalysis() {
-    return { nets: [], linkLineType: new Map(), linkNet: new Map(), loose: new Set(), unconnected: [], problems: [] };
+    return { nets: [], linkLineType: new Map(), linkNet: new Map(), electricLinks: new Set(), loose: new Set(), unconnected: [], problems: [] };
+}
+
+// Fio da ligação elétrica (decisão 13): { numero, cor, secao_mm2, comprimento_mm }, tudo opcional.
+// Texto vazio e número inválido saem; sem nenhum campo, o fio é null (a ligação não grava `fio`).
+export const WIRE_FIELDS = ['numero', 'cor', 'secao_mm2', 'comprimento_mm'];
+const WIRE_NUMERIC = new Set(['secao_mm2', 'comprimento_mm']);
+
+export function normalizeWire(fio) {
+    if (!fio || typeof fio !== 'object') return null;
+    const out = {};
+    for (const k of WIRE_FIELDS) {
+        const v = fio[k];
+        if (v === undefined || v === null) continue;
+        if (WIRE_NUMERIC.has(k)) {
+            const n = typeof v === 'number' ? v : Number(String(v).trim().replace(',', '.'));
+            if (String(v).trim() !== '' && Number.isFinite(n) && n > 0) out[k] = n;
+        } else {
+            const t = String(v).trim();
+            if (t) out[k] = t;
+        }
+    }
+    return Object.keys(out).length ? out : null;
 }
 
 export function connectorSignal(entity) {

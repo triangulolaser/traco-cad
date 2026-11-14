@@ -1827,5 +1827,18 @@ export default {
     "Imprimir as folhas em A4 com moldura e carimbo, ou salvar em PDF": "Print the sheets on A4 with border and title block, or save as PDF",
     "Peças": "Parts",
     "Lista de peças e mangueiras (LISTAPECAS)": "Parts and hoses list (BOM)",
-    "{0} objeto(s) sobre o carimbo: {1}": "{0} object(s) over the title block: {1}"
+    "{0} objeto(s) sobre o carimbo: {1}": "{0} object(s) over the title block: {1}",
+    "junção": "junction",
+    "De": "From",
+    "Para": "To",
+    "Seção (mm²)": "Section (mm²)",
+    "Comprimento (mm)": "Length (mm)",
+    "elétrico": "electrical",
+    "Número": "Number",
+    "Fio da ligação": "Connection wire",
+    "Fios": "Wires",
+    "Fio": "Wire",
+    "solta": "loose",
+    "{0} fios": "{0} wires",
+    "Compr. (mm)": "Len. (mm)"
 };

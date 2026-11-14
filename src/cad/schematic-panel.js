@@ -1,5 +1,5 @@
 // Painel de propriedades do esquema (ADR 0007, E2b): atributos do símbolo, rótulo de mangueira
-// da ligação e carimbo do esquema quando nada está selecionado.
+// da ligação hidráulica, fio da ligação elétrica (decisão 13) e carimbo quando nada está selecionado.
 //
 // O nome de tela de cada atributo vem da biblioteca do símbolo (`rotulos`); sem rótulo, o padrão.
 // O Traço não escreve nome de sistema de empresa: esse nome é texto da biblioteca da empresa.
@@ -7,12 +7,19 @@
 import { replaceEntities, isEntityEditable } from './document.js';
 import { getSymbolDef, attributeLabel } from './schematic-library.js';
 import { isSchematicDocument } from './schematic-mode.js';
-import { analyzeSchematic } from './schematic.js';
+import { analyzeSchematic, normalizeWire, WIRE_FIELDS } from './schematic.js';
 import { TITLE_FIELDS, titleBlockOf, normalizeTitleBlock } from './schematic-sheet.js';
 
 const PORT_TYPE_LABELS = {
-    pressao: 'pressão', retorno: 'retorno', succao: 'sucção', trabalho: 'trabalho', piloto: 'piloto', dreno: 'dreno', passante: 'passante',
+    pressao: 'pressão', retorno: 'retorno', succao: 'sucção', trabalho: 'trabalho', piloto: 'piloto', dreno: 'dreno', passante: 'passante', eletrico: 'elétrico',
 };
+
+const WIRE_LABELS = [
+    { key: 'numero', label: 'Número' },
+    { key: 'cor', label: 'Cor' },
+    { key: 'secao_mm2', label: 'Seção (mm²)', numeric: true },
+    { key: 'comprimento_mm', label: 'Comprimento (mm)', numeric: true },
+];
 
 function esc(text) {
     return String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -65,6 +72,18 @@ export function schematicPropertiesHtml(doc, selected) {
         return html;
     }
     const links = selected.filter((e) => e.type === 'link');
+    const electric = analyzeSchematic(doc).electricLinks;
+    if (links.length && links.length === selected.length && links.every((l) => electric.has(l.id))) {
+        const locked = links.some((l) => !isEntityEditable(doc, l));
+        let html = section(links.length === 1 ? 'Fio' : `${links.length} fios`);
+        for (const f of WIRE_LABELS) {
+            const values = new Set(links.map((l) => String(normalizeWire(l.fio)?.[f.key] ?? '')));
+            const value = values.size === 1 ? [...values][0] : '';
+            const shown = f.numeric ? value.replace('.', ',') : value;
+            html += row(f.label, input(`data-schematic-wire="${f.key}"${values.size > 1 ? ' placeholder="*Varia*"' : ''}`, shown, locked));
+        }
+        return html;
+    }
     if (links.length && links.length === selected.length) {
         const values = new Set(links.map((l) => String(l.rotulo ?? '')));
         const value = values.size === 1 ? [...values][0] : '';
@@ -120,6 +139,25 @@ export function bindSchematicProperties(editor, box) {
                 updates.set(id, next);
             }
             if (updates.size) editor.commit('Rótulo de mangueira', replaceEntities(editor.doc, updates));
+        });
+    });
+    box.querySelectorAll('[data-schematic-wire]').forEach((el) => {
+        stop(el);
+        el.addEventListener('change', () => {
+            const field = el.dataset.schematicWire;
+            if (!WIRE_FIELDS.includes(field)) return;
+            const updates = new Map();
+            for (const id of editor.selection) {
+                const e = editor.doc.entities.find((x) => x.id === id);
+                if (e?.type !== 'link' || !isEntityEditable(editor.doc, e)) continue;
+                const fio = normalizeWire({ ...(e.fio ?? {}), [field]: el.value });
+                if (JSON.stringify(fio) === JSON.stringify(normalizeWire(e.fio))) continue;
+                const next = { ...e };
+                if (fio) next.fio = fio;
+                else delete next.fio;
+                updates.set(id, next);
+            }
+            if (updates.size) editor.commit('Fio da ligação', replaceEntities(editor.doc, updates));
         });
     });
     box.querySelectorAll('[data-schematic-title]').forEach((el) => {

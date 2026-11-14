@@ -33,8 +33,12 @@ function curvePath(c){
  const a=polar(c.center,c.start,c.radius),b=polar(c.center,c.end,c.radius);
  return `M${n(a.x)} ${n(a.y)}A${n(c.radius)} ${n(c.radius)} 0 ${sweepCCW(c.start,c.end)>Math.PI?1:0} 1 ${n(b.x)} ${n(b.y)}`;
 }
+// Alinhamento horizontal como na tela (texto de uma linha sem caixa): alinhado à direita termina no ponto,
+// como o rótulo do símbolo espelhado. MTEXT com largura continua pela caixa.
+const TEXT_ANCHOR={center:'middle',right:'end'};
 function textSvg(e){
- return `<g transform="translate(${n(e.position.x)} ${n(e.position.y)}) rotate(${n(e.rotation??0)}) scale(1 -1)"><text font-family="${escapeXml(fontFamily(e.fontFamily))}" font-size="${n(fontEm(e.height))}" font-weight="${e.bold?700:400}" font-style="${e.italic?'italic':'normal'}" stroke="none">${String(e.text??'').split('\n').map((line,i)=>`<tspan x="0" y="${n(i*e.height*LINE_SPACING)}">${escapeXml(line)}</tspan>`).join('')}</text></g>`;
+ const anchor=e.boxWidth>0?null:TEXT_ANCHOR[e.halign];
+ return `<g transform="translate(${n(e.position.x)} ${n(e.position.y)}) rotate(${n(e.rotation??0)}) scale(1 -1)"><text${anchor?` text-anchor="${anchor}"`:''} font-family="${escapeXml(fontFamily(e.fontFamily))}" font-size="${n(fontEm(e.height))}" font-weight="${e.bold?700:400}" font-style="${e.italic?'italic':'normal'}" stroke="none">${String(e.text??'').split('\n').map((line,i)=>`<tspan x="0" y="${n(i*e.height*LINE_SPACING)}">${escapeXml(line)}</tspan>`).join('')}</text></g>`;
 }
 export function entitySvg(e,doc,k,mono){
  if(e.type==='insert')return expandInsert(e).filter(x=>layerOf(doc,x.layer)?.visible!==false).map(x=>entitySvg(x,doc,k,mono)).join('');

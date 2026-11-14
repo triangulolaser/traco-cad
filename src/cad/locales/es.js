@@ -1827,5 +1827,18 @@ export default {
     "Imprimir as folhas em A4 com moldura e carimbo, ou salvar em PDF": "Imprimir las hojas en A4 con marco y cajetín, o guardar en PDF",
     "Peças": "Piezas",
     "Lista de peças e mangueiras (LISTAPECAS)": "Lista de piezas y mangueras (LISTAPECAS)",
-    "{0} objeto(s) sobre o carimbo: {1}": "{0} objeto(s) sobre el cajetín: {1}"
+    "{0} objeto(s) sobre o carimbo: {1}": "{0} objeto(s) sobre el cajetín: {1}",
+    "junção": "unión",
+    "De": "De",
+    "Para": "A",
+    "Seção (mm²)": "Sección (mm²)",
+    "Comprimento (mm)": "Longitud (mm)",
+    "elétrico": "eléctrico",
+    "Número": "Número",
+    "Fio da ligação": "Cable de la conexión",
+    "Fios": "Cables",
+    "Fio": "Cable",
+    "solta": "suelta",
+    "{0} fios": "{0} cables",
+    "Compr. (mm)": "Long. (mm)"
 };
