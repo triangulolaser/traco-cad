@@ -6,7 +6,7 @@ import {
     validateSymbol, buildLibrary, registerLibrary, unregisterLibrary, libraryFromFiles, searchSymbols, getSymbolDef,
 } from '../src/cad/schematic-library.js';
 import {
-    createSymbol, syncSchematic, analyzeSchematic, symbolPorts, routeLink, linkPoints, findLinkNear, splitLinkAt, nextLabel, typesCompatible,
+    createSymbol, syncSchematic, analyzeSchematic, symbolPorts, routeLink, linkPoints, findLinkNear, splitLinkAt, nextLabel, typesCompatible, symbolBodyBox, routeLinkAround,
 } from '../src/cad/schematic.js';
 import { documentToTraco, tracoToDocument } from '../src/cad/traco-file.js';
 import iso1219 from '../src/cad/schematic-lib/iso1219.js';
@@ -45,9 +45,12 @@ function build(entities) {
     return syncSchematic(addEntities(createDocument(), entities));
 }
 
-test('biblioteca embutida: 5 símbolos válidos e portas com as chaves do terminal', () => {
+test('biblioteca embutida: ISO 1219 0.2.0, 20 símbolos válidos e portas com as chaves do terminal', () => {
     assert.equal(iso1219.manifesto.id, 'iso1219');
-    assert.equal(iso1219.simbolos.length, 5);
+    assert.equal(iso1219.manifesto.versao_biblioteca, '0.2.0');
+    assert.equal(iso1219.simbolos.length, 20);
+    assert.deepEqual(iso1219.manifesto.simbolos, iso1219.simbolos.map((s) => `${s.id}.json`));
+    assert.equal(new Set(iso1219.simbolos.map((s) => s.id)).size, 20);
     for (const s of iso1219.simbolos) {
         assert.deepEqual(validateSymbol(s), [], s.id);
         for (const p of s.portas) assert.deepEqual(Object.keys(p).sort(), ['name', 'orientation', 'position', 'required', 'type']);
@@ -337,4 +340,33 @@ test('circuitos reais: tanques separados, pilotos em linha de potência e pares 
         ]));
         assert.deepEqual(an.problems.map((p) => [p.code, p.types]), [['E2', types]], types.join('+'));
     }
+});
+
+function crossesBox(points, box) {
+    for (let i = 0; i + 1 < points.length; i += 1) {
+        const [p, q] = [points[i], points[i + 1]];
+        if (Math.max(p.x, q.x) > box.minX + 1e-6 && Math.min(p.x, q.x) < box.maxX - 1e-6
+            && Math.max(p.y, q.y) > box.minY + 1e-6 && Math.min(p.y, q.y) < box.maxY - 1e-6) return true;
+    }
+    return false;
+}
+
+test('LIGAR: porta de cima ligada por baixo contorna o motor em vez de atravessá-lo', () => {
+    const motor = { ...createSymbol('iso1219/motor-unidirecional', { x: 0, y: 0 }, { atributos: { etiqueta: 'M1' } }), id: 'm' };
+    const tank = { ...createSymbol('iso1219/tanque', { x: 20, y: -60 }, { atributos: { etiqueta: 'R1' } }), id: 't' };
+    const doc = build([motor, tank, { ...link({ symbol: 'm', port: 'A' }, { symbol: 't', port: 'T' }), id: 'l' }]);
+    const l = doc.entities.find((e) => e.id === 'l');
+    const pts = linkPoints(l);
+    const box = symbolBodyBox(doc.entities.find((e) => e.id === 'm'));
+    assert.ok(box && box.maxY <= 15 + 1e-6, 'caixa do corpo sem os textos');
+    assert.equal(crossesBox(pts, box), false, `não passa por dentro do motor: ${JSON.stringify(pts)}`);
+    assert.equal(crossesBox(pts, symbolBodyBox(doc.entities.find((e) => e.id === 't'))), false, 'nem do reservatório');
+    // Sai para cima, na direção da porta.
+    assert.ok(pts[1].y > pts[0].y && Math.abs(pts[1].x - pts[0].x) < 1e-9, 'primeiro trecho para cima');
+    for (let i = 0; i + 1 < pts.length; i += 1) assert.ok(Math.abs(pts[i].x - pts[i + 1].x) < 1e-9 || Math.abs(pts[i].y - pts[i + 1].y) < 1e-9, 'ortogonal');
+});
+
+test('LIGAR: sem obstáculo o traçado continua o L/Z de antes', () => {
+    const box = { minX: -10, minY: -20, maxX: 10, maxY: 0 };
+    assert.deepEqual(routeLinkAround({ point: { x: 0, y: 0 }, orientation: 'n', box }, { point: { x: 10, y: 20 }, orientation: 's', box: null }), [{ x: 0, y: 10 }, { x: 10, y: 10 }]);
 });

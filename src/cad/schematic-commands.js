@@ -10,7 +10,7 @@ import {
 } from './schematic-mode.js';
 import { schematicBom } from './schematic-bom.js';
 import {
-    createSymbol, nextLabel, findPortNear, findJunctionNear, findLinkNear, splitLinkAt, routeLink, analyzeSchematic,
+    createSymbol, nextLabel, findPortNear, findJunctionNear, findLinkNear, splitLinkAt, routeLinkAround, symbolBodyBox, analyzeSchematic,
 } from './schematic.js';
 
 const STORAGE_KEY = 'traco:esquema:bibliotecas';
@@ -99,7 +99,7 @@ async function insertSymbol(e, args = []) {
 function pickEnd(e, point) {
     const tol = tolerance(e);
     const port = findPortNear(e.doc, point, tol);
-    if (port) return { end: { symbol: port.symbol.id, port: port.port.name }, point: port.port.position, orientation: port.port.orientation, label: `${port.symbol.atributos?.etiqueta ?? port.symbol.id}.${port.port.name}` };
+    if (port) return { end: { symbol: port.symbol.id, port: port.port.name }, symbol: port.symbol, point: port.port.position, orientation: port.port.orientation, label: `${port.symbol.atributos?.etiqueta ?? port.symbol.id}.${port.port.name}` };
     const junction = findJunctionNear(e.doc, point, tol);
     if (junction) return { end: { junction: junction.junction.id }, point: junction.junction.position, orientation: null };
     const onLink = findLinkNear(e.doc, point, tol);
@@ -125,7 +125,12 @@ async function connect(e) {
                 const hover = findPortNear(e.doc, cursor, tolerance(e));
                 const b = hover ? hover.port.position : cursor;
                 const ob = hover ? hover.port.orientation : null;
-                return [{ type: 'link', id: '__preview', from: { point: a.point }, to: { point: b }, ends: [a.point, b], vertices: routeLink(a.point, a.orientation, b, ob, route) }];
+                const vertices = routeLinkAround(
+                    { point: a.point, orientation: a.orientation, box: a.symbol ? symbolBodyBox(a.symbol) : null },
+                    { point: b, orientation: ob, box: hover ? symbolBodyBox(hover.symbol) : null },
+                    route,
+                );
+                return [{ type: 'link', id: '__preview', from: { point: a.point }, to: { point: b }, ends: [a.point, b], vertices }];
             },
         });
         if (!res) return;

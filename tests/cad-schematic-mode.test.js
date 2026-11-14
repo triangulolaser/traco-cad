@@ -171,9 +171,10 @@ test('biblioteca na tela: ISO embutida primeiro, busca sem acento, prévia com a
     const all = librarySections();
     assert.equal(all[0].builtin, true);
     assert.equal(all[0].id, 'iso1219');
-    assert.equal(all[0].symbols.length, 5);
-    const found = librarySections('valvula');
-    assert.deepEqual(found[0].symbols.map((s) => s.ref), ['iso1219/valvula-4-3-centro-fechado']);
+    assert.equal(all[0].symbols.length, 20);
+    const found = librarySections('cilindro');
+    assert.deepEqual(found[0].symbols.map((s) => s.ref), ['iso1219/cilindro-dupla-acao']);
+    assert.ok(librarySections('valvula')[0].symbols.length >= 6, 'as válvulas novas aparecem na busca');
     const svg = symbolPreviewSvg('iso1219/valvula-4-3-centro-fechado');
     assert.match(svg, /^<svg class="cad-symbol-preview" viewBox="[-\d. ]+"/);
     assert.equal((svg.match(/<circle /g) ?? []).length, 4, 'P, T, A e B');

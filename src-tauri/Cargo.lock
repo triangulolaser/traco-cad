@@ -4480,7 +4480,7 @@ dependencies = [
 
 [[package]]
 name = "traco-cad"
-version = "0.3.64"
+version = "0.3.65"
 dependencies = [
  "drag",
  "log",

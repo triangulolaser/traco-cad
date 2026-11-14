@@ -1,6 +1,9 @@
 // Lista de peças do esquema (ADR 0007, E3).
 //
-// Peças: símbolos agrupados pela definição e pelo `codigo`; o conector de página não é peça.
+// Peças: símbolos agrupados pela definição, pelo `codigo` e pela `descricao`; o conector de página não é peça.
+// A descrição entra na chave porque a mesma peça pode ter usos diferentes (roda traseira esquerda e direita):
+// juntar os dois mostrava só a descrição do primeiro. Símbolo sem descrição entra na linha descrita da mesma
+// peça quando só existe uma; com mais de uma, fica na própria linha, sem descrição.
 // Mangueiras: seção própria, contadas pelo `rotulo` da ligação (decisão 8 do formato). Ligação sem
 // rótulo é tubo ou ligação interna e fica só no total "sem rótulo".
 
@@ -27,13 +30,13 @@ export function schematicBom(doc) {
             const def = getSymbolDef(e.def);
             if (def?.conector) continue;
             const codigo = attr(e, 'codigo');
-            const k = `${e.def}\u0000${codigo}`;
-            if (!groups.has(k)) groups.set(k, { ref: e.def, nome: def?.nome ?? e.def, codigo, descricao: '', etiquetas: [], ids: [] });
+            const descricao = attr(e, 'descricao');
+            const k = `${e.def}\u0000${codigo}\u0000${descricao}`;
+            if (!groups.has(k)) groups.set(k, { ref: e.def, nome: def?.nome ?? e.def, codigo, descricao, etiquetas: [], ids: [] });
             const g = groups.get(k);
             g.ids.push(e.id);
             const etiqueta = attr(e, 'etiqueta');
             if (etiqueta) g.etiquetas.push(etiqueta);
-            if (!g.descricao) g.descricao = attr(e, 'descricao');
         } else if (e.type === 'link') {
             const rotulo = String(e.rotulo ?? '').trim();
             if (!rotulo) {
@@ -43,6 +46,14 @@ export function schematicBom(doc) {
             if (!hoses.has(rotulo)) hoses.set(rotulo, { rotulo, ids: [] });
             hoses.get(rotulo).ids.push(e.id);
         }
+    }
+    for (const [k, g] of groups) {
+        if (g.descricao) continue;
+        const described = [...groups.values()].filter((o) => o !== g && o.descricao && o.ref === g.ref && o.codigo === g.codigo);
+        if (described.length !== 1) continue;
+        described[0].ids.push(...g.ids);
+        described[0].etiquetas.push(...g.etiquetas);
+        groups.delete(k);
     }
     const parts = [...groups.values()].map((g) => {
         g.etiquetas.sort(collator.compare);

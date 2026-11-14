@@ -10,7 +10,9 @@ import {
 } from '../src/cad/schematic-library.js';
 import {
     createSymbol, syncSchematic, analyzeSchematic, connectorReferences, connectorReferenceTexts,
+    symbolChildren, connectorTipX,
 } from '../src/cad/schematic.js';
+import { textBox } from '../src/cad/geometry.js';
 import { MODE_SCHEMATIC, withMode, addSheet, setActiveSheet } from '../src/cad/schematic-mode.js';
 import { schematicCheckList } from '../src/cad/schematic-check.js';
 import { sheetDecorations, normalizeTitleBlock, TITLE_BLOCK, FRAME_MARGIN } from '../src/cad/schematic-sheet.js';
@@ -270,4 +272,74 @@ test('A7: objeto por cima do carimbo vira aviso na conferência, por folha', () 
     assert.deepEqual(a7[0].ids, ['r3']);
     assert.equal(a7[0].sheet, 'F1');
     assert.match(a7[0].text, /1 objeto\(s\) sobre o carimbo: R3/);
+});
+
+function flagOf(children) {
+    return children.find((c) => c.type === 'polyline');
+}
+
+function textXs(t) {
+    return textBox(t).map((c) => c.x);
+}
+
+test('conector espelhado: o sinal fica dentro da bandeira, do lado espelhado', () => {
+    const plain = createSymbol(CONNECTOR_REF, { x: 100, y: 0 }, { atributos: { etiqueta: 'X1', sinal: 'P1' } });
+    const mirrored = createSymbol(CONNECTOR_REF, { x: 100, y: 0 }, { espelho: true, atributos: { etiqueta: 'X1', sinal: 'P1' } });
+    for (const sym of [plain, mirrored]) {
+        const kids = symbolChildren(sym);
+        const flag = flagOf(kids).vertices.map((v) => v.x);
+        const label = kids.find((c) => c.type === 'text' && c.text === 'P1');
+        const xs = textXs(label);
+        assert.ok(Math.min(...xs) >= Math.min(...flag) - 1e-6 && Math.max(...xs) <= Math.max(...flag) + 1e-6,
+            `sinal dentro da bandeira (espelho=${sym.espelho}): texto ${Math.min(...xs)}..${Math.max(...xs)}, bandeira ${Math.min(...flag)}..${Math.max(...flag)}`);
+    }
+    const label = symbolChildren(mirrored).find((c) => c.type === 'text');
+    assert.equal(label.halign, 'right', 'espelhado, o texto termina no ponto do atributo');
+    assert.ok(label.position.x < 100, 'e fica à esquerda da porta');
+});
+
+test('bandeira do conector: largura acompanha o sinal', () => {
+    const short = createSymbol(CONNECTOR_REF, { x: 0, y: 0 }, { atributos: { etiqueta: 'X1', sinal: 'P' } });
+    const long = createSymbol(CONNECTOR_REF, { x: 0, y: 0 }, { atributos: { etiqueta: 'X2', sinal: 'LS-RETORNO-BOMBA' } });
+    const width = (sym) => Math.max(...flagOf(symbolChildren(sym)).vertices.map((v) => v.x));
+    assert.equal(width(short), 20, 'sinal curto mantém a bandeira original');
+    assert.ok(width(long) > 20);
+    const label = symbolChildren(long).find((c) => c.type === 'text');
+    assert.ok(Math.max(...textXs(label)) < width(long) - 3 + 1e-6, 'o texto termina antes da ponta');
+    assert.equal(connectorTipX(long), width(long));
+    // Referência cruzada sai depois da ponta da bandeira alongada (conector em x=100).
+    const doc = twoSheets({ sinal: 'LS-RETORNO-BOMBA' });
+    const x1 = doc.entities.find((e) => e.id === 'x1');
+    const refs = connectorReferenceTexts(doc, (e) => e.sheet === 'F1');
+    assert.equal(refs.length, 1);
+    assert.ok(refs[0].position.x > x1.position.x + connectorTipX(x1), 'referência depois da ponta');
+});
+
+test('lista de peças: mesmo símbolo e código com descrições diferentes ficam em linhas separadas', () => {
+    const doc = addEntities(withMode(createDocument(), MODE_SCHEMATIC), [
+        sym('v7', 'iso1219/tanque', 0, 0, { etiqueta: 'V7', codigo: '123', descricao: 'roda traseira esquerda' }),
+        sym('v10', 'iso1219/tanque', 40, 0, { etiqueta: 'V10', codigo: '123', descricao: 'roda traseira direita' }),
+        sym('v15', 'iso1219/tanque', 80, 0, { etiqueta: 'V15', codigo: '123', descricao: 'roda traseira esquerda' }),
+    ]);
+    const parts = schematicBom(doc).parts;
+    assert.equal(parts.length, 2);
+    const esquerda = parts.find((p) => p.descricao === 'roda traseira esquerda');
+    const direita = parts.find((p) => p.descricao === 'roda traseira direita');
+    assert.deepEqual(esquerda.etiquetas, ['V7', 'V15']);
+    assert.equal(esquerda.quantidade, 2);
+    assert.deepEqual(direita.etiquetas, ['V10']);
+    assert.equal(direita.quantidade, 1);
+    assert.match(bomCsv(doc), /roda traseira direita/);
+});
+
+test('lista de peças: sem descrição, entra na única linha descrita da peça; com duas, fica à parte', () => {
+    const base = withMode(createDocument(), MODE_SCHEMATIC);
+    const parts = (extra) => schematicBom(addEntities(base, [
+        sym('v7', 'iso1219/tanque', 0, 0, { etiqueta: 'V7', codigo: '123', descricao: 'roda traseira esquerda' }),
+        sym('v9', 'iso1219/tanque', 20, 0, { etiqueta: 'V9', codigo: '123' }),
+        ...extra,
+    ])).parts;
+    assert.deepEqual(parts([]).map((p) => [p.etiquetas.join(','), p.descricao]), [['V7,V9', 'roda traseira esquerda']]);
+    const two = parts([sym('v10', 'iso1219/tanque', 40, 0, { etiqueta: 'V10', codigo: '123', descricao: 'roda traseira direita' })]);
+    assert.deepEqual(two.map((p) => [p.etiquetas.join(','), p.descricao]), [['V7', 'roda traseira esquerda'], ['V9', ''], ['V10', 'roda traseira direita']]);
 });

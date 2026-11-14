@@ -8,7 +8,7 @@
 // `ends` é derivado das portas (cache em memória, nunca vai para o .traco); é refeito por syncSchematic.
 // A rede é calculada (analyzeSchematic), nunca gravada. A ligação não tem classe: o tipo de linha sai da rede.
 
-import { registerEntityProvider, entityCurves, entityBox, transformEntity, distance } from './geometry.js';
+import { registerEntityProvider, entityCurves, entityBox, transformEntity, distance, textBox } from './geometry.js';
 import { terminalTransform } from './extra-entities.js';
 import { entityOnActiveSheet, entitySheet, sheetsOf } from './schematic-mode.js';
 import { getSymbolDef } from './schematic-library.js';
@@ -102,8 +102,40 @@ function attributeText(entity, attr) {
 
 const childCache = new WeakMap();
 
+// Bandeira do conector de página: o corpo vai de x=5 até CONNECTOR_BODY_END e a ponta fica 3 mm adiante.
+// O corpo cresce com o nome do sinal, para sinais longos não passarem da borda.
+const CONNECTOR_BODY_END = 17;
+const CONNECTOR_TIP = 3;
+const CONNECTOR_TEXT_PAD = 1.5;
+
+function connectorBodyEnd(entity, def) {
+    const attr = def.atributos.find((a) => a.nome === 'sinal');
+    if (!attr?.posicao) return CONNECTOR_BODY_END;
+    const text = attributeText(entity, attr);
+    const xs = textBox({ type: 'text', position: { x: 0, y: 0 }, height: attr.altura ?? 2.5, rotation: 0, text }).map((c) => c.x);
+    const width = Math.max(...xs) - Math.min(...xs);
+    return Math.max(CONNECTOR_BODY_END, round(attr.posicao.x + width + CONNECTOR_TEXT_PAD));
+}
+
+// Ponta da bandeira no sistema local do conector (x), para a referência cruzada sair depois dela.
+export function connectorTipX(entity) {
+    const def = getSymbolDef(entity.def);
+    if (!def?.conector) return CONNECTOR_BODY_END + CONNECTOR_TIP;
+    return connectorBodyEnd(entity, def) + CONNECTOR_TIP;
+}
+
+function stretchConnector(geometria, bodyEnd) {
+    if (bodyEnd === CONNECTOR_BODY_END) return geometria;
+    const shift = bodyEnd - CONNECTOR_BODY_END;
+    return geometria.map((g) => (g.type === 'polyline'
+        ? { ...g, vertices: g.vertices.map((v) => (v.x >= CONNECTOR_BODY_END - 1e-9 ? { ...v, x: v.x + shift } : v)) }
+        : g));
+}
+
 // Geometria da instância no mundo: desenho da definição + textos dos atributos visíveis.
 // Texto não gira com o símbolo, para continuar legível; só o deslocamento manual é gravado.
+// Com o eixo X local apontando para a esquerda (espelho), o texto passa a terminar no ponto, em vez de
+// começar nele: assim ele fica do mesmo lado do desenho que na definição.
 export function symbolChildren(entity) {
     if (childCache.has(entity)) return childCache.get(entity);
     const def = getSymbolDef(entity.def);
@@ -114,14 +146,18 @@ export function symbolChildren(entity) {
     } else {
         const fn = symbolLocalFn(entity);
         const mirror = Boolean(entity.espelho);
-        out = def.geometria.map((g) => ({ ...transformEntity({ ...g }, fn, { mirror }), layer: entity.layer, color: entity.color }));
+        const geometria = def.conector ? stretchConnector(def.geometria, connectorBodyEnd(entity, def)) : def.geometria;
+        out = geometria.map((g) => ({ ...transformEntity({ ...g }, fn, { mirror }), layer: entity.layer, color: entity.color }));
+        const xFlipped = fn({ x: 1, y: 0 }).x < fn({ x: 0, y: 0 }).x - 1e-9;
         for (const attr of def.atributos) {
             if (!attr.visivel || !attr.posicao) continue;
             const text = attributeText(entity, attr);
             if (!text) continue;
             const base = fn(attr.posicao);
             const off = entity.deslocamentos?.[attr.nome] ?? { x: 0, y: 0 };
-            out.push({ type: 'text', position: { x: base.x + off.x, y: base.y + off.y }, height: attr.altura ?? 2.5, rotation: 0, text, layer: entity.layer, color: entity.color });
+            const child = { type: 'text', position: { x: base.x + off.x, y: base.y + off.y }, height: attr.altura ?? 2.5, rotation: 0, text, layer: entity.layer, color: entity.color };
+            if (xFlipped) child.halign = 'right';
+            out.push(child);
         }
     }
     childCache.set(entity, out);
@@ -204,7 +240,7 @@ registerEntityProvider('junction', {
 export const JUNCTION_RADIUS = 0.75;
 
 // ---------------------------------------------------------------------------
-// Roteamento ortogonal: só L ou Z, sem desvio de obstáculo.
+// Roteamento ortogonal: L ou Z; o desvio dos símbolos das pontas fica no routeLinkAround.
 
 function horizontal(orientation) {
     return orientation === 'e' || orientation === 'w';
@@ -226,12 +262,130 @@ export function routeLink(a, oa, b, ob, route = null) {
     return [{ x: a.x, y: my }, { x: b.x, y: my }];
 }
 
+// Desvio dos símbolos: a ligação sai da porta na direção dela, passa ao largo do corpo dos símbolos
+// das duas pontas e só então faz o L ou o Z. Usado quando o L/Z simples atravessaria um dos corpos.
+const ROUTE_CLEARANCE = 5;
+const DIRS = { n: { x: 0, y: 1 }, s: { x: 0, y: -1 }, e: { x: 1, y: 0 }, w: { x: -1, y: 0 } };
+const bodyCache = new WeakMap();
+
+// Caixa do desenho do símbolo, sem os textos dos atributos.
+export function symbolBodyBox(entity) {
+    if (!entity || entity.type !== 'symbol') return null;
+    if (bodyCache.has(entity)) return bodyCache.get(entity);
+    let box = null;
+    for (const child of symbolChildren(entity)) {
+        if (child.type === 'text') continue;
+        const b = entityBox(child);
+        if (!Number.isFinite(b.minX)) continue;
+        box = box ? { minX: Math.min(box.minX, b.minX), minY: Math.min(box.minY, b.minY), maxX: Math.max(box.maxX, b.maxX), maxY: Math.max(box.maxY, b.maxY) } : { ...b };
+    }
+    bodyCache.set(entity, box);
+    return box;
+}
+
+function segmentHitsBox(p, q, box) {
+    if (!box) return false;
+    const eps = 1e-6;
+    const minX = Math.min(p.x, q.x);
+    const maxX = Math.max(p.x, q.x);
+    const minY = Math.min(p.y, q.y);
+    const maxY = Math.max(p.y, q.y);
+    // Segmentos ortogonais: cruza se a faixa do segmento entra no interior aberto da caixa.
+    return maxX > box.minX + eps && minX < box.maxX - eps && maxY > box.minY + eps && minY < box.maxY - eps;
+}
+
+function pathClean(points, boxes) {
+    for (let i = 0; i + 1 < points.length; i += 1) {
+        for (const box of boxes) if (segmentHitsBox(points[i], points[i + 1], box)) return false;
+    }
+    return true;
+}
+
+function simplifyPath(points) {
+    const out = [];
+    for (const p of points) {
+        const q = { x: round(p.x), y: round(p.y) };
+        if (out.length && samePoint(out[out.length - 1], q)) continue;
+        out.push(q);
+    }
+    for (let i = 1; i + 1 < out.length;) {
+        const [a, b, c] = [out[i - 1], out[i], out[i + 1]];
+        if ((Math.abs(a.x - b.x) < 1e-9 && Math.abs(b.x - c.x) < 1e-9) || (Math.abs(a.y - b.y) < 1e-9 && Math.abs(b.y - c.y) < 1e-9)) out.splice(i, 1);
+        else i += 1;
+    }
+    return out;
+}
+
+// Trecho que volta sobre o anterior (ida e volta na mesma reta) não serve.
+function hasReversal(points) {
+    for (let i = 1; i + 1 < points.length; i += 1) {
+        const [a, b, c] = [points[i - 1], points[i], points[i + 1]];
+        const d1 = { x: Math.sign(b.x - a.x), y: Math.sign(b.y - a.y) };
+        const d2 = { x: Math.sign(c.x - b.x), y: Math.sign(c.y - b.y) };
+        if (d1.x === -d2.x && d1.y === -d2.y) return true;
+    }
+    return false;
+}
+
+function pathLength(points) {
+    let sum = 0;
+    for (let i = 0; i + 1 < points.length; i += 1) sum += Math.abs(points[i + 1].x - points[i].x) + Math.abs(points[i + 1].y - points[i].y);
+    return sum;
+}
+
+// Saída da porta até ficar fora da caixa do próprio símbolo, mais a folga.
+function stubPoint(p, orientation, box) {
+    const d = DIRS[orientation];
+    if (!d) return p;
+    let reach = ROUTE_CLEARANCE;
+    if (box) {
+        if (d.x > 0) reach = Math.max(reach, box.maxX - p.x + ROUTE_CLEARANCE);
+        if (d.x < 0) reach = Math.max(reach, p.x - box.minX + ROUTE_CLEARANCE);
+        if (d.y > 0) reach = Math.max(reach, box.maxY - p.y + ROUTE_CLEARANCE);
+        if (d.y < 0) reach = Math.max(reach, p.y - box.minY + ROUTE_CLEARANCE);
+    }
+    return { x: p.x + d.x * reach, y: p.y + d.y * reach };
+}
+
+// a/b: { point, orientation, box }. Devolve os vértices internos, como o routeLink.
+export function routeLinkAround(a, b, route = null) {
+    const simple = routeLink(a.point, a.orientation, b.point, b.orientation, route);
+    const boxes = [a.box, b.box].filter(Boolean);
+    const simplePath = simplifyPath([a.point, ...simple, b.point]);
+    if (!boxes.length || (pathClean(simplePath, boxes) && !hasReversal(simplePath))) return simple;
+    const a1 = stubPoint(a.point, a.orientation, a.box);
+    const b1 = stubPoint(b.point, b.orientation, b.box);
+    const xs = new Set([round((a1.x + b1.x) / 2), a1.x, b1.x]);
+    const ys = new Set([round((a1.y + b1.y) / 2), a1.y, b1.y]);
+    for (const box of boxes) {
+        xs.add(round(box.minX - ROUTE_CLEARANCE)); xs.add(round(box.maxX + ROUTE_CLEARANCE));
+        ys.add(round(box.minY - ROUTE_CLEARANCE)); ys.add(round(box.maxY + ROUTE_CLEARANCE));
+    }
+    const middles = [[{ x: b1.x, y: a1.y }], [{ x: a1.x, y: b1.y }]];
+    for (const x of xs) middles.push([{ x, y: a1.y }, { x, y: b1.y }]);
+    for (const y of ys) middles.push([{ x: a1.x, y }, { x: b1.x, y }]);
+    // Desvio em U pelos dois lados: sai, contorna por uma coluna e uma linha livres e chega.
+    for (const x of xs) for (const y of ys) {
+        middles.push([{ x, y: a1.y }, { x, y }, { x: b1.x, y }]);
+        middles.push([{ x: a1.x, y }, { x, y }, { x, y: b1.y }]);
+    }
+    let best = null;
+    for (const mid of middles) {
+        const path = simplifyPath([a.point, a1, ...mid, b1, b.point]);
+        if (!pathClean(path, boxes) || hasReversal(path)) continue;
+        const score = pathLength(path) + (path.length - 2) * ROUTE_CLEARANCE * 2;
+        if (!best || score < best.score - 1e-9) best = { path, score };
+    }
+    if (!best) return simple;
+    return best.path.slice(1, -1);
+}
+
 // Ponta → { point, orientation, missing }.
 export function resolveEnd(end, index) {
     if (end?.symbol !== undefined) {
         const sym = index.symbols.get(end.symbol);
         const port = sym ? symbolPort(sym, end.port) : null;
-        return port ? { point: port.position, orientation: port.orientation, missing: false } : { point: null, orientation: null, missing: true };
+        return port ? { point: port.position, orientation: port.orientation, box: symbolBodyBox(sym), missing: false } : { point: null, orientation: null, missing: true };
     }
     if (end?.junction !== undefined) {
         const j = index.junctions.get(end.junction);
@@ -285,7 +439,7 @@ export function syncSchematic(doc) {
             const last = vertices.length - 1;
             vertices[last] = keepOrthogonal(vertices[last], old[1], b);
         } else {
-            vertices = routeLink(a, ra.orientation, b, rb.orientation, e.route ?? null);
+            vertices = routeLinkAround({ point: a, orientation: ra.orientation, box: ra.box }, { point: b, orientation: rb.orientation, box: rb.box }, e.route ?? null);
         }
         changed = true;
         const next = { ...e, ends: [{ x: a.x, y: a.y }, { x: b.x, y: b.y }], vertices };
@@ -567,7 +721,7 @@ export function connectorReferenceTexts(doc, filter = () => true) {
         const list = refs.get(e.id);
         if (!list?.length || !filter(e)) continue;
         const fn = symbolLocalFn(e);
-        const tip = fn({ x: 21.5, y: 0 });
+        const tip = fn({ x: connectorTipX(e) + 1.5, y: 0 });
         const tail = fn({ x: 0, y: 0 });
         const text = `fl. ${list.join(', ')}`;
         const height = 2.5;
