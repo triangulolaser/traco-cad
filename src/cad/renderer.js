@@ -284,8 +284,8 @@ export class Renderer {
         }
 
         (state.preview ?? []).forEach((entity) => {
-            const color = entity.dimGuide ? this.theme.dimGuide : entity.color && entity.color !== 'bylayer' ? this.entityDisplayColor(entityColor(entity, state.doc)) : this.theme.preview;
-            this.drawEntity(entity, { color, width: entity.dimGuide ? 1 : 1.2, dashed: false, alpha: 0.9 });
+            const color = entity.rotationGuide ? this.theme.snap : entity.dimGuide ? this.theme.dimGuide : entity.color && entity.color !== 'bylayer' ? this.entityDisplayColor(entityColor(entity, state.doc)) : this.theme.preview;
+            this.drawEntity(entity, { color, width: entity.rotationGuide ? 3 : entity.dimGuide ? 1 : 1.2, dashed: false, alpha: 0.9 });
         });
 
         if (gripsVisible(state.selection.size)) state.selection.forEach((id) => {

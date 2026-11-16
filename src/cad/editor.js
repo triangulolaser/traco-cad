@@ -733,7 +733,7 @@ export class Editor {
                 if(this.settings.softAxis)p=findSoftAxis(ref,p,this.viewport.pixelsToWorld(10))?.point??p;
             }
         }
-        return p;
+        return this.pending?.pointerTransform ? this.pending.pointerTransform(p) : p;
     }
 
     updateSnap() {

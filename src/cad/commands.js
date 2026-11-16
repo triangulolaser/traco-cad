@@ -1,3 +1,4 @@
+import { rotationEdges, findRotationSnap } from './rotation-snap.js';
 import { showExportBalloon } from './export-balloon.js';
 import { usage } from '../usage-telemetry.js';
 import {openPrintDialog} from './print.js';
@@ -1365,6 +1366,23 @@ async function rotate(editor) {
     if (!baseRes || !baseRes.point) return;
     const base = baseRes.point;
 
+    const edges = rotationEdges(entities);
+    // Prompt-local: numeric/coordinate input bypasses this soft pointer constraint.
+    const rotationOptions = (referenceAngle = 0, dyn = null) => {
+        const enabled = () => !editor.snap && !editor.shiftLock && !editor.settings?.ortho
+            && !Number.isFinite(dyn?.locked.v);
+        const snap = (cursor) => enabled() ? findRotationSnap(edges, base, cursor,
+            editor.viewport?.pixelsToWorld(10) ?? 0, referenceAngle) : null;
+        return {
+            pointerTransform: (cursor) => snap(cursor)?.point ?? cursor,
+            preview: (cursor) => {
+                const target = dyn ? dyn.resolve(cursor) : cursor;
+                const result = entities.map(e => rotateEntity(e, base, angleOf(base, target) - referenceAngle));
+                const guide = snap(target)?.guide;
+                return guide ? [...result, guide] : result;
+            },
+        };
+    };
     let copyMode = false;
     let rotDyn = angleDynSpec(editor, base);
     let res = await editor.getPoint('Ângulo de rotação ou [Copiar/Referência]', {
@@ -1376,7 +1394,7 @@ async function rotate(editor) {
             { key: 'r', label: 'Referência' },
         ],
         dynInput: rotDyn,
-        preview: (cursor) => entities.map((e) => rotateEntity(e, base, angleOf(base, rotDyn.resolve(cursor)))),
+        ...rotationOptions(0, rotDyn),
         hide: ids,
     });
     if (!res) return;
@@ -1390,7 +1408,7 @@ async function rotate(editor) {
             angle: true,
             options: [{ key: 'r', label: 'Referência' }],
             dynInput: rotDyn,
-            preview: (cursor) => entities.map((e) => rotateEntity(e, base, angleOf(base, rotDyn.resolve(cursor)))),
+            ...rotationOptions(0, rotDyn),
         });
         if (!res) return;
     }
@@ -1421,7 +1439,7 @@ async function rotate(editor) {
             allowNumber: true,
             angle: true,
             options: [{ key: 'p', label: 'Pontos' }],
-            preview: (cursor) => entities.map((e) => rotateEntity(e, base, angleOf(base, cursor) - refAngle)),
+            ...rotationOptions(refAngle),
             hide: copyMode ? [] : ids,
         });
         if (!newRes) return;

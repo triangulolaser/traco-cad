@@ -29,3 +29,5 @@ _Avoid_: drawing translation, locale
 An action typed in the command line or triggered from the ribbon (`LINE`, `TRIM`), with its
 aliases and prompts.
 _Avoid_: tool, function
+
+**Rotation snap**: Soft horizontal/vertical alignment of a selected straight edge during ROTATE. Highlights the edge and releases as the pointer moves away; typed angles stay exact.
