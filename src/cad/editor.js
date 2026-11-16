@@ -1752,6 +1752,7 @@ export class Editor {
             this.onTerminalSubmit('');
             return;
         }
+        if (this.running === 'WBLOCK') return;
         if (this.lastCommand) this.runCommand(this.lastCommand);
     }
 
@@ -1790,6 +1791,8 @@ export class Editor {
         }
         const pending = this.pending;
         if (!pending) {
+            // Enter extra durante a gravação não inicia outra seleção do WBLOCK.
+            if (!value && this.running === 'WBLOCK') return;
             if (!value) {
                 if (this.lastCommand) this.runCommand(this.lastCommand);
                 return;
