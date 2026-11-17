@@ -3514,11 +3514,8 @@ async function dimAuto(editor) {
     }
 }
 
-// Como o "Dimensão" do BricsCAD: o trecho clicado vai até a primeira interseção de cada lado,
-// ou até a ponta do segmento quando nada o cruza. Círculo e arco viram diâmetro e raio.
-const DIMENSION_CUTTER_SKIP = new Set(['dimension', 'text', 'mtext', 'hatch', 'image', 'leader', 'point']);
-
-export function dimensionTarget(entity, pickPoint, others = []) {
+// Dimensão usa os extremos completos da linha ou do segmento clicado.
+export function dimensionTarget(entity, pickPoint) {
     if (entity.type === 'circle' || entity.type === 'arc') return autoDimensionFor(entity, pickPoint);
     let segment = null;
     if (entity.type === 'line') segment = { kind: 'segment', a: entity.start, b: entity.end };
@@ -3536,23 +3533,7 @@ export function dimensionTarget(entity, pickPoint, others = []) {
     const { a, b } = segment;
     const len = distance(a, b);
     if (len < 1e-9) return null;
-    const dir = scale(sub(b, a), 1 / len);
-    const along = (p) => dot(sub(p, a), dir);
-    const t = Math.min(len, Math.max(0, along(pickPoint)));
-    const tol = 1e-6 * Math.max(1, len);
-    let lo = 0;
-    let hi = len;
-    others
-        .filter((o) => o.id !== entity.id && !DIMENSION_CUTTER_SKIP.has(o.type))
-        .flatMap((o) => entityCurves(o))
-        .flatMap((c) => intersectCurves(segment, c))
-        .forEach((p) => {
-            const s = along(p);
-            if (s <= tol || s >= len - tol) return;
-            if (s <= t && s > lo) lo = s;
-            if (s > t && s < hi) hi = s;
-        });
-    return { kind: 'auto', p1: add(a, scale(dir, lo)), p2: add(a, scale(dir, hi)), auto: 'linear' };
+    return { kind: 'auto', p1: { ...a }, p2: { ...b }, auto: 'linear' };
 }
 
 async function dimension(editor) {
@@ -3561,7 +3542,7 @@ async function dimension(editor) {
         const first = await editor.getPointOrEntity('Clique em uma linha, arco ou círculo [ou dois pontos; Enter para sair]:', { allowEnter: true, pickCursor: true });
         if (!first || first.enter) return null;
         if (first.entity) {
-            const base = dimensionTarget(first.entity, first.pickPoint ?? first.point, editor.doc.entities);
+            const base = dimensionTarget(first.entity, first.pickPoint ?? first.point);
             if (!base) { editor.log('Esse objeto não pode ser cotado assim; clique em dois pontos.', 'warn'); continue; }
             const prompt = base.kind === 'radius' ? 'Posição do texto do raio' : base.kind === 'diameter' ? 'Posição do texto do diâmetro' : 'Posição da linha de cota';
             await placeDimension(editor, base, prompt);
@@ -5255,7 +5236,7 @@ export const COMMANDS = {
     DRAWORDER: { aliases: ['ORDEMDES', 'ORDEM'], run: drawOrder, description: 'Alterar ordem de sobreposição dos objetos (Frente, Trás, Acima, Abaixo)' },
     SELECTSIMILAR: { aliases: ['SELECSIMILAR', 'SIMILAR'], run: selectSimilar, description: 'Selecionar objetos com tipo e layer similares' },
     DIM: { aliases: ['COTA', 'DIMAUTO'], run: dimAuto, description: 'Cota automática: linear, alinhada, raio ou diâmetro conforme o alvo' },
-    DIMENSION: { aliases: ['DIMENSAO'], run: dimension, description: 'Dimensão: clique na linha e puxe a cota até a primeira interseção; arco e círculo dão raio e diâmetro' },
+    DIMENSION: { aliases: ['DIMENSAO'], run: dimension, description: 'Dimensão: clique na linha e puxe a cota de ponta a ponta; arco e círculo dão raio e diâmetro' },
     DIMPART: { aliases: ['COTARPECA', 'DIMPECA'], run: dimPart, description: 'Cotar a peça inteira: gerais, posições de furos, diâmetros e raios únicos' },
     HATCH: { aliases: ['H', 'HACHURA', 'BHATCH'], run: hatch, description: 'Hachura em janela: padrão (ANSI31, XADREZ...), escala, ângulo, cor, pontos internos e ilhas' },
     '-HATCH': { aliases: ['-H', '-HACHURA', '-BHATCH'], run: hatchPrompt, description: 'Hachura pelo terminal: padrão, escala e ângulo' },
