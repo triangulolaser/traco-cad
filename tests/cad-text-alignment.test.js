@@ -230,6 +230,8 @@ test('openTextEditorModal cria interface completa e atualiza documento com novos
                 }
                 return [];
             },
+            append(...children) { this.children = [...(this.children || []), ...children]; },
+            after(sibling) { this.nextSibling = sibling; },
             focus() {},
             setSelectionRange() {},
             remove() {},

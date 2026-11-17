@@ -1,4 +1,4 @@
-import {FONT_FAMILIES} from './fonts.js';
+import {FONT_FAMILIES,useLocalFont} from './fonts.js';
 import {addEntities,replaceEntities,removeEntities,isEntityEditable} from './document.js';
 import {sub,emptyBox,boxAddPoint,distance,polylineCurves,curveMidpoint,entityLength,sweepCCW,radToDeg,degToRad,angleOf,normalizeAngle,formatNumber} from './geometry.js';
 import {stretchDocument,chamferLines,polylineChamfer,breakAtPoint,geometryFields,setGeometryField,lengthenEntity,divideEntity,measureEntity,convertEntityToPolyline,setPolylineWidth,setPolylineClosed,reversePolyline,fitPolyline,splinePolyline,decurvePolyline,joinToPolyline,createXline,createRay,xlineBisector,xlineOffsetDistance,xlineOffsetThrough} from './edit-tools.js';
@@ -8,7 +8,7 @@ async function editTextStyle(e,dimension=false){
     const key=dimension?'dimStyle':'textStyle',current=e.doc[key]??{};
     e.log(FONT_FAMILIES.join(', '));
     const fontFamily=await e.getString('Família da fonte',{defaultValue:current.fontFamily??'Liberation Sans'});
-    if(!FONT_FAMILIES.includes(fontFamily))throw new Error('Escolha uma família listada.');
+    if(!FONT_FAMILIES.includes(fontFamily))await useLocalFont(fontFamily);
     const bold=(await e.getKeyword('Negrito',[{key:'s',label:'Sim'},{key:'n',label:'Não'}],current.bold?'s':'n')).key==='s';
     const italic=(await e.getKeyword('Itálico',[{key:'s',label:'Sim'},{key:'n',label:'Não'}],current.italic?'s':'n')).key==='s';
     const style={...current,fontFamily,bold,italic};

@@ -1861,3 +1861,8 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-bom-table th { font-weight: 600; }
 .cad-bom-table tbody tr { cursor: pointer; }
 .cad-bom-table tbody tr:hover { background: var(--cad-accent-soft, rgba(0, 0, 0, .06)); }
+
+/* Local font names only: font files remain installed on the user's computer. */
+.cad-local-font-picker{display:flex;flex-wrap:wrap;align-items:center;gap:4px;max-width:340px}
+.cad-local-font-picker input{min-width:180px;max-width:250px}
+.cad-local-font-picker [role=status]{font-size:11px;flex-basis:100%;white-space:normal}

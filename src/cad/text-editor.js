@@ -1,3 +1,4 @@
+import { attachLocalFontPicker } from './local-font-picker.js';
 import { FONT_FAMILIES, canvasFont, fontEm, LINE_SPACING } from './fonts.js';
 import { replaceEntities, isEntityEditable } from './document.js';
 
@@ -54,7 +55,7 @@ export function openTextEditorModal(editor, entity) {
     overlay.setAttribute('aria-labelledby', 'cadTextEditorTitle');
 
     const currentFont = entity.fontFamily || 'Liberation Sans';
-    const fontOptions = FONT_FAMILIES.map((f) =>
+    const fontOptions = [...new Set([...FONT_FAMILIES, currentFont])].map((f) =>
         `<option value="${escapeHtml(f)}" ${f === currentFont ? 'selected' : ''}>${escapeHtml(f)}</option>`
     ).join('');
 
@@ -145,6 +146,7 @@ export function openTextEditorModal(editor, entity) {
 
     const textarea = overlay.querySelector('#cadTextEditorValue');
     const fontSelect = overlay.querySelector('#cadTextEditorFont');
+    attachLocalFontPicker(fontSelect);
     const heightInput = overlay.querySelector('#cadTextEditorHeight');
     const halignSelect = overlay.querySelector('#cadTextEditorHAlign');
     const valignSelect = overlay.querySelector('#cadTextEditorVAlign');
@@ -296,6 +298,7 @@ export function openInlineTextEditor(editor, entity) {
     const textarea = root.querySelector('textarea');
     const font = root.querySelector('select');
     const size = root.querySelector('input');
+    attachLocalFontPicker(font);
     let bold = !!entity.bold, italic = !!entity.italic;
     textarea.value = entity.text ?? '';
     const currentFont = entity.fontFamily || 'Liberation Sans';
@@ -366,7 +369,7 @@ export function openInlineTextEditor(editor, entity) {
     for (const type of ['pointerdown', 'click', 'dblclick', 'wheel']) root.addEventListener(type, e => e.stopPropagation());
     root.addEventListener('input', update);
     root.addEventListener('change', update);
-    root.querySelectorAll('button').forEach(button => button.addEventListener('click', () => {
+    root.querySelectorAll('button[data-action]').forEach(button => button.addEventListener('click', () => {
         const action = button.dataset.action;
         if (action === 'save') save();
         else if (action === 'cancel') close();

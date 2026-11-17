@@ -1,6 +1,15 @@
 // Interface do Traço em inglês. Chave = texto original em português (ver i18n.js).
 // Texto novo na interface entra aqui na mesma MR (o teste cad-i18n-coverage cobra).
 export default {
+    "Nome de fonte inválido.": "Invalid font name.",
+    "Informe o nome da família instalada no computador.": "Enter the font family installed on your computer.",
+    "Este ambiente não permite validar fontes locais.": "This environment cannot validate local fonts.",
+    "Fonte não encontrada: {0}. Confira o nome no Catálogo de Fontes e reinicie o Traço após instalar.": "Font not found: {0}. Check its name in Font Book and restart Traço after installing.",
+    "Nome da fonte instalada": "Installed font name",
+    "Fonte instalada (ex.: TC_LaserSans)": "Installed font (e.g. TC_LaserSans)",
+    "Usar fonte local": "Use local font",
+    "Verificando fonte…": "Checking font…",
+    "Fonte local selecionada.": "Local font selected.",
     "Centro X": "Center X",
     "Centro Y": "Center Y",
     "Início X": "Start X",

@@ -1,6 +1,15 @@
 // Interface do Traço em espanhol. Chave = texto original em português (ver i18n.js).
 // Texto novo na interface entra aqui na mesma MR (o teste cad-i18n-coverage cobra).
 export default {
+    "Nome de fonte inválido.": "Nombre de fuente no válido.",
+    "Informe o nome da família instalada no computador.": "Indique la familia instalada en el equipo.",
+    "Este ambiente não permite validar fontes locais.": "Este entorno no permite validar fuentes locales.",
+    "Fonte não encontrada: {0}. Confira o nome no Catálogo de Fontes e reinicie o Traço após instalar.": "Fuente no encontrada: {0}. Compruebe el nombre en Catálogo Tipográfico y reinicie Traço tras instalarla.",
+    "Nome da fonte instalada": "Nombre de la fuente instalada",
+    "Fonte instalada (ex.: TC_LaserSans)": "Fuente instalada (p. ej. TC_LaserSans)",
+    "Usar fonte local": "Usar fuente local",
+    "Verificando fonte…": "Comprobando fuente…",
+    "Fonte local selecionada.": "Fuente local seleccionada.",
     "Centro X": "Centro X",
     "Centro Y": "Centro Y",
     "Início X": "Inicio X",
