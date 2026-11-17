@@ -70,6 +70,18 @@ function endOfCurve(curve) {
     return curve.kind === 'segment' ? curve.b : polar(curve.center, curve.end, curve.radius);
 }
 
+// Extremidades no sentido de percurso da polilinha: arco com bulge negativo (`ccw === false`)
+// é guardado com start/end em sentido trigonométrico, então o percurso começa em `end`.
+function travelStart(curve) {
+    if (curve.kind === 'segment') return curve.a;
+    return polar(curve.center, curve.ccw === false ? curve.end : curve.start, curve.radius);
+}
+
+function travelEnd(curve) {
+    if (curve.kind === 'segment') return curve.b;
+    return polar(curve.center, curve.ccw === false ? curve.start : curve.end, curve.radius);
+}
+
 function curveMid(curve) {
     if (curve.kind === 'segment') return midpoint(curve.a, curve.b);
     const sweep = sweepCCW(curve.start, curve.end);
@@ -146,8 +158,12 @@ function buildRawOffsetPrimitives(entity, curves, dist, leftSign) {
 
     const jointPoint = (prev, next) => {
         const hits = intersectCurves(prev, next, { extend1: true, extend2: true });
-        if (hits.length === 0) return endOfCurve(prev);
-        const target = midpoint(endOfCurve(prev), startOfCurve(next));
+        if (hits.length === 0) {
+            const end = travelEnd(prev);
+            if (distance(end, travelStart(next)) <= EPS) return end;
+            return null;
+        }
+        const target = midpoint(travelEnd(prev), travelStart(next));
         hits.sort((p, q) => distance(p, target) - distance(q, target));
         return hits[0];
     };
@@ -157,15 +173,17 @@ function buildRawOffsetPrimitives(entity, curves, dist, leftSign) {
     for (let i = 0; i < m; i += 1) {
         const curve = offsetCurves[i];
         const prev = offsetCurves[(i - 1 + m) % m];
-        joints.push(i === 0 && !entity.closed ? startOfCurve(curve) : jointPoint(prev, curve));
+        joints.push(i === 0 && !entity.closed ? travelStart(curve) : jointPoint(prev, curve));
     }
-    if (!entity.closed) joints.push(endOfCurve(offsetCurves[m - 1]));
+    if (!entity.closed) joints.push(travelEnd(offsetCurves[m - 1]));
 
     const rawPrimitives = [];
     for (let i = 0; i < m; i += 1) {
         const curve = offsetCurves[i];
-        const pStart = joints[i];
-        const pEnd = entity.closed ? joints[(i + 1) % m] : joints[i + 1];
+        const pStart = joints[i] ?? travelStart(curve);
+        const nextIndex = (i + 1) % m;
+        const endJoint = entity.closed ? joints[nextIndex] : joints[i + 1];
+        const pEnd = endJoint ?? travelEnd(curve);
         if (distance(pStart, pEnd) <= 1e-8) continue;
         if (curve.kind === 'segment') {
             rawPrimitives.push({ kind: 'segment', a: pStart, b: pEnd });
@@ -181,6 +199,23 @@ function buildRawOffsetPrimitives(entity, curves, dist, leftSign) {
                 start,
                 end,
             });
+        }
+        // Separated support circles need a round join about the original corner.
+        // Sharing an off-circle endpoint would change the next arc's center/radius.
+        if (!endJoint && (entity.closed || i + 1 < m)) {
+            const next = offsetCurves[nextIndex];
+            const nextStart = travelStart(next);
+            const original = curves.find(c => c.index === curve.index);
+            const originalNext = curves.find(c => c.index === next.index);
+            const corner = travelEnd({ ...original, ccw: isCCW(original) });
+            const nextCorner = travelStart({ ...originalNext, ccw: isCCW(originalNext) });
+            if (distance(corner, nextCorner) <= 1e-7 && distance(pEnd, nextStart) > 1e-8) {
+                const a = normalizeAngle(angleOf(corner, pEnd));
+                const b = normalizeAngle(angleOf(corner, nextStart));
+                const forward = sweepCCW(a, b) <= Math.PI;
+                rawPrimitives.push({ kind: 'arc', center: corner, radius: dist,
+                    start: forward ? a : b, end: forward ? b : a });
+            }
         }
     }
     return rawPrimitives;
@@ -261,14 +296,18 @@ function offsetPolylineLocal(entity, curves, dist, leftSign) {
             const leftIsInside = isCCW(curve);
             const radius = leftIsInside ? curve.radius - dist * leftSign : curve.radius + dist * leftSign;
             if (radius <= EPS) return null;
-            return { ...curve, radius, sweep0: sweepCCW(curve.start, curve.end) };
+            return { ...curve, radius, ccw: leftIsInside, sweep0: sweepCCW(curve.start, curve.end) };
         })
         .filter(Boolean);
 
     const jointPoint = (prev, next) => {
         const hits = intersectCurves(prev, next, { extend1: true, extend2: true });
-        if (hits.length === 0) return endOfCurve(prev);
-        const target = midpoint(endOfCurve(prev), startOfCurve(next));
+        if (hits.length === 0) {
+            const end = travelEnd(prev);
+            if (distance(end, travelStart(next)) <= EPS) return end;
+            return entity.closed ? null : end;
+        }
+        const target = midpoint(travelEnd(prev), travelStart(next));
         hits.sort((p, q) => distance(p, target) - distance(q, target));
         return hits[0];
     };
@@ -279,9 +318,9 @@ function offsetPolylineLocal(entity, curves, dist, leftSign) {
         for (let i = 0; i < n2; i += 1) {
             const curve = offsetCurves[i];
             const prev = offsetCurves[(i - 1 + n2) % n2];
-            out.push(i === 0 && !entity.closed ? startOfCurve(curve) : jointPoint(prev, curve));
+            out.push(i === 0 && !entity.closed ? travelStart(curve) : jointPoint(prev, curve));
         }
-        if (!entity.closed) out.push(endOfCurve(offsetCurves[n2 - 1]));
+        if (!entity.closed) out.push(travelEnd(offsetCurves[n2 - 1]));
         return out;
     };
 
@@ -298,6 +337,7 @@ function offsetPolylineLocal(entity, curves, dist, leftSign) {
     for (;;) {
         if (offsetCurves.length < (entity.closed ? 2 : 1)) return null;
         joints = computeJoints();
+        if (joints.some(p => !p)) return null;
         const m = offsetCurves.length;
         const bad = offsetCurves.findIndex((curve, i) => inverted(curve, joints[i], entity.closed ? joints[(i + 1) % m] : joints[i + 1]));
         if (bad < 0 || m <= 2) break;
