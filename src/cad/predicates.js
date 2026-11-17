@@ -528,6 +528,15 @@ export function solveBernsteinRoots(coeffs, tol = 1e-14) {
         }
         if (minC > eps || maxC < -eps) continue;
 
+        // Bernstein basis functions are strictly positive inside (0, 1).
+        // One-sided coefficients cannot have an interior root, even when
+        // an endpoint is a multiple root. Do not subdivide its epsilon band.
+        if (minC >= 0 || maxC <= 0) {
+            if (c[0] === 0) roots.push(t0);
+            if (c[n] === 0) roots.push(t1);
+            continue;
+        }
+
         const dt = t1 - t0;
         if (dt <= tol || depth >= 48) {
             roots.push(0.5 * (t0 + t1));
