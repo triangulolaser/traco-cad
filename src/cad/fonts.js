@@ -54,7 +54,7 @@ export async function useLocalFont(value,{persist=true}={}){
  if(!name)throw new Error('Informe o nome da família instalada no computador.');
  if(typeof FontFace!=='function')throw new Error('Este ambiente não permite validar fontes locais.');
  const probe=new FontFace('TracoLocalFontProbe',`local(${JSON.stringify(name)})`);
- try{await probe.load();}catch{throw new Error(`Fonte não encontrada: ${name}. Confira o nome no Catálogo de Fontes e reinicie o Traço após instalar.`);}
+ try{await probe.load();globalThis.document?.fonts?.add(new FontFace(name,`local(${JSON.stringify(name)})`));}catch{throw new Error(`Fonte não encontrada: ${name}. Confira o nome no Catálogo de Fontes e reinicie o Traço após instalar.`);}
  rememberFontFamily(name);
  if(persist)try{
   const saved=JSON.parse(localStorage.getItem(LOCAL_FONTS_KEY)||'[]');
@@ -68,4 +68,23 @@ export async function loadLocalFonts(){
  try{const data=JSON.parse(localStorage.getItem(LOCAL_FONTS_KEY)||'[]');if(Array.isArray(data))saved=data.slice(0,100);}catch{}
  // Discover the requested laser family when it is already installed.
  await Promise.allSettled([...new Set(['TC_LaserSans',...saved])].map(name=>useLocalFont(name,{persist:false})));
+}
+
+const loadedFaces = new Map();
+export async function ensureFont(entity) {
+ const family=normalizeFontFamily(entity.fontFamily)||'Liberation Sans';
+ const bold=!!entity.bold,italic=!!entity.italic,key=JSON.stringify([family,bold,italic]);
+ if(typeof FontFace!=='function'||!globalThis.document?.fonts)return;
+ if(loadedFaces.has(key))return loadedFaces.get(key);
+ const pending=(async()=>{
+  const bridge=globalThis.window?.desktopBridge;
+  // Bundled Liberation faces are supplied by CSS. Installed fonts are explicitly
+  // registered: enumeration alone does not make a family visible to a WebView.
+  if(family.startsWith('Liberation ')) { await document.fonts.load(canvasFont(entity,16)); return; }
+  const source=bridge?.readSystemFont ? new Uint8Array(await bridge.readSystemFont({family,bold,italic})).buffer : `local(${JSON.stringify(family)})`;
+  const face=new FontFace(family,source,{weight:bold?'700':'400',style:italic?'italic':'normal'});
+  await face.load(); document.fonts.add(face); measuredWidths.clear();
+ })();
+ loadedFaces.set(key,pending);
+ try {await pending;} catch {loadedFaces.delete(key);throw new Error(`Não foi possível carregar a fonte ${family}. Confira se está instalada neste computador.`);}
 }

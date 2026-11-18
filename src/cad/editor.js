@@ -1,3 +1,4 @@
+import {ensureFont} from './fonts.js';
 import { DRAG_TYPE as EXPORT_DRAG_TYPE, exportedByToken, exportedByPath, insertExportedBlock } from './export-balloon.js';
 import { usage } from '../usage-telemetry.js';
 // Editor: liga documento, viewport, renderer, terminal e comandos.
@@ -265,6 +266,9 @@ export class Editor {
     }
 
     loadDocument(doc) {
+        for (const entity of doc.entities || []) if (entity.fontFamily) {
+            ensureFont(entity).then(() => this.invalidate()).catch(error => this.log(error.message, 'warn'));
+        }
         closeTextEditorModal();
         if (this.pending) this.cancel();
         doc = syncSchematic(ensureEntityIds(doc));

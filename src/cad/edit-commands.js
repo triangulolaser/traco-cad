@@ -1,3 +1,4 @@
+import {explodeText} from './text-explode.js';
 import { insertTextAnnotation, isTextAnnotation } from './text-editor.js';
 import {FONT_FAMILIES,useLocalFont} from './fonts.js';
 import {addEntities,replaceEntities,removeEntities,isEntityEditable} from './document.js';
@@ -247,6 +248,7 @@ export const EDIT_COMMANDS = {
             e.openTextEditor(target);
         }
     }},
+    TXTEXP:{aliases:['EXPLODIRTEXTO'],description:'Converter texto em contornos fechados',run:explodeText},
     TEXTSTYLE:{aliases:['ESTILOTEXTO'],description:'Fonte padrão dos novos textos',run:e=>editTextStyle(e)},
     DIMSTYLE:{aliases:['ESTILOCOTA'],description:'Fonte, altura e afastamento das cotas',run:e=>editTextStyle(e,true)},
     VERTEX:{aliases:['VERTICE'],description:'Editar vértice: inserir ponto intermediário ou remover',async run(e){

@@ -12,6 +12,16 @@ console.log('Traço CAD Desktop inicializado.');
 
 window.desktopBridge = {
     isDesktop: true,
+    readSystemFont(style) { return invoke('read_system_font', style); },
+    async systemTextOutlines(style) {
+        if (['Liberation Sans','Liberation Serif','Liberation Mono'].includes(style.family)) {
+            const suffix=style.bold ? (style.italic?'BoldItalic':'Bold') : (style.italic?'Italic':'Regular');
+            const response=await fetch(`/fonts/liberation/${style.family.replaceAll(' ','')}-${suffix}.ttf`);
+            if(!response.ok)throw new Error('Fonte incorporada indisponível.');
+            style={...style,bytes:Array.from(new Uint8Array(await response.arrayBuffer()))};
+        }
+        return invoke('system_text_outlines', style);
+    },
     listSystemFonts() { return invoke('list_system_fonts'); },
     async saveFile(path, contents) {
         if (typeof contents === 'string') {

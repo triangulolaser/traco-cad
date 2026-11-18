@@ -1,6 +1,17 @@
 // Interface do Traço em inglês. Chave = texto original em português (ver i18n.js).
 // Texto novo na interface entra aqui na mesma MR (o teste cad-i18n-coverage cobra).
 export default {
+"Altura (mm)": "Height (mm)",
+"Caixa (mm)": "Box (mm)",
+
+    "Converter texto em contornos fechados": "Convert text to closed outlines",
+    "Não foi possível carregar a fonte {0}. Confira se está instalada neste computador.": "Could not load font {0}. Check that it is installed on this computer.",
+    "TXTEXP de fontes instaladas está disponível no Traço desktop atualizado.": "TXTEXP for installed fonts is available in the updated Traço desktop.",
+    "Selecione textos para converter em contornos:": "Select texts to convert to outlines:",
+    "Selecione entidades TEXT ou MTEXT.": "Select TEXT or MTEXT entities.",
+    "Texto sem contornos. O original foi preservado.": "Text has no outlines. The original was preserved.",
+    "O desenho mudou durante a conversão. Repita TXTEXP.": "The drawing changed during conversion. Run TXTEXP again.",
+
     "Nome de fonte inválido.": "Invalid font name.",
     "Informe o nome da família instalada no computador.": "Enter the font family installed on your computer.",
     "Este ambiente não permite validar fontes locais.": "This environment cannot validate local fonts.",

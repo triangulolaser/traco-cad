@@ -1839,3 +1839,26 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-text-editor-modal .cad-btn-primary:hover { background: #0055ae; }
 .cad-app[data-cad-theme="light"] .cad-text-editor-modal input::placeholder,
 .cad-app[data-cad-theme="light"] .cad-text-editor-modal textarea::placeholder { color: #626267; }
+
+/* A floating formatting bar and a separate drawing-anchored editor. No modal backdrop. */
+.cad-text-editor-inplace { position: absolute; overflow: hidden; background: transparent; pointer-events: none; display: block; padding: 0; }
+.cad-text-editor-inplace .cad-text-editor-modal { position: absolute; top: 8px; left: 8px; width: calc(100% - 16px); max-width: 1050px; padding: 0; gap: 0; pointer-events: auto; border-radius: 4px; }
+.cad-text-editor-inplace .cad-text-editor-header, .cad-text-editor-inplace .cad-text-editor-help, .cad-text-editor-inplace .cad-text-editor-hint { display: none; }
+.cad-text-editor-inplace .cad-text-editor-body { padding: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.cad-text-editor-inplace .cad-text-editor-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.cad-text-editor-inplace .cad-text-editor-field { width: 120px; }
+.cad-text-editor-inplace .cad-text-editor-field:first-child { width: 185px; }
+.cad-text-editor-inplace .cad-text-editor-footer { padding: 4px 8px 8px; }
+.cad-text-editor-inplace .cad-text-editor-toggles { margin: 0; }
+.cad-text-editor-inplace .cad-inline-text-anchor textarea { min-height: 0; max-height: none; border-radius: 0; color: var(--cad-text); }
+.cad-text-editor-inplace .cad-local-font-picker { font-size: 11px; }
+.cad-text-editor-inplace .cad-text-editor-modal { display: flex; flex-direction: row; flex-wrap: wrap; align-items: end; gap: 8px; padding: 8px; box-sizing: border-box; }
+.cad-text-editor-inplace .cad-text-editor-body, .cad-text-editor-inplace .cad-text-editor-grid { display: contents; }
+.cad-text-editor-inplace .cad-text-editor-field { width: 82px; gap: 3px; }
+.cad-text-editor-inplace .cad-text-editor-field:first-child { width: 150px; }
+.cad-text-editor-inplace .cad-text-editor-label { font-size: 11px; white-space: nowrap; }
+.cad-text-editor-inplace .cad-text-editor-input, .cad-text-editor-inplace .cad-text-editor-select { padding: 5px; font-size: 12px; min-height: 30px; }
+.cad-text-editor-inplace .cad-text-editor-footer { padding: 0; border: 0; margin: 0; }
+.cad-text-editor-inplace .cad-text-editor-toggles { padding: 0; gap: 8px; }
+.cad-text-editor-inplace .cad-local-font-picker { display: contents; }
+.cad-text-editor-inplace .cad-local-font-picker [role="status"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

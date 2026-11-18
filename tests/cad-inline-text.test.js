@@ -11,15 +11,15 @@ test('inline text maps world anchor through pan/zoom and uses inverse screen rot
     assert.deepEqual({x:g.x,y:g.y},view.worldToScreen(text.position));
     assert.equal(g.rotation,-45);
     assert.equal(g.px,40);
-    assert.equal(g.height,94);
-    assert.equal(g.offsetY,-32);
+    assert.equal(g.height,40+40*5/3);
+    assert.equal(g.offsetY,-40);
 });
 test('inline text preserves top/middle/bottom multiline alignment and centered/right anchors', () => {
     const view = new Viewport();
     assert.equal(inlineTextGeometry({...text,valign:'top'},view,80,3).offsetY,0);
-    assert.equal(inlineTextGeometry({...text,valign:'middle',halign:'center'},view,80,3).offsetY,-37);
+    assert.equal(inlineTextGeometry({...text,valign:'middle',halign:'center'},view,80,3).offsetY,-(20+2*20*5/3)/2);
     assert.equal(inlineTextGeometry({...text,valign:'middle',halign:'center'},view,80,3).offsetX,-40);
-    assert.equal(inlineTextGeometry({...text,valign:'bottom',halign:'right'},view,80,3).offsetY,-74);
+    assert.equal(inlineTextGeometry({...text,valign:'bottom',halign:'right'},view,80,3).offsetY,-(20+2*20*5/3));
     assert.equal(inlineTextGeometry({...text,halign:'right'},view,80,3).offsetX,-80);
 });
 test('MText box attachment preserves left/center/right box origin', () => {

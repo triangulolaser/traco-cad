@@ -179,7 +179,7 @@ test('DXF Roundtrip: writeDxf preserva MTEXT com boxWidth e justificação \\pxq
     assert.equal(t.text, 'Reservatório Basculante');
 });
 
-test('openTextEditorModal cria interface completa e atualiza documento com novos parâmetros', () => {
+test('openTextEditorModal cria interface completa e atualiza documento com novos parâmetros', async () => {
     function createMockEl(tag) {
         const eventListeners = {};
         const attrs = {};
@@ -320,6 +320,7 @@ test('openTextEditorModal cria interface completa e atualiza documento com novos
         // Dispara clique em Salvar
         const saveBtn = overlay.querySelector('[data-action="save"]');
         saveBtn.dispatchEvent({ type: 'click', stopPropagation() {} });
+        await new Promise(resolve => setTimeout(resolve, 0));
 
         assert.equal(committedMsg, 'Editar Texto');
         assert.ok(committedDoc);

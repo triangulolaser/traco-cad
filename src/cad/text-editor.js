@@ -1,5 +1,5 @@
 import { attachLocalFontPicker } from './local-font-picker.js';
-import { FONT_FAMILIES, canvasFont, fontEm, LINE_SPACING } from './fonts.js';
+import { FONT_FAMILIES, canvasFont, fontEm, fontFamily, LINE_SPACING, ensureFont } from './fonts.js';
 import { addEntities, replaceEntities, isEntityEditable } from './document.js';
 
 function escapeHtml(text) {
@@ -56,9 +56,9 @@ export function openTextEditorModal(editor, source, options = {}) {
     if (!root) return null;
 
     const overlay = document.createElement('div');
-    overlay.className = 'cad-text-editor-overlay';
+    overlay.className = 'cad-text-editor-overlay cad-text-editor-inplace';
     overlay.setAttribute('role', 'dialog');
-    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-modal', 'false');
     overlay.setAttribute('aria-labelledby', 'cadTextEditorTitle');
 
     const currentFont = entity.fontFamily || 'Liberation Sans';
@@ -98,11 +98,11 @@ export function openTextEditorModal(editor, source, options = {}) {
                         </select>
                     </div>
                     <div class="cad-text-editor-field">
-                        <label class="cad-text-editor-label" for="cadTextEditorHeight">Altura do texto (mm)</label>
+                        <label class="cad-text-editor-label" for="cadTextEditorHeight">Altura (mm)</label>
                         <input id="cadTextEditorHeight" class="cad-text-editor-input" type="number" required step="0.01" min="0.01" value="${heightVal}" />
                     </div>
                     <div class="cad-text-editor-field">
-                        <label class="cad-text-editor-label" for="cadTextEditorHAlign">Alinhamento horizontal</label>
+                        <label class="cad-text-editor-label" for="cadTextEditorHAlign">Horizontal</label>
                         <select id="cadTextEditorHAlign" class="cad-text-editor-select">
                             <option value="left" ${halign === 'left' ? 'selected' : ''}>Esquerda</option>
                             <option value="center" ${halign === 'center' ? 'selected' : ''}>Centro</option>
@@ -110,7 +110,7 @@ export function openTextEditorModal(editor, source, options = {}) {
                         </select>
                     </div>
                     <div class="cad-text-editor-field">
-                        <label class="cad-text-editor-label" for="cadTextEditorVAlign">Alinhamento vertical</label>
+                        <label class="cad-text-editor-label" for="cadTextEditorVAlign">Vertical</label>
                         <select id="cadTextEditorVAlign" class="cad-text-editor-select">
                             <option value="baseline" ${valign === 'baseline' ? 'selected' : ''}>Linha de base</option>
                             <option value="top" ${valign === 'top' ? 'selected' : ''}>Topo</option>
@@ -123,7 +123,7 @@ export function openTextEditorModal(editor, source, options = {}) {
                         <input id="cadTextEditorRotation" class="cad-text-editor-input" type="number" step="any" value="${rotationVal}" />
                     </div>
                     <div class="cad-text-editor-field">
-                        <label class="cad-text-editor-label" for="cadTextEditorBoxWidth">Largura da caixa (mm)</label>
+                        <label class="cad-text-editor-label" for="cadTextEditorBoxWidth">Caixa (mm)</label>
                         <input id="cadTextEditorBoxWidth" class="cad-text-editor-input" type="number" step="any" min="0" placeholder="Automática" value="${boxWidthVal}" />
                     </div>
                 </div>
@@ -178,7 +178,13 @@ export function openTextEditorModal(editor, source, options = {}) {
         }
     };
 
-    const save = () => {
+    let saving = false;
+    const save = async () => {
+        if (saving) return;
+        saving = true;
+        try { await ensureFont({fontFamily: fontSelect.value, bold: boldCheckbox.checked, italic: italicCheckbox.checked}); } catch (error) { saving = false; editor.log(error.message, 'warn'); return; }
+        saving = false;
+        if (editor.doc !== originalDoc || activeOverlay !== overlay) return;
         if (!heightInput.reportValidity() || !rotationInput.reportValidity() || !boxWidthInput.reportValidity()) return;
         const current = options.create ? source : editor.doc.entities.find(item => item.id === source.id);
         if (!current || !isEntityEditable(editor.doc, current)) { dismiss(); return; }
@@ -248,11 +254,7 @@ export function openTextEditorModal(editor, source, options = {}) {
         });
     }
 
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) {
-            dismiss();
-        }
-    });
+
 
     // Keep drawing shortcuts and pointer gestures outside the dialog.
     for (const type of ['keydown', 'pointerdown', 'dblclick', 'wheel']) overlay.addEventListener(type, event => event.stopPropagation());
@@ -266,8 +268,47 @@ export function openTextEditorModal(editor, source, options = {}) {
     document.addEventListener('keydown', onEscape, true);
     activeOverlayEscape = onEscape;
 
+    const anchor = document.createElement('div');
+    anchor.className = 'cad-inline-text-anchor';
+    anchor.append(textarea);
+    overlay.append(anchor);
+    overlay.querySelector('.cad-text-editor-body > .cad-text-editor-field')?.remove();
+    const originalDoc = editor.doc;
+    const update = () => {
+        if (!editor.viewport || !editor.canvas) return;
+        if (editor.doc !== originalDoc) { dismiss(); return; }
+        const next = {...entity, position: entity.position || {x: source.linePoint.x, y: source.linePoint.y + (editor.doc.dimStyle?.textGap ?? .9)},
+            text: textarea.value, height: Number(heightInput.value) > 0 ? Number(heightInput.value) : originalHeight,
+            fontFamily: fontSelect.value, bold: boldCheckbox.checked, italic: italicCheckbox.checked,
+            rotation: Number(rotationInput.value) || 0, halign: halignSelect.value, valign: valignSelect.value,
+            boxWidth: Number(boxWidthInput.value) || undefined};
+        const px = next.height * editor.viewport.scale;
+        const ctx = editor.canvas.getContext('2d');
+        ctx.save(); ctx.font = canvasFont(next, fontEm(px));
+        const width = next.boxWidth ? next.boxWidth * editor.viewport.scale : Math.max(px, ...next.text.split('\n').map(line => ctx.measureText(line || ' ').width));
+        const metrics = ctx.measureText('Hg');
+        const ascent = metrics.fontBoundingBoxAscent ?? px;
+        const descent = metrics.fontBoundingBoxDescent ?? px * .25;
+        const cssBaseline = (px * LINE_SPACING - ascent - descent) / 2 + ascent;
+        ctx.restore();
+        Object.assign(textarea.style, {fontFamily: fontFamily(next.fontFamily), fontSize: `${fontEm(px)}px`, lineHeight: `${px * LINE_SPACING}px`, fontWeight: next.bold ? 'bold' : 'normal', fontStyle: next.italic ? 'italic' : 'normal', textAlign: next.halign, width: `${width + 3}px`, height: '0px', whiteSpace: next.boxWidth ? 'pre-wrap' : 'pre'});
+        const lines = Math.max(next.text.split('\n').length, Math.round(textarea.scrollHeight / (px * LINE_SPACING)));
+        const g = inlineTextGeometry(next, editor.viewport, width, lines);
+        const cr = editor.canvas.getBoundingClientRect(), sr = root.getBoundingClientRect();
+        Object.assign(anchor.style, {left: `${g.x + cr.left - sr.left}px`, top: `${g.y + cr.top - sr.top}px`, transform: `rotate(${g.rotation}deg)${next.mirrored ? ' scaleX(-1)' : ''}`});
+        Object.assign(textarea.style, {transform: `translate(${g.offsetX}px, ${g.offsetY + px - cssBaseline}px)`, height: `${Math.max(g.height, textarea.scrollHeight)}px`});
+    };
+    overlay.addEventListener('input', () => { update(); editor.invalidate(); });
+    overlay.addEventListener('change', async () => {
+        try { await ensureFont({fontFamily: fontSelect.value, bold: boldCheckbox.checked, italic: italicCheckbox.checked}); update(); editor.invalidate(); }
+        catch (error) { editor.log(error.message, 'warn'); }
+    });
     root.appendChild(overlay);
     activeOverlay = overlay;
+    activeInline = {editor, entity: source, update, close: () => { activeInline = null; editor.invalidate(); }};
+    update();
+    editor.invalidate();
+    ensureFont(entity).then(() => {update(); editor.invalidate();}).catch(error => editor.log(error.message, 'warn'));
 
     if (textarea && typeof textarea.focus === 'function') {
         textarea.focus();
@@ -315,9 +356,9 @@ export function insertTextAnnotation(editor, entity) {
 export function inlineTextGeometry(entity, viewport, width, lineCount) {
     const anchor = viewport.worldToScreen(entity.position);
     const px = (entity.height || 2.5) * viewport.scale;
-    const height = px + (lineCount - 1) * px * 1.35;
+    const height = px + (lineCount - 1) * px * LINE_SPACING;
     const valign = entity.valign ?? (entity.attachmentPoint ? 'top' : 'baseline');
-    const y = valign === 'top' ? 0 : valign === 'middle' ? -height / 2 : valign === 'bottom' ? -height : -px * .8;
+    const y = valign === 'top' ? 0 : valign === 'middle' ? -height / 2 : valign === 'bottom' ? -height : -px;
     let x = entity.halign === 'center' ? -width / 2 : entity.halign === 'right' ? -width : 0;
     if (entity.boxWidth > 0) {
         const box = entity.boxWidth * viewport.scale;
@@ -337,112 +378,5 @@ export function inlineTextEntityId(editor) {
 
 /** Edits a private draft; the document/history change only on explicit confirmation. */
 export function openInlineTextEditor(editor, entity) {
-    if (!editor?.stage || entity?.type !== 'text') return null;
-    if (!isEntityEditable(editor.doc, entity)) {
-        editor.log('A camada deste texto está bloqueada para edição.', 'warn');
-        return null;
-    }
-    closeTextEditorModal();
-    const originalDoc = editor.doc;
-    const root = document.createElement('div');
-    root.className = 'cad-inline-text-editor';
-    root.setAttribute('role', 'group');
-    root.setAttribute('aria-label', 'Editar texto no desenho');
-    root.innerHTML = `<div class="cad-inline-text-toolbar" role="toolbar" aria-label="Formatação do texto">
-        <select aria-label="Fonte">${FONT_FAMILIES.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('')}</select>
-        <input aria-label="Altura do texto" type="number" min="0.001" step="any" required>
-        <button type="button" data-action="bold" aria-label="Negrito" title="Negrito"><b>B</b></button>
-        <button type="button" data-action="italic" aria-label="Itálico" title="Itálico"><i>I</i></button>
-        <button type="button" data-action="advanced" title="Propriedades avançadas" aria-label="Propriedades avançadas">⚙</button>
-        <button type="button" data-action="save" title="Confirmar" aria-label="Confirmar texto">✓</button>
-        <button type="button" data-action="cancel" title="Cancelar (Esc)" aria-label="Cancelar edição">✕</button>
-        </div><div class="cad-inline-text-anchor"><textarea aria-label="Texto no desenho" spellcheck="false"></textarea></div>`;
-    const textarea = root.querySelector('textarea');
-    const font = root.querySelector('select');
-    const size = root.querySelector('input');
-    attachLocalFontPicker(font);
-    let bold = !!entity.bold, italic = !!entity.italic;
-    textarea.value = entity.text ?? '';
-    const currentFont = entity.fontFamily || 'Liberation Sans';
-    if (!FONT_FAMILIES.includes(currentFont)) {
-        const option = document.createElement('option'); option.value = currentFont; option.textContent = currentFont; font.appendChild(option);
-    }
-    font.value = currentFont;
-    size.value = entity.height || 2.5;
-    const draft = () => ({ ...entity, text: textarea.value, fontFamily: font.value,
-        height: Number.isFinite(Number(size.value)) && Number(size.value) > 0 ? Number(size.value) : (entity.height || 2.5), bold, italic,
-        isMText: entity.isMText || textarea.value.includes('\n') || !!entity.boxWidth });
-    // Esc descarta com o foco em qualquer lugar (inclusive no desenho); salvar só pelo botão ✓.
-    const onEscape = event => {
-        if (event.key !== 'Escape' || event.isComposing) return;
-        event.preventDefault();
-        event.stopPropagation();
-        close();
-    };
-    const close = () => {
-        document.removeEventListener('keydown', onEscape, true);
-        root.remove();
-        activeInline = null;
-        editor.invalidate();
-        editor.terminal?.focus?.();
-    };
-    const update = () => {
-        if (editor.doc !== originalDoc || !editor.doc.entities.some(e => e.id === entity.id)) { close(); return; }
-        const next = draft();
-        const px = next.height * editor.viewport.scale;
-        const context = editor.canvas.getContext('2d');
-        context.save();
-        context.font = canvasFont(next, fontEm(px));
-        const width = next.boxWidth > 0 ? next.boxWidth * editor.viewport.scale : Math.max(px, ...next.text.split('\n').map(line => context.measureText(line || ' ').width));
-        context.restore();
-        // CSS textarea scrollHeight includes word wrapping for MText.
-        Object.assign(textarea.style, { fontFamily: next.fontFamily, fontSize: `${fontEm(px)}px`, lineHeight: `${px * LINE_SPACING}px`, fontWeight: bold ? 'bold' : 'normal', fontStyle: italic ? 'italic' : 'normal', textAlign: next.halign || 'left', width: `${width + 2}px`, height: '0px', whiteSpace: next.boxWidth ? 'pre-wrap' : 'pre' });
-        const lineCount = Math.max(next.text.split('\n').length, Math.round(textarea.scrollHeight / (px * LINE_SPACING)));
-        const g = inlineTextGeometry(next, editor.viewport, width, lineCount);
-        const canvasRect = editor.canvas.getBoundingClientRect();
-        const stageRect = editor.stage.getBoundingClientRect();
-        const x = g.x + canvasRect.left - stageRect.left, y = g.y + canvasRect.top - stageRect.top;
-        Object.assign(root.querySelector('.cad-inline-text-anchor').style, { left: `${x}px`, top: `${y}px`, transform: `rotate(${g.rotation}deg)${entity.mirrored ? ' scaleX(-1)' : ''}` });
-        Object.assign(textarea.style, { transform: `translate(${g.offsetX}px, ${g.offsetY}px)`, height: `${Math.max(g.height, textarea.scrollHeight)}px` });
-        const toolbar = root.querySelector('.cad-inline-text-toolbar');
-        toolbar.style.left = `${Math.max(4, Math.min(x, editor.stage.clientWidth - toolbar.offsetWidth - 4))}px`;
-        const angle = g.rotation * Math.PI / 180;
-        const mirror = entity.mirrored ? -1 : 1;
-        const top = Math.min(...[g.offsetX, g.offsetX + width].flatMap(localX =>
-            [g.offsetY, g.offsetY + g.height].map(localY => Math.sin(angle) * localX * mirror + Math.cos(angle) * localY)));
-        toolbar.style.top = `${Math.max(4, Math.min(y + top - toolbar.offsetHeight - 8, editor.stage.clientHeight - toolbar.offsetHeight - 4))}px`;
-        root.querySelector('[data-action="bold"]').setAttribute('aria-pressed', String(bold));
-        root.querySelector('[data-action="italic"]').setAttribute('aria-pressed', String(italic));
-    };
-    const save = () => {
-        if (!size.reportValidity()) return;
-        if (!isEntityEditable(editor.doc, entity)) { close(); return; }
-        const current = editor.doc.entities.find(e => e.id === entity.id);
-        if (!current) { close(); return; }
-        const next = { ...current, text: textarea.value, height: draft().height, fontFamily: font.value, bold, italic, isMText: draft().isMText };
-        editor.commit('Editar Texto', replaceEntities(editor.doc, new Map([[entity.id, next]])));
-        editor.selection = new Set([entity.id]);
-        close();
-    };
-    root.addEventListener('keydown', event => {
-        event.stopPropagation();
-    });
-    document.addEventListener('keydown', onEscape, true);
-    for (const type of ['pointerdown', 'click', 'dblclick', 'wheel']) root.addEventListener(type, e => e.stopPropagation());
-    root.addEventListener('input', update);
-    root.addEventListener('change', update);
-    root.querySelectorAll('button[data-action]').forEach(button => button.addEventListener('click', () => {
-        const action = button.dataset.action;
-        if (action === 'save') save();
-        else if (action === 'cancel') close();
-        else if (action === 'advanced') { const next = draft(); close(); openTextEditorModal(editor, next); }
-        else { if (action === 'bold') bold = !bold; else italic = !italic; update(); textarea.focus(); }
-    }));
-    editor.stage.appendChild(root);
-    activeInline = { editor, entity, update, close };
-    update();
-    editor.invalidate();
-    textarea.focus();
-    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-    return root;
+    return openTextEditorModal(editor, entity);
 }
