@@ -4560,7 +4560,7 @@ dependencies = [
 
 [[package]]
 name = "traco-cad"
-version = "0.3.74"
+version = "0.3.75"
 dependencies = [
  "drag",
  "fontdb",

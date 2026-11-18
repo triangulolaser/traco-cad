@@ -1,9 +1,8 @@
 // Interface do Traço em espanhol. Chave = texto original em português (ver i18n.js).
 // Texto novo na interface entra aqui na mesma MR (o teste cad-i18n-coverage cobra).
 export default {
-"Altura (mm)": "Altura (mm)",
-"Caixa (mm)": "Caja (mm)",
-
+    "Altura (mm)": "Altura (mm)",
+    "Caixa (mm)": "Caja (mm)",
     "Converter texto em contornos fechados": "Convertir texto en contornos cerrados",
     "Não foi possível carregar a fonte {0}. Confira se está instalada neste computador.": "No se pudo cargar la fuente {0}. Compruebe que esté instalada en este equipo.",
     "TXTEXP de fontes instaladas está disponível no Traço desktop atualizado.": "TXTEXP de fuentes instaladas está disponible en Traço desktop actualizado.",
@@ -12,7 +11,6 @@ export default {
     "Escala ou tolerância inválida para o contorno.": "Escala o tolerancia de contorno no válida.",
     "Texto sem contornos. O original foi preservado.": "Texto sin contornos. Se conservó el original.",
     "O desenho mudou durante a conversão. Repita TXTEXP.": "El dibujo cambió durante la conversión. Repita TXTEXP.",
-
     "Nome de fonte inválido.": "Nombre de fuente no válido.",
     "Informe o nome da família instalada no computador.": "Indique la familia instalada en el equipo.",
     "Este ambiente não permite validar fontes locais.": "Este entorno no permite validar fuentes locales.",

@@ -20,6 +20,23 @@ html, body {
     max-height: 100vh;
 }
 
+/* Split View can be narrower than the combined tabs and quick controls. */
+.cad-ribbon-tabs {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 34px;
+}
+
+.cad-ribbon-quick {
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.cad-ribbon-quick > * {
+    flex-shrink: 0;
+}
+
 .desktop-update-banner {
     position: fixed;
     top: 12px;
