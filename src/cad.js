@@ -699,7 +699,7 @@ function renderProperties(editor, root) {
         if (['text', 'dimension'].includes(selected[0].type)) {
             const entity = selected[0];
             const style = entity.type === 'dimension' ? editor.doc.dimStyle : editor.doc.textStyle;
-            html += `<div class="cad-prop-row"><label>Fonte</label><select data-font-family ${locked ? 'disabled' : ''}>${FONT_FAMILIES.map((f) => `<option ${f === (entity.fontFamily ?? style?.fontFamily ?? 'Liberation Sans') ? 'selected' : ''}>${f}</option>`).join('')}</select></div><label><input type="checkbox" data-font-bold ${locked ? 'disabled' : ''} ${(entity.bold ?? style?.bold) ? 'checked' : ''}>Negrito</label> <label><input type="checkbox" data-font-italic ${locked ? 'disabled' : ''} ${(entity.italic ?? style?.italic) ? 'checked' : ''}>Itálico</label>`;
+            html += `<div class="cad-prop-row"><label>Fonte</label><select data-font-family ${locked ? 'disabled' : ''}>${FONT_FAMILIES.map((f) => `<option ${f === (entity.fontFamily ?? style?.fontFamily ?? 'Liberation Sans') ? 'selected' : ''}>${escapeHtml(f)}</option>`).join('')}</select></div><label><input type="checkbox" data-font-bold ${locked ? 'disabled' : ''} ${(entity.bold ?? style?.bold) ? 'checked' : ''}>Negrito</label> <label><input type="checkbox" data-font-italic ${locked ? 'disabled' : ''} ${(entity.italic ?? style?.italic) ? 'checked' : ''}>Itálico</label>`;
         }
         if (selected[0].type === 'dimension') html += `<div class="cad-prop-row"><label>Texto da cota</label><input data-dim-text ${locked ? 'disabled' : ''} value="${escapeHtml(selected[0].textOverride ?? '<>')}" title="<> restaura medição automática"></div>`;
     } else {

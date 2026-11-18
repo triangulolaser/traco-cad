@@ -16,7 +16,7 @@ import { parseDxf } from './dxf.js';
 import { readDxfFile } from './dxf-binary.js';
 import { kindOf } from './file-types.js';
 import { showCadErrorModal, hideCadErrorModal } from './error-modal.js';
-import { openInlineTextEditor, updateInlineTextEditor, inlineTextEntityId } from './text-editor.js';
+import { openTextEditorModal, closeTextEditorModal, isTextAnnotation, updateInlineTextEditor, inlineTextEntityId } from './text-editor.js';
 import { lxdsToEntities, looksLikeLxds, LXDS_TRAVEL_LAYER, LXDS_LEAD_LAYER } from './lxds.js';
 import { dimensionGeometry } from './dimensions.js';
 import { getFilletGrips, filletRadiusFromCursor, filletAtCorner, niceRadiusStep } from './fillet-grip.js';
@@ -93,7 +93,7 @@ const toggleKey = (event) => event.ctrlKey || event.metaKey;
 // escolhidos no painel Propriedades antes de desenhar (CECOLOR/CELTYPE/CELWEIGHT).
 // Edições (COPY, OFFSET, MIRROR...) preservam as propriedades da origem.
 export const DRAW_COMMANDS = new Set([
-    'POINT', 'DONUT', 'LINE', 'CIRCLE', 'ARC', 'PLINE', 'RECTANG', 'REVCLOUD', 'TEXT', 'POLYGON', 'SLOT', 'ARCSLOT', 'ELLIPSE', 'SPLINE',
+    'POINT', 'DONUT', 'LINE', 'CIRCLE', 'ARC', 'PLINE', 'RECTANG', 'REVCLOUD', 'TEXT', 'MTEXT', 'POLYGON', 'SLOT', 'ARCSLOT', 'ELLIPSE', 'SPLINE',
     'BOUNDARY', 'HATCH', '-HATCH', 'RAY', 'XLINE', 'LEADER', 'AI_CIRCTAN',
     'DIM', 'DIMENSION', 'DIMLINEAR', 'DIMHORIZONTAL', 'DIMVERTICAL', 'DIMALIGNED', 'DIMBASELINE', 'DIMCONTINUE',
     'DIMCENTER', 'DIMANGULAR', 'DIMRADIUS', 'DIMDIAMETER', 'DIMARC',
@@ -265,6 +265,7 @@ export class Editor {
     }
 
     loadDocument(doc) {
+        closeTextEditorModal();
         if (this.pending) this.cancel();
         doc = syncSchematic(ensureEntityIds(doc));
         // Depois de fechar todas as abas, o workspace permanece vazio. Uma
@@ -1242,12 +1243,12 @@ export class Editor {
                 const screen = this.eventScreen(event);
                 const world = this.viewport.screenToWorld(screen);
                 const hit = this.hitTest(world);
-                if (hit && hit.type === 'text') {
+                if (isTextAnnotation(hit)) {
                     this.openTextEditor(hit);
                 } else if (this.selection.size === 1) {
                     const selId = Array.from(this.selection)[0];
                     const sel = this.doc.entities.find((e) => e.id === selId);
-                    if (sel && sel.type === 'text') {
+                    if (isTextAnnotation(sel)) {
                         this.openTextEditor(sel);
                     }
                 }
@@ -1912,6 +1913,7 @@ export class Editor {
     }
 
     cancel() {
+        closeTextEditorModal();
         this.window = null;
         if (this.activeGrip) {
             this.cancelGripDrag();
@@ -2427,7 +2429,7 @@ export class Editor {
     }
 
     openTextEditor(entity) {
-        return openInlineTextEditor(this, entity);
+        return openTextEditorModal(this, entity);
     }
 }
 

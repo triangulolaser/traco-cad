@@ -148,7 +148,15 @@
                                 <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="DIMCONTINUE" data-cad-label="Continuar" title="Cota em sequência da última cota (DCO)"><span class="cad-dropdown-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="4" y1="6" x2="4" y2="18"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="20" y1="6" x2="20" y2="18"/><line x1="4" y1="10" x2="20" y2="10" stroke="#38bdf8"/></svg></span><span>Continuar</span></button>
                             </div>
                         </div>
-                        <button type="button" class="cad-ribbon-button" data-cad-command="TEXT" title="Texto (T)"><i class="bi bi-fonts"></i><span>Texto</span></button>
+                        <div class="cad-ribbon-split" data-cad-split="text">
+                            <button type="button" class="cad-ribbon-split-main" data-cad-command="TEXT" title="Inserir texto (T)"><span data-cad-split-icon><i class="bi bi-fonts"></i></span><span data-cad-split-label>Texto</span></button>
+                            <button type="button" class="cad-ribbon-split-arrow" data-cad-split-toggle="text" title="Mais opções de texto" aria-label="Mais opções de texto" aria-haspopup="true" aria-expanded="false"><i class="bi bi-caret-down-fill"></i></button>
+                            <div class="cad-ribbon-dropdown-menu" data-cad-dropdown-menu="text" hidden>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="TEXT" data-cad-label="Texto"><span class="cad-dropdown-icon"><i class="bi bi-fonts"></i></span><span>Texto</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="MTEXT" data-cad-label="Multilinha"><span class="cad-dropdown-icon"><i class="bi bi-text-paragraph"></i></span><span>Texto multilinha</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="LEADER" data-cad-label="Chamada"><span class="cad-dropdown-icon"><i class="bi bi-arrow-up-right"></i></span><span>Chamada</span></button>
+                            </div>
+                        </div>
                     </div>
                     <div class="cad-ribbon-group-label">Anotações</div>
                 </div>
@@ -247,7 +255,15 @@
 
                 <div class="cad-ribbon-group">
                     <div class="cad-ribbon-group-items">
-                        <button type="button" class="cad-ribbon-button" data-cad-command="TEXT" title="Texto de linha única ou multilinha (T)"><i class="bi bi-fonts"></i><span>Texto</span></button>
+                        <div class="cad-ribbon-split" data-cad-split="text-anotar">
+                            <button type="button" class="cad-ribbon-split-main" data-cad-command="TEXT" title="Inserir texto (T)"><span data-cad-split-icon><i class="bi bi-fonts"></i></span><span data-cad-split-label>Texto</span></button>
+                            <button type="button" class="cad-ribbon-split-arrow" data-cad-split-toggle="text-anotar" title="Mais opções de texto" aria-label="Mais opções de texto" aria-haspopup="true" aria-expanded="false"><i class="bi bi-caret-down-fill"></i></button>
+                            <div class="cad-ribbon-dropdown-menu" data-cad-dropdown-menu="text-anotar" hidden>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="TEXT" data-cad-label="Texto"><span class="cad-dropdown-icon"><i class="bi bi-fonts"></i></span><span>Texto</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="MTEXT" data-cad-label="Multilinha"><span class="cad-dropdown-icon"><i class="bi bi-text-paragraph"></i></span><span>Texto multilinha</span></button>
+                                <button type="button" class="cad-ribbon-dropdown-item" data-cad-command="LEADER" data-cad-label="Chamada"><span class="cad-dropdown-icon"><i class="bi bi-arrow-up-right"></i></span><span>Chamada</span></button>
+                            </div>
+                        </div>
                         <button type="button" class="cad-ribbon-button is-small" data-cad-command="TEXTEDIT" title="Editar propriedades do texto (ED / DDEDIT)"><i class="bi bi-pencil-square"></i><span>Editar texto</span></button>
                         <button type="button" class="cad-ribbon-button is-small" data-cad-command="TEXTSTYLE" title="Configurar fonte padrão dos textos"><i class="bi bi-fonts"></i><span>Estilo texto</span></button>
                         <button type="button" class="cad-ribbon-button is-small" data-cad-command="DIMTEXT" title="Editar texto da cota (<> restaura)"><i class="bi bi-pencil"></i><span>Texto cota</span></button>

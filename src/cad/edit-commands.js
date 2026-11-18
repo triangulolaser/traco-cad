@@ -1,3 +1,4 @@
+import { insertTextAnnotation, isTextAnnotation } from './text-editor.js';
 import {FONT_FAMILIES,useLocalFont} from './fonts.js';
 import {addEntities,replaceEntities,removeEntities,isEntityEditable} from './document.js';
 import {sub,emptyBox,boxAddPoint,distance,polylineCurves,curveMidpoint,entityLength,sweepCCW,radToDeg,degToRad,angleOf,normalizeAngle,formatNumber} from './geometry.js';
@@ -236,10 +237,10 @@ export const EDIT_COMMANDS = {
         if(e.selection.size===1){
             const id=Array.from(e.selection)[0];
             const ent=e.doc.entities.find(x=>x.id===id);
-            if(ent&&ent.type==='text')target=ent;
+            if(isTextAnnotation(ent))target=ent;
         }
         if(!target){
-            const hit=await e.getEntity('Selecione o texto para editar:',{filter:x=>x.type==='text'});
+            const hit=await e.getEntity('Selecione o texto para editar:',{filter:isTextAnnotation});
             if(hit)target=hit.entity;
         }
         if(target){
@@ -1097,14 +1098,17 @@ export const EDIT_COMMANDS = {
     }},
     LEADER:{aliases:['LE','CHAMADA'],description:'Linha de chamada com seta e texto',async run(e){
         ensureDimensionSetup(e);
-        const p1=(await e.getPoint('Ponta da seta')).point;
-        const p2=(await e.getPoint('Cotovelo',{reference:p1})).point;
-        const linePoint=(await e.getPoint('Posição do texto',{reference:p2})).point;
-        const textOverride=await e.getString('Texto da chamada');
-        e.commit('Chamada',addEntities(e.doc,[{type:'dimension',kind:'leader',layer:DIMENSION_LAYER,p1,p2,linePoint,textOverride}]));
+        const first = await e.getPoint('Ponta da seta');
+        if (!first?.point) return;
+        const p1 = first.point;
+        const draft = point => ({type:'dimension',kind:'leader',layer:DIMENSION_LAYER,p1,p2:point,linePoint:point,textOverride:''});
+        const second = await e.getPoint('Posição do texto da chamada', {reference:p1, preview: cursor => [draft(cursor)]});
+        if (!second?.point) return;
+        await insertTextAnnotation(e, draft(second.point));
     }},
     DIMTEXT:{aliases:['TEXTODACOTA'],description:'Editar texto da cota; <> restaura a medição',async run(e){
         const hit=await e.getEntity('Cota',{filter:x=>x.type==='dimension'});if(!hit)return;
+        if(hit.entity.kind==='leader'){e.openTextEditor(hit.entity);return;}
         const text=await e.getString('Texto (<> para automático)',{defaultValue:hit.entity.textOverride??'<>'});
         if(!isEntityEditable(e.doc,hit.entity))throw new Error('Layer bloqueado.');
         e.commit('Texto da cota',replaceEntities(e.doc,new Map([[hit.entity.id,{...hit.entity,textOverride:text==='<>'?undefined:text}]])));

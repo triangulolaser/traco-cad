@@ -711,8 +711,7 @@ body:has([data-cad-app]) .app-content > .container-fluid {
     position: fixed;
     inset: 0;
     z-index: 99999;
-    background: rgba(8, 11, 19, 0.85);
-    backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.35);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -732,7 +731,6 @@ body:has([data-cad-app]) .app-content > .container-fluid {
     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
     color: var(--cad-text, #f1f5f9);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -892,7 +890,6 @@ body:has([data-cad-app]) .app-content > .container-fluid {
     box-shadow: 0 35px 90px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
     color: var(--cad-text, #f1f5f9);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     text-align: center;
@@ -1084,13 +1081,12 @@ body:has([data-cad-app]) .app-content > .container-fluid {
     position: fixed;
     inset: 0;
     z-index: 100000;
-    background: rgba(8, 11, 19, 0.85);
-    backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.35);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    animation: cadFadeIn 0.2s ease-out;
+
 }
 .cad-app.is-empty .cad-error-overlay {
     display: flex !important;
@@ -1103,7 +1099,6 @@ body:has([data-cad-app]) .app-content > .container-fluid {
     box-shadow: 0 25px 70px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.05);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
     color: var(--cad-text, #f1f5f9);
     font-family: var(--cad-font, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif);
     padding: 28px 26px 22px;
@@ -1411,23 +1406,23 @@ body:has([data-cad-app]) .app-content > .container-fluid {
     position: fixed;
     inset: 0;
     z-index: 100000;
-    background: rgba(8, 11, 19, 0.85);
-    backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.35);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    animation: cadFadeIn 0.2s ease-out;
+
 }
 .cad-text-editor-modal {
     background: var(--cad-panel, #161b26);
     border: 1px solid var(--cad-border, rgba(255, 255, 255, 0.12));
-    border-radius: 14px;
+    border-radius: 8px;
     width: min(560px, 100%);
-    box-shadow: 0 25px 70px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    max-height: calc(100dvh - 48px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
     color: var(--cad-text, #f1f5f9);
     font-family: var(--cad-font, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif);
     padding: 22px 24px;
@@ -1486,7 +1481,7 @@ body:has([data-cad-app]) .app-content > .container-fluid {
     min-height: 90px;
     max-height: 220px;
     resize: vertical;
-    background: var(--cad-panel-3, #0f131c);
+    background: var(--cad-panel-2);
     border: 1px solid var(--cad-border, rgba(255, 255, 255, 0.12));
     border-radius: 8px;
     color: var(--cad-text, #f1f5f9);
@@ -1510,7 +1505,7 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-text-editor-select {
     width: 100%;
     height: 32px;
-    background: var(--cad-panel-3, #0f131c);
+    background: var(--cad-panel-2);
     border: 1px solid var(--cad-border, rgba(255, 255, 255, 0.12));
     border-radius: 6px;
     color: var(--cad-text, #f1f5f9);
@@ -1561,47 +1556,6 @@ body:has([data-cad-app]) .app-content > .container-fluid {
     display: flex;
     align-items: center;
     gap: 8px;
-}
-
-/* Suporte ao tema claro para o editor de texto */
-.cad-app[data-cad-theme="light"] .cad-text-editor-overlay {
-    background: rgba(15, 23, 42, 0.45);
-    backdrop-filter: blur(4px);
-}
-.cad-app[data-cad-theme="light"] .cad-text-editor-modal {
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
-    color: #0f172a;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.05);
-}
-.cad-app[data-cad-theme="light"] .cad-text-editor-header {
-    border-bottom-color: #e2e8f0;
-}
-.cad-app[data-cad-theme="light"] .cad-text-editor-title {
-    color: #0f172a;
-}
-.cad-app[data-cad-theme="light"] .cad-text-editor-close {
-    color: #64748b;
-}
-.cad-app[data-cad-theme="light"] .cad-text-editor-close:hover {
-    color: #0f172a;
-    background: rgba(0, 0, 0, 0.05);
-}
-.cad-app[data-cad-theme="light"] .cad-text-editor-textarea,
-.cad-app[data-cad-theme="light"] .cad-text-editor-input,
-.cad-app[data-cad-theme="light"] .cad-text-editor-select {
-    background: #f8fafc;
-    border-color: #cbd5e1;
-    color: #0f172a;
-}
-.cad-app[data-cad-theme="light"] .cad-text-editor-toggle-label {
-    color: #0f172a;
-}
-.cad-app[data-cad-theme="light"] .cad-text-editor-footer {
-    border-top-color: #e2e8f0;
-}
-.cad-app[data-cad-theme="light"] .cad-text-editor-hint {
-    color: #64748b;
 }
 
 /* Feedback fica na barra superior, fora da área de desenho. */
@@ -1866,3 +1820,22 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-local-font-picker{display:flex;flex-wrap:wrap;align-items:center;gap:4px;max-width:340px}
 .cad-local-font-picker input{min-width:180px;max-width:250px}
 .cad-local-font-picker [role=status]{font-size:11px;flex-basis:100%;white-space:normal}
+
+/* Text insertion and editing share the application's theme tokens. */
+.cad-text-editor-help { margin: 0; color: var(--cad-muted); font-size: 14px; line-height: 1.5; }
+.cad-text-editor-modal { color-scheme: dark; }
+.cad-app[data-cad-theme="light"] .cad-text-editor-modal { color-scheme: light; }
+.cad-text-editor-modal :focus-visible { outline: 2px solid var(--cad-accent); outline-offset: 2px; }
+.cad-text-editor-field { min-width: 0; }
+.cad-text-editor-select { text-overflow: ellipsis; }
+.cad-local-font-picker { font-size: 12px; color: var(--cad-muted); line-height: 1.4; }
+@media (max-width: 560px) {
+    .cad-text-editor-grid { grid-template-columns: 1fr; }
+    .cad-text-editor-footer { align-items: flex-start; gap: 12px; flex-direction: column; }
+}
+.cad-text-editor-modal input::placeholder,
+.cad-text-editor-modal textarea::placeholder { color: var(--cad-muted); opacity: 1; }
+.cad-text-editor-modal .cad-btn-primary { background: #0067d1; color: #fff; border-color: #0067d1; }
+.cad-text-editor-modal .cad-btn-primary:hover { background: #0055ae; }
+.cad-app[data-cad-theme="light"] .cad-text-editor-modal input::placeholder,
+.cad-app[data-cad-theme="light"] .cad-text-editor-modal textarea::placeholder { color: #626267; }

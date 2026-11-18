@@ -638,7 +638,7 @@ function arcLengthGeometry(entity, style) {
 
 function leaderGeometry(e,style){
     const text=e.textOverride??'';
-    return {segments:[{a:e.p1,b:e.p2},{a:e.p2,b:e.linePoint}],arrows:[arrowAt(e.p1,normalize(sub(e.p1,e.p2)),style.arrowSize)],texts:[{type:'text',position:add(e.linePoint,{x:0,y:style.textGap}),height:style.textHeight,rotation:0,text,fontFamily:style.fontFamily,bold:style.bold,italic:style.italic}],measurement:0,text};
+    return {segments:[{a:e.p1,b:e.p2},{a:e.p2,b:e.linePoint}],arrows:[arrowAt(e.p1,normalize(sub(e.p1,e.p2)),style.arrowSize)],texts:[{type:'text',position:add(e.linePoint,{x:0,y:style.textGap}),height:style.textHeight,rotation:e.textRotation??0,text,fontFamily:style.fontFamily,bold:style.bold,italic:style.italic,halign:e.halign,valign:e.valign,boxWidth:e.boxWidth,isMText:e.isMText}],measurement:0,text};
 }
 
 export function dimensionGeometry(entity, style) {

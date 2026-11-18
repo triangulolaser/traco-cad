@@ -1,3 +1,4 @@
+import { insertTextAnnotation } from './text-editor.js';
 import { rotationEdges, findRotationSnap } from './rotation-snap.js';
 import { showExportBalloon } from './export-balloon.js';
 import { usage } from '../usage-telemetry.js';
@@ -1147,14 +1148,13 @@ function rectEntity(a, b) {
     return createRectangleEntity(a, b);
 }
 
-async function text(editor) {
-    const position = (await editor.getPoint('Ponto de inserção do texto:')).point;
-    const height = await editor.getNumber('Altura', { defaultValue: editor.memory.textHeight ?? 2.5, reference: position });
-    const rotation = await editor.getNumber('Ângulo de rotação', { defaultValue: 0, reference: position, angle: true });
-    const value = await editor.getString('Texto:');
-    if (!value) return;
-    editor.memory.textHeight = height;
-    editor.commit('Texto', addEntities(editor.doc, [{ type: 'text', position, height, rotation, text: value }]));
+async function text(editor, multiline = false) {
+    const result = await editor.getPoint('Ponto de inserção do texto:');
+    if (!result?.point) return;
+    await insertTextAnnotation(editor, {
+        type: 'text', layer: editor.doc.currentLayer, position: result.point, height: editor.memory.textHeight ?? 2.5,
+        rotation: 0, text: '', ...editor.doc.textStyle, isMText: multiline === true,
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -5208,6 +5208,7 @@ export const COMMANDS = {
     PLINE: { dimInput: true, aliases: ['PL', 'POLYLINE'], run: polyline, description: 'Polilinha com segmentos de linha e arco' },
     RECTANG: { dimInput: true, aliases: ['REC', 'RECT', 'RECTANGLE'], run: rectangle, description: 'Retângulo por dois cantos' },
     REVCLOUD: { dimInput: true, aliases: ['REV', 'NUVEMREV'], run: revcloud, description: 'Criar nuvem de revisão em forma de arcos sequenciais' },
+    MTEXT: { aliases: ['MT'], run: editor => text(editor, true), description: 'Texto multilinha' },
     TEXT: { aliases: ['T', 'DT', 'DTEXT'], run: text, description: 'Texto de linha única' },
     ARCSLOT: { dimInput: true, aliases: ['RANHURA', 'RANHURAARCO', 'SLOTARCO'], run: arcSlot, description: 'Ranhura em arco por 3 pontos ou centro e pontas, com largura no final' },
     SLOT: { dimInput: true, aliases: ['OBLONGO', 'OBL', 'RASGO'], run: slot, description: 'Furo oblongo por largura e dois pontos, centro a centro ou borda a borda' },

@@ -1,6 +1,6 @@
 import { attachLocalFontPicker } from './local-font-picker.js';
 import { FONT_FAMILIES, canvasFont, fontEm, LINE_SPACING } from './fonts.js';
-import { replaceEntities, isEntityEditable } from './document.js';
+import { addEntities, replaceEntities, isEntityEditable } from './document.js';
 
 function escapeHtml(text) {
     return String(text ?? '')
@@ -14,8 +14,12 @@ function escapeHtml(text) {
 let activeOverlay = null;
 let activeInline = null;
 let activeOverlayEscape = null;
+let activeOnClose = null;
 
 export function closeTextEditorModal() {
+    const onClose = activeOnClose;
+    activeOnClose = null;
+    onClose?.();
     activeInline?.close();
     if (activeOverlayEscape) {
         document.removeEventListener('keydown', activeOverlayEscape, true);
@@ -35,15 +39,18 @@ export function closeTextEditorModal() {
  * @param {Object} editor Instância do Editor Traço CAD
  * @param {Object} entity Entidade de texto a ser editada
  */
-export function openTextEditorModal(editor, entity) {
-    if (!editor || !entity || entity.type !== 'text') return null;
+export function openTextEditorModal(editor, source, options = {}) {
+    if (!editor || !source || !isTextAnnotation(source)) return null;
+    const leader = source.type === 'dimension';
+    const entity = leader ? leaderTextDraft(source, editor.doc.dimStyle) : source;
 
-    if (!isEntityEditable(editor.doc, entity)) {
+    if (!isEntityEditable(editor.doc, source)) {
         editor.log('A camada deste texto está bloqueada para edição.', 'warn');
         return null;
     }
 
     closeTextEditorModal();
+    activeOnClose = options.onClose;
 
     const root = editor.stage || (typeof document !== 'undefined' ? document.body : null);
     if (!root) return null;
@@ -61,7 +68,8 @@ export function openTextEditorModal(editor, entity) {
 
     const halign = entity.halign || 'left';
     const valign = entity.valign || (entity.attachmentPoint ? 'top' : 'baseline');
-    const heightVal = Number.isFinite(entity.height) ? entity.height : 2.5;
+    const originalHeight = Number.isFinite(entity.height) ? entity.height : 2.5;
+    const heightVal = originalHeight.toFixed(2);
     const rotationVal = Number.isFinite(entity.rotation) ? entity.rotation : 0;
     const boxWidthVal = Number.isFinite(entity.boxWidth) && entity.boxWidth > 0 ? entity.boxWidth : '';
 
@@ -70,43 +78,44 @@ export function openTextEditorModal(editor, entity) {
             <div class="cad-text-editor-header">
                 <h3 id="cadTextEditorTitle" class="cad-text-editor-title">
                     <i class="bi bi-fonts"></i>
-                    <span>Editar Texto</span>
+                    <span>${options.create ? (leader ? 'Texto da chamada' : 'Inserir texto') : 'Editar texto'}</span>
                 </h3>
                 <button type="button" class="cad-text-editor-close" data-action="close" title="Fechar (Esc)" aria-label="Fechar">
                     <i class="bi bi-x-lg"></i>
                 </button>
             </div>
             <div class="cad-text-editor-body">
+                <p class="cad-text-editor-help">Escreva o conteúdo e ajuste a aparência. A altura é medida no desenho, em milímetros.</p>
                 <div class="cad-text-editor-field">
                     <label class="cad-text-editor-label" for="cadTextEditorValue">Conteúdo do texto</label>
-                    <textarea id="cadTextEditorValue" class="cad-text-editor-textarea" rows="3" placeholder="Digite o texto...">${escapeHtml(entity.text ?? '')}</textarea>
+                    <textarea id="cadTextEditorValue" class="cad-text-editor-textarea" rows="3" placeholder="Digite o texto…">${escapeHtml(entity.text ?? '')}</textarea>
                 </div>
                 <div class="cad-text-editor-grid">
                     <div class="cad-text-editor-field">
-                        <label class="cad-text-editor-label" for="cadTextEditorFont">Família da fonte</label>
+                        <label class="cad-text-editor-label" for="cadTextEditorFont">Fonte</label>
                         <select id="cadTextEditorFont" class="cad-text-editor-select">
                             ${fontOptions}
                         </select>
                     </div>
                     <div class="cad-text-editor-field">
-                        <label class="cad-text-editor-label" for="cadTextEditorHeight">Tamanho da fonte (altura)</label>
-                        <input id="cadTextEditorHeight" class="cad-text-editor-input" type="number" step="any" min="0.001" value="${heightVal}" />
+                        <label class="cad-text-editor-label" for="cadTextEditorHeight">Altura do texto (mm)</label>
+                        <input id="cadTextEditorHeight" class="cad-text-editor-input" type="number" required step="0.01" min="0.01" value="${heightVal}" />
                     </div>
                     <div class="cad-text-editor-field">
                         <label class="cad-text-editor-label" for="cadTextEditorHAlign">Alinhamento horizontal</label>
                         <select id="cadTextEditorHAlign" class="cad-text-editor-select">
-                            <option value="left" ${halign === 'left' ? 'selected' : ''}>Esquerda (Left)</option>
-                            <option value="center" ${halign === 'center' ? 'selected' : ''}>Centro (Center)</option>
-                            <option value="right" ${halign === 'right' ? 'selected' : ''}>Direita (Right)</option>
+                            <option value="left" ${halign === 'left' ? 'selected' : ''}>Esquerda</option>
+                            <option value="center" ${halign === 'center' ? 'selected' : ''}>Centro</option>
+                            <option value="right" ${halign === 'right' ? 'selected' : ''}>Direita</option>
                         </select>
                     </div>
                     <div class="cad-text-editor-field">
                         <label class="cad-text-editor-label" for="cadTextEditorVAlign">Alinhamento vertical</label>
                         <select id="cadTextEditorVAlign" class="cad-text-editor-select">
-                            <option value="baseline" ${valign === 'baseline' ? 'selected' : ''}>Linha base (Baseline)</option>
-                            <option value="top" ${valign === 'top' ? 'selected' : ''}>Superior (Top)</option>
-                            <option value="middle" ${valign === 'middle' ? 'selected' : ''}>Meio (Middle)</option>
-                            <option value="bottom" ${valign === 'bottom' ? 'selected' : ''}>Inferior (Bottom)</option>
+                            <option value="baseline" ${valign === 'baseline' ? 'selected' : ''}>Linha de base</option>
+                            <option value="top" ${valign === 'top' ? 'selected' : ''}>Topo</option>
+                            <option value="middle" ${valign === 'middle' ? 'selected' : ''}>Meio</option>
+                            <option value="bottom" ${valign === 'bottom' ? 'selected' : ''}>Base</option>
                         </select>
                     </div>
                     <div class="cad-text-editor-field">
@@ -114,8 +123,8 @@ export function openTextEditorModal(editor, entity) {
                         <input id="cadTextEditorRotation" class="cad-text-editor-input" type="number" step="any" value="${rotationVal}" />
                     </div>
                     <div class="cad-text-editor-field">
-                        <label class="cad-text-editor-label" for="cadTextEditorBoxWidth">Largura da caixa (MText)</label>
-                        <input id="cadTextEditorBoxWidth" class="cad-text-editor-input" type="number" step="any" min="0" placeholder="Automática (0)" value="${boxWidthVal}" />
+                        <label class="cad-text-editor-label" for="cadTextEditorBoxWidth">Largura da caixa (mm)</label>
+                        <input id="cadTextEditorBoxWidth" class="cad-text-editor-input" type="number" step="any" min="0" placeholder="Automática" value="${boxWidthVal}" />
                     </div>
                 </div>
                 <div class="cad-text-editor-toggles">
@@ -137,7 +146,7 @@ export function openTextEditorModal(editor, entity) {
                     </button>
                     <button type="button" class="cad-btn cad-btn-primary" data-action="save">
                         <i class="bi bi-check-lg"></i>
-                        <span>Salvar</span>
+                        <span>${options.create ? 'Inserir texto' : 'Salvar alterações'}</span>
                     </button>
                 </div>
             </div>
@@ -170,8 +179,12 @@ export function openTextEditorModal(editor, entity) {
     };
 
     const save = () => {
+        if (!heightInput.reportValidity() || !rotationInput.reportValidity() || !boxWidthInput.reportValidity()) return;
+        const current = options.create ? source : editor.doc.entities.find(item => item.id === source.id);
+        if (!current || !isEntityEditable(editor.doc, current)) { dismiss(); return; }
         const newText = textarea ? textarea.value : (entity.text ?? '');
-        const newHeight = Math.max(0.001, parseFloat(heightInput?.value) || entity.height || 2.5);
+        const newHeight = heightInput.value === heightVal ? originalHeight : Number(heightInput.value);
+        if (!Number.isFinite(newHeight) || newHeight <= 0) return;
         const newRotation = parseFloat(rotationInput?.value) || 0;
         const newFontFamily = fontSelect ? fontSelect.value : (entity.fontFamily || 'Liberation Sans');
         const newHalign = halignSelect ? halignSelect.value : (entity.halign || 'left');
@@ -183,6 +196,7 @@ export function openTextEditorModal(editor, entity) {
 
         const updated = {
             ...entity,
+            ...(!leader ? current : {}),
             text: newText,
             height: newHeight,
             rotation: newRotation,
@@ -202,13 +216,20 @@ export function openTextEditorModal(editor, entity) {
             updated.isMText = true;
         }
 
-        editor.commit('Editar Texto', replaceEntities(editor.doc, new Map([[entity.id, updated]])));
-        editor.selection = new Set([entity.id]);
+        const result = leader ? applyLeaderText(current, updated, editor.doc.dimStyle) : updated;
+        if (options.create) {
+            editor.memory.textHeight = newHeight;
+            editor.commit(leader ? 'Chamada' : 'Texto', addEntities(editor.doc, [result]));
+        } else {
+            editor.commit('Editar Texto', replaceEntities(editor.doc, new Map([[source.id, result]])));
+            editor.selection = new Set([source.id]);
+        }
+        options.onSave?.(result);
         editor.invalidate();
         if (typeof editor.onChange === 'function') {
             editor.onChange(editor);
         }
-        editor.log('Texto atualizado.', 'info');
+        editor.log(options.create ? 'Texto inserido.' : 'Texto atualizado.', 'info');
         dismiss();
     };
 
@@ -233,6 +254,15 @@ export function openTextEditorModal(editor, entity) {
         }
     });
 
+    // Keep drawing shortcuts and pointer gestures outside the dialog.
+    for (const type of ['keydown', 'pointerdown', 'dblclick', 'wheel']) overlay.addEventListener(type, event => event.stopPropagation());
+    overlay.addEventListener('keydown', event => {
+        if (event.key !== 'Tab') return;
+        const fields = [...overlay.querySelectorAll('button, input, select, textarea')].filter(el => !el.disabled && !el.closest('[hidden]'));
+        const first = fields[0], last = fields.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    });
     document.addEventListener('keydown', onEscape, true);
     activeOverlayEscape = onEscape;
 
@@ -247,6 +277,38 @@ export function openTextEditorModal(editor, entity) {
     }
 
     return overlay;
+}
+
+export function isTextAnnotation(entity) {
+    return entity?.type === 'text' || (entity?.type === 'dimension' && entity.kind === 'leader');
+}
+
+function leaderScale(entity, dimStyle = {}) {
+    const raw = entity.scale ?? entity.style?.scale ?? dimStyle.scale ?? 1;
+    return Number.isFinite(raw) && raw > 0 ? raw : 1;
+}
+
+export function leaderTextDraft(entity, dimStyle = {}) {
+    const style = { ...dimStyle, ...entity.style };
+    return { ...entity, type: 'text', text: entity.textOverride ?? '',
+        height: (entity.textHeight ?? style.textHeight ?? 2.5) * leaderScale(entity, dimStyle),
+        fontFamily: entity.fontFamily ?? style.fontFamily,
+        bold: entity.bold ?? style.bold, italic: entity.italic ?? style.italic,
+        rotation: entity.textRotation ?? 0 };
+}
+
+export function applyLeaderText(entity, draft, dimStyle = {}) {
+    return { ...entity, textOverride: draft.text, textHeight: draft.height / leaderScale(entity, dimStyle),
+        fontFamily: draft.fontFamily, bold: draft.bold, italic: draft.italic,
+        textRotation: draft.rotation, halign: draft.halign, valign: draft.valign,
+        boxWidth: draft.boxWidth, isMText: draft.isMText };
+}
+
+export function insertTextAnnotation(editor, entity) {
+    return new Promise(resolve => {
+        const panel = openTextEditorModal(editor, entity, { create: true, onSave: resolve, onClose: () => resolve(null) });
+        if (!panel) resolve(null);
+    });
 }
 
 /** Screen geometry follows the same anchor, baseline and rotation as the canvas. */

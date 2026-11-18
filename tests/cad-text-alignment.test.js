@@ -232,6 +232,7 @@ test('openTextEditorModal cria interface completa e atualiza documento com novos
             },
             append(...children) { this.children = [...(this.children || []), ...children]; },
             after(sibling) { this.nextSibling = sibling; },
+            reportValidity() { return true; },
             focus() {},
             setSelectionRange() {},
             remove() {},

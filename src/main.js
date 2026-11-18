@@ -12,6 +12,7 @@ console.log('Traço CAD Desktop inicializado.');
 
 window.desktopBridge = {
     isDesktop: true,
+    listSystemFonts() { return invoke('list_system_fonts'); },
     async saveFile(path, contents) {
         if (typeof contents === 'string') {
             return invoke('write_file', { path, contents });

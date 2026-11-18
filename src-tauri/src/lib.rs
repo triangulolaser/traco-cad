@@ -1,4 +1,5 @@
 mod fileops;
+mod fonts;
 
 use serde::Serialize;
 use std::path::PathBuf;
@@ -414,7 +415,7 @@ pub fn run() {
         .manage(FileLocksState::default())
         .manage(PendingLinksState::default())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_pending_open_files, get_pending_open_links, write_file, write_file_binary, file_exists, read_file_text, read_file_binary, convert_dwg_to_dxf, read_cad_clipboard, read_cad_clipboard_seq, sync_file_locks, reveal_in_folder, start_file_drag])
+        .invoke_handler(tauri::generate_handler![fonts::list_system_fonts, get_pending_open_files, get_pending_open_links, write_file, write_file_binary, file_exists, read_file_text, read_file_binary, convert_dwg_to_dxf, read_cad_clipboard, read_cad_clipboard_seq, sync_file_locks, reveal_in_folder, start_file_drag])
         .setup(|app| {
             #[cfg(desktop)]
             {
