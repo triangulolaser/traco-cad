@@ -9,6 +9,7 @@ export default {
     "TXTEXP de fontes instaladas está disponível no Traço desktop atualizado.": "TXTEXP de fuentes instaladas está disponible en Traço desktop actualizado.",
     "Selecione textos para converter em contornos:": "Seleccione textos para convertir en contornos:",
     "Selecione entidades TEXT ou MTEXT.": "Seleccione entidades TEXT o MTEXT.",
+    "Escala ou tolerância inválida para o contorno.": "Escala o tolerancia de contorno no válida.",
     "Texto sem contornos. O original foi preservado.": "Texto sin contornos. Se conservó el original.",
     "O desenho mudou durante a conversão. Repita TXTEXP.": "El dibujo cambió durante la conversión. Repita TXTEXP.",
 

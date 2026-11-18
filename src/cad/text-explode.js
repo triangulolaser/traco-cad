@@ -1,27 +1,40 @@
+import {cubicToArcs} from './import-svg.js';
 import {fontEm, LINE_SPACING} from './fonts.js';
 import {replaceEntities, isEntityEditable} from './document.js';
 
-// Adaptive subdivision bounds the chord error in drawing millimeters.
+// Fit each original Bézier independently: corners and stencil openings remain exact.
+// Tolerance is expressed in drawing millimeters, not font units.
 export function outlineLoops(commands, scale, tolerance = .01) {
+    if (!(scale > 0) || !Number.isFinite(scale) || !(tolerance > 0) || !Number.isFinite(tolerance)) {
+        throw new Error('Escala ou tolerância inválida para o contorno.');
+    }
     const loops = []; let loop = [], point;
-    const dist = (p,a,b) => {
-        const dx=b.x-a.x,dy=b.y-a.y;
-        const t=dx*dx+dy*dy ? Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy))) : 0;
-        return Math.hypot(p.x-a.x-t*dx,p.y-a.y-t*dy);
-    };
-    const mid=(a,b)=>({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
-    const flatten=(points,depth=0)=>{
-        if(depth>=18 || points.slice(1,-1).every(p=>dist(p,points[0],points.at(-1))*scale<=tolerance)) {loop.push(points.at(-1));return;}
-        let row=points,left=[row[0]],right=[row.at(-1)];
-        while(row.length>1){row=row.slice(1).map((p,i)=>mid(row[i],p));left.push(row[0]);right.unshift(row.at(-1));}
-        flatten(left,depth+1);flatten(right,depth+1);
+    const appendCurve = points => {
+        const cubic = points.length === 4 ? points : [points[0],
+            {x:points[0].x+2/3*(points[1].x-points[0].x), y:points[0].y+2/3*(points[1].y-points[0].y)},
+            {x:points[2].x+2/3*(points[1].x-points[2].x), y:points[2].y+2/3*(points[1].y-points[2].y)}, points[2]];
+        for (const seg of cubicToArcs(cubic.map(p=>({x:p.x*scale,y:p.y*scale})), tolerance)) {
+            if (seg.kind === 'arc') {
+                let sweep = Math.atan2(seg.b.y-seg.center.y,seg.b.x-seg.center.x)-Math.atan2(seg.a.y-seg.center.y,seg.a.x-seg.center.x);
+                if (seg.ccw && sweep < 0) sweep += 2*Math.PI;
+                if (!seg.ccw && sweep > 0) sweep -= 2*Math.PI;
+                loop.at(-1).bulge = Math.tan(sweep/4);
+            }
+            loop.push({x:seg.b.x/scale,y:seg.b.y/scale});
+        }
     };
     for(const [op,...v] of commands){
         const p=(i)=>({x:v[i],y:v[i+1]});
         if(op===0){loop=[p(0)];point=p(0);}
         else if(op===1){point=p(0);loop.push(point);}
-        else if(op===2||op===3){const end=p(op===2?2:4);flatten(op===2?[point,p(0),end]:[point,p(0),p(2),end]);point=end;}
-        else if(op===4){if(loop.length>2){if(loop[0].x===loop.at(-1).x&&loop[0].y===loop.at(-1).y)loop.pop();loops.push(loop);}loop=[];}
+        else if(op===2||op===3){const end=p(op===2?2:4);appendCurve(op===2?[point,p(0),end]:[point,p(0),p(2),end]);point=end;}
+        else if(op===4){
+            if(loop.length>1){
+                if(Math.hypot(loop[0].x-loop.at(-1).x,loop[0].y-loop.at(-1).y)<1e-9)loop.pop();
+                if(loop.length>2 || (loop.length===2 && loop.some(p=>p.bulge)))loops.push(loop);
+            }
+            loop=[];
+        }
     }
     return loops;
 }
@@ -58,7 +71,7 @@ export async function textPolylines(entity, readOutlines) {
         if(entity.boxWidth>0){x-=(((entity.attachmentPoint||1)-1)%3)*entity.boxWidth/2;x+=entity.halign==='center'?entity.boxWidth/2:entity.halign==='right'?entity.boxWidth:0;}
         for(const glyph of glyphs){
             for(const loop of outlineLoops(glyph.commands,scale)){
-                const vertices=loop.map(p=>{const lx=((p.x+(glyph.offset_x||0))*scale+x)*(entity.mirrored?-1:1),ly=(p.y+(glyph.offset_y||0))*scale+baseline-row*h*LINE_SPACING;return {x:entity.position.x+c*lx-s*ly,y:entity.position.y+s*lx+c*ly};});
+                const vertices=loop.map(p=>{const lx=((p.x+(glyph.offset_x||0))*scale+x)*(entity.mirrored?-1:1),ly=(p.y+(glyph.offset_y||0))*scale+baseline-row*h*LINE_SPACING;return {x:entity.position.x+c*lx-s*ly,y:entity.position.y+s*lx+c*ly,...(p.bulge ? {bulge:p.bulge*(entity.mirrored?-1:1)} : {})};});
                 result.push({type:'polyline',closed:true,vertices,layer:entity.layer,color:entity.color,lineType:entity.lineType,lineWeight:entity.lineWeight});
             }
             x+=glyph.advance*scale;

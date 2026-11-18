@@ -20,9 +20,9 @@ test('TXTEXP keeps disjoint stencil contours and inner holes separate',()=>{
  const loops=outlineLoops([...rectangle,...rectangle.map(([op,...xy])=>[op,...xy.map(v=>v/4+100)])],.01);
  assert.equal(loops.length,2);assert.equal(loops[0].length,4);
 });
-test('quadratic and cubic outlines are adaptively subdivided without losing collinear excursions',()=>{
+test('quadratic and cubic outlines use arcs without losing collinear excursions',()=>{
  const loop=outlineLoops([[0,0,0],[2,100,200,200,0],[3,300,-200,400,200,500,0],[1,0,0],[4]],.1)[0];
- assert.ok(loop.length>30);assert.ok(loop.some(p=>p.y>90));assert.ok(loop.some(p=>p.y<0));
+ assert.ok(loop.some(p=>p.bulge));assert.ok(loop.some(p=>p.y>90));assert.ok(loop.some(p=>p.y<0));
  const cusp=outlineLoops([[0,0,0],[2,100,0,10,0],[1,0,10],[4]],1)[0];
  assert.ok(cusp.some(p=>p.x>40));
 });
@@ -42,4 +42,33 @@ test('failure never deletes any original; success creates one undoable transacti
  await assert.rejects(explodeText(e),/missing font/);assert.equal(e.doc,original);assert.equal(commits,0);
  window.desktopBridge.systemTextOutlines=reader;await explodeText(e);assert.equal(commits,1);assert.ok(e.doc.entities.every(e=>e.type==='polyline'));
  }finally{globalThis.window=old;}
+});
+
+test('curved glyph keeps arcs through mirror, rotation and DXF roundtrip',async()=>{
+ const k=0.5522847498307936;
+ const commands=[[0,100,0],[3,100,100*k,100*k,100,0,100],[1,0,0],[1,100,0],[4]];
+ const read=async()=>({units_per_em:1000,glyphs:[{advance:120,commands}]});
+ const normal=(await textPolylines({...text,text:'C',height:71.6},read))[0];
+ const mirrored=(await textPolylines({...text,text:'C',height:71.6,mirrored:true,rotation:37},read))[0];
+ assert.equal(normal.vertices.length,3);
+ assert.ok(Math.abs(normal.vertices[0].bulge-Math.tan(Math.PI/8))<1e-8);
+ assert.equal(mirrored.vertices[0].bulge,-normal.vertices[0].bulge);
+ assert.ok(normal.vertices.slice(1).every(p=>!p.bulge));
+ const parsed=parseDxf(writeDxf(addEntities(createDocument(),[mirrored]))).entities[0];
+ assert.ok(Math.abs(parsed.vertices[0].bulge-mirrored.vertices[0].bulge)<1e-6);
+ assert.equal(parsed.closed,true);
+});
+
+test('small and large quadratic glyphs stay within 0.01 mm of the original curve',async()=>{
+ const {entityCurves,closestPointOnCurve}=await import('../src/cad/geometry.js');
+ for(const scale of [.001,.1,10]){
+  const vertices=outlineLoops([[0,0,0],[2,100,200,200,0],[1,0,0],[4]],scale)[0].map(p=>({...p,x:p.x*scale,y:p.y*scale}));
+  const curves=entityCurves({type:'polyline',closed:true,vertices});
+  assert.ok(vertices.some(p=>p.bulge));
+  for(let i=0;i<=2000;i++){
+   const t=i/2000,q={x:200*t*scale,y:400*t*(1-t)*scale};
+   const distance=Math.min(...curves.map(c=>{const p=closestPointOnCurve(q,c);return Math.hypot(q.x-p.x,q.y-p.y)}));
+   assert.ok(distance<=.0101,`scale ${scale}: deviation ${distance}`);
+  }
+ }
 });

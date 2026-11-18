@@ -9,6 +9,7 @@ export default {
     "TXTEXP de fontes instaladas está disponível no Traço desktop atualizado.": "TXTEXP for installed fonts is available in the updated Traço desktop.",
     "Selecione textos para converter em contornos:": "Select texts to convert to outlines:",
     "Selecione entidades TEXT ou MTEXT.": "Select TEXT or MTEXT entities.",
+    "Escala ou tolerância inválida para o contorno.": "Invalid outline scale or tolerance.",
     "Texto sem contornos. O original foi preservado.": "Text has no outlines. The original was preserved.",
     "O desenho mudou durante a conversão. Repita TXTEXP.": "The drawing changed during conversion. Run TXTEXP again.",
 
