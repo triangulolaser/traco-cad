@@ -1,7 +1,7 @@
 {
   "name": "traco-cad-desktop",
   "private": true,
-  "version": "0.3.74",
+  "version": "0.3.75",
   "type": "module",
   "scripts": {
     "dev": "vite",
