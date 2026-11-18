@@ -1,6 +1,13 @@
 // Interface do Traço em inglês. Chave = texto original em português (ver i18n.js).
 // Texto novo na interface entra aqui na mesma MR (o teste cad-i18n-coverage cobra).
 export default {
+    "Mais": "More",
+    "Mais opções": "More options",
+    "Nova camada": "New layer",
+    "Gerenciar camadas": "Manage layers",
+    "Alternar tema": "Toggle theme",
+    "Recolher/expandir ferramentas": "Collapse/expand tools",
+    "Interface": "Interface",
     "Altura (mm)": "Height (mm)",
     "Caixa (mm)": "Box (mm)",
     "Converter texto em contornos fechados": "Convert text to closed outlines",

@@ -1,6 +1,13 @@
 // Interface do Traço em espanhol. Chave = texto original em português (ver i18n.js).
 // Texto novo na interface entra aqui na mesma MR (o teste cad-i18n-coverage cobra).
 export default {
+    "Mais": "Más",
+    "Mais opções": "Más opciones",
+    "Nova camada": "Nueva capa",
+    "Gerenciar camadas": "Administrar capas",
+    "Alternar tema": "Cambiar tema",
+    "Recolher/expandir ferramentas": "Contraer/expandir herramientas",
+    "Interface": "Interfaz",
     "Altura (mm)": "Altura (mm)",
     "Caixa (mm)": "Caja (mm)",
     "Converter texto em contornos fechados": "Convertir texto en contornos cerrados",

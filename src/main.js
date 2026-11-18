@@ -5,6 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { save as tauriSaveDialog, open as tauriOpenDialog } from '@tauri-apps/plugin-dialog';
+import { initToolbarMenu } from './toolbar-menu.js';
 import { initDesktopUpdates } from './updater.js';
 import { parseDesktopOpenLink } from './cad/desktop-link.js';
 
@@ -199,3 +200,4 @@ setInterval(syncFileLocks, 1000);
 
 // 7. Atualização automática: checa ao abrir e pelo botão da barra superior.
 initDesktopUpdates();
+initToolbarMenu(document);

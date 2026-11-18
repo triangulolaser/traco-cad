@@ -20,22 +20,30 @@ html, body {
     max-height: 100vh;
 }
 
-/* Split View can be narrower than the combined tabs and quick controls. */
-.cad-ribbon-tabs {
-    flex-wrap: wrap;
-    height: auto;
-    min-height: 34px;
+/* Keep frequent actions on one row; secondary actions live in More. */
+.cad-ribbon-tabs { box-sizing: border-box; flex-wrap: nowrap; height: 38px; gap: 1px; }
+.cad-ribbon-tab { padding-inline: 10px; white-space: nowrap; }
+.cad-mode-switch { flex-shrink: 0; margin-right: 6px; }
+.cad-mode-switch button { padding-inline: 9px; }
+.cad-brand { flex-shrink: 0; white-space: nowrap; }
+.cad-ribbon-quick { flex-wrap: nowrap; flex-shrink: 0; gap: 2px; }
+.cad-ribbon-quick .cad-btn-icon { width: 28px; min-width: 28px; height: 28px; padding: 0; }
+.cad-ribbon-quick .cad-layer-select { width: 112px; min-width: 0; }
+.cad-ribbon-quick .cad-ribbon-divider { margin-inline: 4px; }
+@media (max-width: 1100px) {
+    .cad-ribbon-tab { padding-inline: 6px; }
+    .cad-brand { padding-right: 6px; }
 }
-
-.cad-ribbon-quick {
-    flex-wrap: wrap;
-    min-width: 0;
-    max-width: 100%;
-}
-
-.cad-ribbon-quick > * {
-    flex-shrink: 0;
-}
+.desktop-more-toggle { display: flex; align-items: center; gap: 5px; height: 28px; padding-inline: 7px; }
+.desktop-more-toggle[aria-expanded="true"] { background: var(--cad-accent-soft); color: var(--cad-accent); }
+.desktop-more-menu { position: absolute; top: 38px; right: 8px; z-index: 100; width: 264px; max-width: calc(100vw - 16px); padding: 6px; border: 1px solid var(--cad-border-strong); border-radius: 8px; background: var(--cad-panel); color: var(--cad-text); box-shadow: 0 5px 16px #0002; }
+.desktop-more-menu[hidden] { display: none; }
+.desktop-more-menu .desktop-more-item { display: flex; justify-content: flex-start; align-items: center; gap: 10px; width: 100%; padding: 8px; font-size: 13px; text-align: left; }
+.desktop-more-heading { padding: 5px 8px; font-size: 11px; color: var(--cad-muted); }
+.desktop-more-menu hr { border: 0; border-top: 1px solid var(--cad-border); margin: 5px 2px; }
+.desktop-more-locale { display: flex; align-items: center; gap: 10px; padding: 8px; font-size: 13px; }
+.desktop-more-locale select { margin-left: auto; margin-right: 0; max-width: 132px; }
+.desktop-more-menu :focus-visible, .desktop-more-toggle:focus-visible { outline: 2px solid var(--cad-accent); outline-offset: 1px; }
 
 .desktop-update-banner {
     position: fixed;
