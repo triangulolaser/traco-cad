@@ -140,3 +140,8 @@ html, body {
 .cad-btn.desktop-update-discard {
     color: #ff6961;
 }
+
+/* Match native WebKit selects to the toolbar/menu theme. */
+.cad-ribbon-quick, .desktop-more-menu { color-scheme: dark; }
+.cad-app[data-cad-theme="light"] .cad-ribbon-quick,
+.cad-app[data-cad-theme="light"] .desktop-more-menu { color-scheme: light; }
