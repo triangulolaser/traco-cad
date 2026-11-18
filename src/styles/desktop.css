@@ -28,7 +28,7 @@ html, body {
 .cad-brand { flex-shrink: 0; white-space: nowrap; }
 .cad-ribbon-quick { flex-wrap: nowrap; flex-shrink: 0; gap: 2px; }
 .cad-ribbon-quick .cad-btn-icon { width: 28px; min-width: 28px; height: 28px; padding: 0; }
-.cad-ribbon-quick .cad-layer-select { width: 112px; min-width: 0; }
+.cad-ribbon-quick .cad-layer-dropdown-toggle, .cad-ribbon-quick .cad-layer-select { width: 112px; min-width: 0; }
 .cad-ribbon-quick .cad-ribbon-divider { margin-inline: 4px; }
 @media (max-width: 1100px) {
     .cad-ribbon-tab { padding-inline: 6px; }
