@@ -4,7 +4,15 @@ import {replaceEntities, isEntityEditable} from './document.js';
 
 // Fit each original Bézier independently: corners and stencil openings remain exact.
 // Tolerance is expressed in drawing millimeters, not font units.
-export function outlineLoops(commands, scale, tolerance = .01) {
+export function outlineLoops(commands, scale, tolerance) {
+    // A fixed 0.01 mm visibly distorts small lettering. Keep relative precision
+    // when enlarging a converted label, while retaining the absolute upper bound.
+    if (tolerance === undefined) {
+        const coordinates = commands.filter(c => c[0] < 4).flatMap(c => c.slice(1));
+        let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+        for(let i=0;i<coordinates.length;i+=2){minX=Math.min(minX,coordinates[i]);maxX=Math.max(maxX,coordinates[i]);minY=Math.min(minY,coordinates[i+1]);maxY=Math.max(maxY,coordinates[i+1]);}
+        tolerance = Math.min(.01, Math.max(1, maxX-minX, maxY-minY)*scale*.00005);
+    }
     if (!(scale > 0) || !Number.isFinite(scale) || !(tolerance > 0) || !Number.isFinite(tolerance)) {
         throw new Error('Escala ou tolerância inválida para o contorno.');
     }
@@ -13,7 +21,7 @@ export function outlineLoops(commands, scale, tolerance = .01) {
         const cubic = points.length === 4 ? points : [points[0],
             {x:points[0].x+2/3*(points[1].x-points[0].x), y:points[0].y+2/3*(points[1].y-points[0].y)},
             {x:points[2].x+2/3*(points[1].x-points[2].x), y:points[2].y+2/3*(points[1].y-points[2].y)}, points[2]];
-        for (const seg of cubicToArcs(cubic.map(p=>({x:p.x*scale,y:p.y*scale})), tolerance)) {
+        for (const seg of cubicToArcs(cubic.map(p=>({x:p.x*scale,y:p.y*scale})), tolerance, {tangentTolerance:.01})) {
             if (seg.kind === 'arc') {
                 let sweep = Math.atan2(seg.b.y-seg.center.y,seg.b.x-seg.center.x)-Math.atan2(seg.a.y-seg.center.y,seg.a.x-seg.center.x);
                 if (seg.ccw && sweep < 0) sweep += 2*Math.PI;

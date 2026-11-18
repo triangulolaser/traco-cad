@@ -222,13 +222,16 @@ function inflections(p) {
     return roots.filter(t => t > 1e-4 && t < 1 - 1e-4).sort((x, y) => x - y);
 }
 
-function fitCubic(p, tol, out, depth = 0) {
+function fitCubic(p, tol, out, depth = 0, tangentTolerance = null) {
+    const [t1, t2] = tangents(p);
+    const chordDirection = norm(sub(p[3], p[0]));
+    const tangentCos = Math.cos((tangentTolerance ?? .5) * Math.PI / 180);
+    const straightTangents = tangentTolerance === null || (chordDirection && t1 && t2 && dot(chordDirection, t1) >= tangentCos && dot(chordDirection, t2) >= tangentCos);
     const samples = Array.from({ length: 15 }, (_, i) => bez(p, (i + 1) / 16));
-    if (lineDeviation(p[0], p[3], samples) <= tol && dot(sub(p[1], p[0]), sub(p[3], p[0])) >= 0 && dot(sub(p[3], p[2]), sub(p[3], p[0])) >= 0) {
+    if (straightTangents && lineDeviation(p[0], p[3], samples) <= tol && dot(sub(p[1], p[0]), sub(p[3], p[0])) >= 0 && dot(sub(p[3], p[2]), sub(p[3], p[0])) >= 0) {
         if (len(sub(p[3], p[0])) > EPS) out.push({ kind: 'line', a: p[0], b: p[3] });
         return;
     }
-    const [t1, t2] = tangents(p);
     // Arco único: o Corel grava círculos como 4 Béziers; um arco por quarto preserva o raio.
     if (t1 && t2) {
         const one = arcFrom(p[0], t1, p[3]);
@@ -236,7 +239,7 @@ function fitCubic(p, tol, out, depth = 0) {
             const endTan = norm(one.ccw ? { x: -(p[3].y - one.center.y), y: p[3].x - one.center.x } : { x: p[3].y - one.center.y, y: -(p[3].x - one.center.x) });
             let err = 0;
             for (const q of samples) err = Math.max(err, arcSegDist(one, q));
-            if (endTan && dot(endTan, t2) > Math.cos(0.5 * Math.PI / 180) && err <= tol) { out.push({ kind: 'arc', ...one }); return; }
+            if (endTan && dot(endTan, t2) > tangentCos && err <= tol) { out.push({ kind: 'arc', ...one }); return; }
         }
     }
     if (depth < 12 && t1 && t2) {
@@ -266,19 +269,19 @@ function fitCubic(p, tol, out, depth = 0) {
         return;
     }
     const [l, r] = splitBez(p, 0.5);
-    fitCubic(l, tol, out, depth + 1);
-    fitCubic(r, tol, out, depth + 1);
+    fitCubic(l, tol, out, depth + 1, tangentTolerance);
+    fitCubic(r, tol, out, depth + 1, tangentTolerance);
 }
 
-export function cubicToArcs(p, tol = 0.02) {
+export function cubicToArcs(p, tol = 0.02, { tangentTolerance = null } = {}) {
     const out = [];
     let rest = p, last = 0;
     for (const t of inflections(p)) {
         const [l, r] = splitBez(rest, (t - last) / (1 - last));
-        fitCubic(l, tol, out);
+        fitCubic(l, tol, out, 0, tangentTolerance);
         rest = r; last = t;
     }
-    fitCubic(rest, tol, out);
+    fitCubic(rest, tol, out, 0, tangentTolerance);
     return out;
 }
 

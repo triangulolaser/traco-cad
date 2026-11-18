@@ -50,10 +50,11 @@ test('curved glyph keeps arcs through mirror, rotation and DXF roundtrip',async(
  const read=async()=>({units_per_em:1000,glyphs:[{advance:120,commands}]});
  const normal=(await textPolylines({...text,text:'C',height:71.6},read))[0];
  const mirrored=(await textPolylines({...text,text:'C',height:71.6,mirrored:true,rotation:37},read))[0];
- assert.equal(normal.vertices.length,3);
- assert.ok(Math.abs(normal.vertices[0].bulge-Math.tan(Math.PI/8))<1e-8);
+ assert.ok(normal.vertices.length>=3);
+ assert.ok(normal.vertices[0].bulge>0);
+ assert.ok(Math.abs(normal.vertices.reduce((sum,p)=>sum+4*Math.atan(p.bulge||0),0)-Math.PI/2)<.001);
  assert.equal(mirrored.vertices[0].bulge,-normal.vertices[0].bulge);
- assert.ok(normal.vertices.slice(1).every(p=>!p.bulge));
+ assert.ok(normal.vertices.slice(-2).every(p=>!p.bulge));
  const parsed=parseDxf(writeDxf(addEntities(createDocument(),[mirrored]))).entities[0];
  assert.ok(Math.abs(parsed.vertices[0].bulge-mirrored.vertices[0].bulge)<1e-6);
  assert.equal(parsed.closed,true);
@@ -70,5 +71,30 @@ test('small and large quadratic glyphs stay within 0.01 mm of the original curve
    const distance=Math.min(...curves.map(c=>{const p=closestPointOnCurve(q,c);return Math.hypot(q.x-p.x,q.y-p.y)}));
    assert.ok(distance<=.0101,`scale ${scale}: deviation ${distance}`);
   }
+ }
+});
+
+test('small lettering preserves shallow curves and tangent continuity instead of flattening them',()=>{
+ const vertices=outlineLoops([[0,0,0],[2,100,1,200,0],[1,200,-20],[1,0,-20],[4]],.001)[0];
+ assert.ok(vertices[0].bulge,'shallow curve must not become a straight line');
+ const first=vertices[0],next=vertices[1];
+ const tangent=Math.atan2(next.y-first.y,next.x-first.x)-2*Math.atan(first.bulge);
+ assert.ok(Math.abs(tangent-Math.atan2(1,100))<.0002);
+ for(let i=1;i<vertices.length-1;i++){
+  const a=vertices[i-1],b=vertices[i],c=vertices[i+1];
+  if(!a.bulge||!b.bulge)continue;
+  const incoming=Math.atan2(b.y-a.y,b.x-a.x)+2*Math.atan(a.bulge);
+  const outgoing=Math.atan2(c.y-b.y,c.x-b.x)-2*Math.atan(b.bulge);
+  assert.ok(Math.abs(Math.atan2(Math.sin(outgoing-incoming),Math.cos(outgoing-incoming)))<.0004);
+ }
+});
+
+test('small text uses scale-relative precision and remains consistent when enlarged',()=>{
+ const commands=[[0,0,0],[2,50,110,200,0],[1,0,0],[4]];
+ const small=outlineLoops(commands,.001)[0],large=outlineLoops(commands,.1)[0];
+ assert.equal(small.length,large.length);
+ for(let i=0;i<small.length;i++){
+  assert.ok(Math.hypot(small[i].x-large[i].x,small[i].y-large[i].y)<1e-7);
+  assert.ok(Math.abs((small[i].bulge||0)-(large[i].bulge||0))<1e-7);
  }
 });
