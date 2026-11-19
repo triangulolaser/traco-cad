@@ -110,6 +110,30 @@ test('renderizador sobrepõe na ordem do documento, não na ordem do índice esp
     }
 });
 
+test('renderizador: linhas de cores diferentes seguem a ordem do documento', () => {
+    const canvas = recordingCanvas();
+    const ctx = canvas.getContext();
+    const strokes = [];
+    ctx.stroke = () => strokes.push(ctx.strokeStyle);
+    const renderer = new Renderer(canvas, new Viewport(800, 600));
+    const colored = (id, color, y) => ({ ...line(id), start: { x: 0, y }, end: { x: 10, y }, color });
+    // Preta, vermelha e preta de novo: a vermelha não pode ir para o fim só porque o estilo preto apareceu antes.
+    const doc = addEntities(createDocument(), [colored('a', '#000000', 0), colored('b', '#ff0000', 1), colored('c', '#000000', 2)]);
+    renderer.draw({ doc, selection: new Set(), useWebGL: false });
+    const black = renderer.entityDisplayColor('#000000');
+    const red = renderer.entityDisplayColor('#ff0000');
+    assert.deepEqual(strokes.filter((c) => c === black || c === red), [black, red, black]);
+});
+
+test('DRAWORDER limpa a seleção para mostrar a nova ordem', async () => {
+    const doc = addEntities(createDocument(), [line('a'), line('b')]);
+    const editor = fakeEditor(doc, { selection: ['a'] });
+    let cleared = false;
+    editor.clearSelection = () => { cleared = true; };
+    await COMMANDS.DRAWORDER.run(editor, ['f']);
+    assert.equal(cleared, true);
+});
+
 test('Ribbon: menu Ordem com as nove opções', () => {
     const desktop = readFileSync(resolve('index.html'), 'utf8');
     assert.ok(desktop.includes('data-cad-split="draworder"'));

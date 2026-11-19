@@ -197,11 +197,13 @@ export class Renderer {
                 displayColorFn: (hex) => this.entityDisplayColor(hex),
             });
         }
-        const batches = new Map();
-        // Entidades fora do lote (hover, seleção, texto…) só são desenhadas depois dos lotes; imagens raster vão
-        // direto. Desenhá-las na hora fazia a imagem escaneada cobrir a linha em hover quando vinha depois dela.
-        const deferred = [];
+        // Camadas fixas: imagens raster, depois vetores, depois hachura/texto/cota, e seleção/hover por cima de tudo
+        // (a imagem escaneada não cobre a linha em hover). Dentro de cada camada vale a ordem do documento
+        // (DRAWORDER); vetores consecutivos com o mesmo estilo viram um único stroke.
         const images = [];
+        const vectors = [];
+        const deferred = [];
+        const highlighted = [];
         entities.forEach((entity) => {
             if (hidden.has(entity.id)) return;
             const layer = layerOf(state.doc, entity.layer);
@@ -243,14 +245,9 @@ export class Renderer {
             // Batching para primitivas vetoriais regulares (linhas, círculos, arcos, polilinhas não selecionadas)
             if (!selected && !hovered && ['line', 'circle', 'arc', 'polyline'].includes(entity.type)) {
                 if (webglActive && !(entity.constantWidth > 0)) return;
-                const key = `${style.color}|${style.width}|${lineType}`;
-                let batch = batches.get(key);
-                if (!batch) {
-                    batch = { color: style.color, width: style.width, dash: style.dash, curves: [] };
-                    batches.set(key, batch);
-                }
-                const curves = entityCurves(entity);
-                for (let c = 0; c < curves.length; c++) batch.curves.push(curves[c]);
+                vectors.push([entity, style, `${style.color}|${style.width}|${lineType}`]);
+            } else if (selected || hovered) {
+                highlighted.push([entity, style]);
             } else if (entity.type === 'image') {
                 images.push([entity, style]);
             } else {
@@ -261,28 +258,36 @@ export class Renderer {
         if (spatial) {
             const rank = drawOrderRank(state.doc);
             const byOrder = (x, y) => (rank.get(x[0].id) ?? 0) - (rank.get(y[0].id) ?? 0);
-            if (images.length > 1) images.sort(byOrder);
-            if (deferred.length > 1) deferred.sort(byOrder);
+            for (const list of [images, vectors, deferred, highlighted]) if (list.length > 1) list.sort(byOrder);
         }
         images.forEach(([entity, style]) => this.drawEntity(entity, style));
 
-        // Executa o desenho em lote agrupado por camada/estilo (reduzindo milhares de strokes para poucos)
-        if (batches.size > 0) {
-            batches.forEach((batch) => {
-                ctx.save();
-                ctx.strokeStyle = batch.color;
-                ctx.lineWidth = batch.width;
-                ctx.setLineDash(batch.dash ?? []);
-                ctx.lineJoin = 'round';
-                ctx.lineCap = 'round';
-                ctx.beginPath();
-                const clip = dashClipFor(batch.dash, viewport, batch.width);
-                batch.curves.forEach((curve) => this.pathCurve(curve, clip));
-                ctx.stroke();
-                ctx.restore();
-            });
+        let batch = null;
+        const flush = () => {
+            if (!batch) return;
+            ctx.save();
+            ctx.strokeStyle = batch.color;
+            ctx.lineWidth = batch.width;
+            ctx.setLineDash(batch.dash ?? []);
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            const clip = dashClipFor(batch.dash, viewport, batch.width);
+            batch.curves.forEach((curve) => this.pathCurve(curve, clip));
+            ctx.stroke();
+            ctx.restore();
+            batch = null;
+        };
+        for (let i = 0; i < vectors.length; i++) {
+            const [, style, key] = vectors[i];
+            if (batch && batch.key !== key) flush();
+            if (!batch) batch = { key, color: style.color, width: style.width, dash: style.dash, curves: [] };
+            const curves = entityCurves(vectors[i][0]);
+            for (let c = 0; c < curves.length; c++) batch.curves.push(curves[c]);
         }
+        flush();
         deferred.forEach(([entity, style]) => this.drawEntity(entity, style));
+        highlighted.forEach(([entity, style]) => this.drawEntity(entity, style));
 
         // Originais escondidos pelo mover/girar/escalar: tracejados e apagados no lugar, como o fantasma da alça.
         if (state.ghostIds?.size && state.doc) {

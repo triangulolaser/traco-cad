@@ -5184,6 +5184,8 @@ async function drawOrder(editor, args = []) {
 
     const count = editor.doc.entities.filter((e) => ids.includes(e.id)).length;
     editor.commit('Ordem de desenho', { ...editor.doc, entities: reorderEntities(editor.doc.entities, ids, mode, refId) });
+    // Seleção é desenhada por cima de tudo; manter o objeto selecionado esconderia a nova ordem.
+    editor.clearSelection?.();
     editor.log(`${count} objeto(s) reordenado(s).`);
 }
 
