@@ -1890,4 +1890,5 @@ export default {
     "Documento do Traço (*.traco)": "Documento de Traço (*.traco)",
     "Falha ao abrir documento: {0}": "Error al abrir el documento: {0}",
     "Aberto {0}: {1} objeto(s).": "Abierto {0}: {1} objeto(s).",
+    "Imagem ausente no arquivo .traco.": "Falta una imagen en el archivo .traco.",
 };

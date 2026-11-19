@@ -4644,11 +4644,14 @@ export function saveFormatOf(doc) {
 }
 
 async function getExportPayload(editor, format = saveFormatOf(editor.doc)) {
+    const sourceDoc = editor.doc;
     if (format === 'traco') {
         const { documentToTraco } = await import('./traco-file.js');
-        const baseName = (editor.doc.name || 'esquema').replace(/\.(dxf|dwg|elmt|qet|svg|cdr|traco)$/i, '');
+        const { prepareNativeImages } = await import('./native-images.js');
+        const exportDoc = await prepareNativeImages(sourceDoc);
+        const baseName = (sourceDoc.name || 'esquema').replace(/\.(dxf|dwg|elmt|qet|svg|cdr|traco)$/i, '');
         return {
-            content: documentToTraco(editor.doc),
+            content: documentToTraco(exportDoc),
             name: `${baseName}.traco`,
             ext: 'traco',
             filterName: 'Documento do Traço (*.traco)',
@@ -4656,8 +4659,8 @@ async function getExportPayload(editor, format = saveFormatOf(editor.doc)) {
     }
     if (format === 'elmt') {
         const { documentToElmt } = await import('./elmt.js');
-        const content = documentToElmt(editor.doc);
-        const baseName = (editor.doc.name || 'elemento').replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '');
+        const content = documentToElmt(sourceDoc);
+        const baseName = (sourceDoc.name || 'elemento').replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '');
         return {
             content,
             name: `${baseName}.elmt`,
@@ -4667,8 +4670,8 @@ async function getExportPayload(editor, format = saveFormatOf(editor.doc)) {
     }
     if (format === 'qet') {
         const { documentToQet } = await import('./qet.js');
-        const content = documentToQet(editor.doc);
-        const baseName = (editor.doc.name || 'projeto').replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '');
+        const content = documentToQet(sourceDoc);
+        const baseName = (sourceDoc.name || 'projeto').replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '');
         return {
             content,
             name: `${baseName}.qet`,
@@ -4678,10 +4681,10 @@ async function getExportPayload(editor, format = saveFormatOf(editor.doc)) {
     }
     if (format === 'dwg') {
         const { documentToDwg } = await import('./dwg.js');
-        const view = editor.viewport?.getView ? editor.viewport.getView() : editor.doc.view;
-        if (view) editor.doc.view = view;
-        const content = await documentToDwg(editor.doc, { view });
-        const baseName = (editor.doc.name || 'desenho').replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '');
+        const view = editor.viewport?.getView ? editor.viewport.getView() : sourceDoc.view;
+        if (view) sourceDoc.view = view;
+        const content = await documentToDwg(sourceDoc, { view });
+        const baseName = (sourceDoc.name || 'desenho').replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '');
         return {
             content,
             name: `${baseName}.dwg`,
@@ -4690,13 +4693,13 @@ async function getExportPayload(editor, format = saveFormatOf(editor.doc)) {
             isBinary: true,
         };
     }
-    const name = editor.doc.name?.toLowerCase().endsWith('.dxf')
-        ? editor.doc.name
-        : `${editor.doc.name ? editor.doc.name.replace(/\.(dwg|elmt|qet|svg|cdr)$/i, '') : 'desenho'}.dxf`;
-    const view = editor.viewport?.getView ? editor.viewport.getView() : editor.doc.view;
-    if (view) editor.doc.view = view;
+    const name = sourceDoc.name?.toLowerCase().endsWith('.dxf')
+        ? sourceDoc.name
+        : `${sourceDoc.name ? sourceDoc.name.replace(/\.(dwg|elmt|qet|svg|cdr)$/i, '') : 'desenho'}.dxf`;
+    const view = editor.viewport?.getView ? editor.viewport.getView() : sourceDoc.view;
+    if (view) sourceDoc.view = view;
     return {
-        content: writeDxf(editor.doc, { view }),
+        content: writeDxf(sourceDoc, { view }),
         name,
         ext: 'dxf',
         filterName: 'Desenho DXF (*.dxf)',
@@ -4727,21 +4730,18 @@ async function saveToDisk(editor, bridge, path, content) {
 }
 
 async function save(editor) {
-    const payload = await getExportPayload(editor);
-
-    // Para DXF: sempre forçar Salvar Como (SAVEAS), replicando a salvaguarda
-    // canônica do AutoCAD e BricsCAD para arquivos de intercâmbio, impedindo
-    // a sobrescrita silenciosa/acidental em disco e solicitando confirmação de destino/nome.
-    if (payload.ext === 'dxf') {
-        return saveAs(editor);
-    }
-
+    const format = saveFormatOf(editor.doc);
     const bridge = typeof window !== 'undefined' ? window.desktopBridge : null;
+    // Choose the destination before expensive raster encoding, once per save.
+    if (format === 'dxf' || (bridge && typeof bridge.saveFile === 'function'
+        && !editor.doc.filePath?.toLowerCase().endsWith(`.${format}`))) return saveAs(editor);
+    const saved = saveTarget(editor);
+    const originalDoc = editor.doc;
+    const payload = await getExportPayload(editor, format);
 
     if (bridge && typeof bridge.saveFile === 'function') {
-        if (editor.doc.filePath?.toLowerCase().endsWith(`.${payload.ext}`)) {
-            const { filePath, entities } = editor.doc;
-            const saved = saveTarget(editor);
+        if (originalDoc.filePath?.toLowerCase().endsWith(`.${payload.ext}`)) {
+            const { filePath, entities } = originalDoc;
             try {
                 await saveToDisk(editor, bridge, filePath, payload.content);
                 saved.markClean();
@@ -4752,7 +4752,7 @@ async function save(editor) {
                 editor.log(`Salvo em ${filePath} (${entities.length} entidades).`, 'info');
                 return null;
             } catch (error) {
-                editor.log(`Falha ao salvar em ${editor.doc.filePath}: ${error.message}. Tentando Salvar Como...`, 'warn');
+                editor.log(`Falha ao salvar em ${originalDoc.filePath}: ${error.message}. Tentando Salvar Como...`, 'warn');
             }
         }
         return saveAs(editor);
@@ -4763,7 +4763,7 @@ async function save(editor) {
     } else {
         editor.downloadText(payload.content, payload.name);
     }
-    editor.history?.markClean?.();
+    saved.markClean();
     editor.tabs?.render?.();
     editor.tabs?.save?.();
     editor.log(`Exportado ${payload.name} (${editor.doc.entities.length} entidades).`);
@@ -4774,13 +4774,15 @@ async function save(editor) {
 // nome e tipo: no desktop o seletor já abre na mesma pasta com o nome novo; no navegador
 // baixa direto, sem perguntar o nome outra vez.
 async function saveAs(editor, args = []) {
+    const targetSaved = saveTarget(editor);
+    const originalDoc = editor.doc;
     const target = args?.[0] && typeof args[0] === 'object' ? args[0] : null;
-    const format = target?.format || saveFormatOf(editor.doc);
+    const format = target?.format || saveFormatOf(originalDoc);
     const payload = await getExportPayload(editor, format);
     const stem = String(target?.name ?? '').trim().replace(/\.(dxf|dwg|elmt|qet|svg|cdr|traco)$/i, '');
     if (stem) payload.name = `${stem}.${payload.ext}`;
-    const changed = (Boolean(editor.doc.filePath) && !editor.doc.filePath.toLowerCase().endsWith(`.${payload.ext}`)) || (Boolean(target) && (format !== saveFormatOf(editor.doc) || payload.name !== editor.doc.name));
-    const remember = (fileName, filePath, saved = saveTarget(editor)) => {
+    const changed = (Boolean(originalDoc.filePath) && !originalDoc.filePath.toLowerCase().endsWith(`.${payload.ext}`)) || (Boolean(target) && (format !== saveFormatOf(originalDoc) || payload.name !== originalDoc.name));
+    const remember = (fileName, filePath, saved = targetSaved) => {
         saved.setName(fileName, filePath);
         if (target && ['dxf', 'dwg'].includes(payload.ext) && saved.doc().sourceFormat !== payload.ext) {
             saved.history.replace({ ...saved.doc(), sourceFormat: payload.ext });
@@ -4789,8 +4791,8 @@ async function saveAs(editor, args = []) {
     const bridge = typeof window !== 'undefined' ? window.desktopBridge : null;
 
     if (bridge && typeof bridge.showSaveDialog === 'function' && typeof bridge.saveFile === 'function') {
-        const folder = editor.doc.filePath?.match(/^(.*[\/\\])/)?.[1] ?? '';
-        const defaultPath = changed ? `${folder}${payload.name}` : (editor.doc.filePath || payload.name);
+        const folder = originalDoc.filePath?.match(/^(.*[\/\\])/)?.[1] ?? '';
+        const defaultPath = changed ? `${folder}${payload.name}` : (originalDoc.filePath || payload.name);
         const selected = await bridge.showSaveDialog({
             defaultPath,
             filters: [
@@ -4802,7 +4804,7 @@ async function saveAs(editor, args = []) {
             editor.log('Salvamento cancelado.', 'info');
             return null;
         }
-        const saved = saveTarget(editor);
+        const saved = targetSaved;
         const { entities } = editor.doc;
         await saveToDisk(editor, bridge, selected, payload.content);
         const fileName = selected.split(/[\/\\]/).pop() || selected;
@@ -4825,7 +4827,7 @@ async function saveAs(editor, args = []) {
     } else {
         editor.downloadText(payload.content, finalName);
     }
-    editor.history?.markClean?.();
+    targetSaved.markClean();
     editor.tabs?.render?.();
     editor.tabs?.save?.();
     usage('export_success');

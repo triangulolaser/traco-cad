@@ -4,6 +4,7 @@
 // derivado: pontas das ligações e traçado automático saem das portas ao abrir; ligação com vértice
 // manual grava os vértices. Assim, mover um símbolo muda só a posição dele no diff.
 
+import { packNativeImages, unpackNativeImages } from './native-images.js';
 import { createDocument, ensureEntityIds } from './document.js';
 import { getSymbolDef, getLibrary, splitRef } from './schematic-library.js';
 import { syncSchematic, SCHEMATIC_TYPES, normalizeWire } from './schematic.js';
@@ -116,7 +117,10 @@ export function documentToTraco(doc) {
         ligacoes,
         anotacoes,
     };
-    return `${JSON.stringify(clean(out), null, 2)}\n`;
+    const packed = packNativeImages(clean(out));
+    const payload = Object.keys(packed.images).length
+        ? { ...packed.value, versao: 2, imagens: packed.images } : packed.value;
+    return `${JSON.stringify(payload, null, 2)}\n`;
 }
 
 // Abre o .traco. Devolve { doc, warnings }: biblioteca ou símbolo ausente não impede abrir
@@ -129,7 +133,11 @@ export function tracoToDocument(text, { name = 'esquema.traco' } = {}) {
         throw new Error(`Arquivo .traco ilegível: ${error.message}`);
     }
     if (data?.formato !== TRACO_FORMAT) throw new Error('Não é um arquivo de esquema do Traço.');
-    if (data.versao !== TRACO_VERSION) throw new Error(`Versão ${data.versao} do .traco não suportada.`);
+    if (![TRACO_VERSION, 2].includes(data.versao)) throw new Error(`Versão ${data.versao} do .traco não suportada.`);
+    if (data.versao === 2) {
+        const { imagens, ...rest } = data;
+        data = unpackNativeImages(rest, imagens);
+    }
     const warnings = [];
     const base = createDocument();
     const entities = [];

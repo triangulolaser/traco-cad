@@ -640,6 +640,23 @@ test('desktop salva imagem em .traco e próximo Ctrl+S reutiliza o destino nativ
         await COMMANDS.SAVE.run(editor);
         assert.equal(dialogs, 1);
         assert.equal(writes.length, 2);
-        assert.ok(writes.every(w => w.path.endsWith('.traco') && JSON.parse(w.content).anotacoes.some(e => e.src === raster.src)));
+        assert.ok(writes.every(w => w.path.endsWith('.traco') && Object.values(JSON.parse(w.content).imagens).includes(raster.src)));
     } finally { globalThis.window = previous; }
+});
+
+test('edição durante otimização da foto não é marcada salva nem entra no arquivo em andamento', async()=>{
+    const previousImage=globalThis.Image,previousDocument=globalThis.document;
+    let finish,started;
+    const decoding=new Promise(r=>{started=r;});
+    globalThis.Image=class {naturalWidth=4000;naturalHeight=3000;async decode(){started();await new Promise(r=>{finish=r;});}};
+    globalThis.document={createElement:()=>({getContext:()=>({drawImage(){}}),toDataURL:()=> 'data:image/jpeg;base64,small'})};
+    try {
+        let content;
+        const editor=saveTargetEditor({...createDocument(),name:'photo.traco',entities:[{...raster,src:'data:image/jpeg;base64,/9j/'+ 'A'.repeat(1400000)}]}, {downloadText:text=>{content=text;}});
+        const saving=COMMANDS.SAVE.run(editor);await decoding;
+        editor.history.commit('Nova linha',addEntities(editor.doc,[{type:'line',start:{x:0,y:0},end:{x:1,y:1}}]));
+        finish();await saving;
+        assert.equal(editor.history.isDirty(),true);
+        assert.equal(JSON.parse(content).anotacoes.some(e=>e.type==='line'),false);
+    } finally {globalThis.Image=previousImage;globalThis.document=previousDocument;}
 });
