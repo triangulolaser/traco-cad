@@ -1885,5 +1885,9 @@ export default {
     "Inserir texto (T)": "Insertar texto (T)",
     "Mais opções de texto": "Más opciones de texto",
     "Inserir texto": "Insertar texto",
-    "Salvar alterações": "Guardar cambios"
+    "Salvar alterações": "Guardar cambios",
+    "Traço (.traco)": "Traço (.traco)",
+    "Documento do Traço (*.traco)": "Documento de Traço (*.traco)",
+    "Falha ao abrir documento: {0}": "Error al abrir el documento: {0}",
+    "Aberto {0}: {1} objeto(s).": "Abierto {0}: {1} objeto(s).",
 };

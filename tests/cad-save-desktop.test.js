@@ -576,3 +576,70 @@ test('SAVEAS lento: trocar de aba durante a gravação não mexe na aba nova', a
         delete globalThis.window;
     }
 });
+
+const raster = { type: 'image', id: 'photo', layer: '0', position: { x: 12, y: -8 }, width: 40, height: 75, rotation: 0.3, opacity: 0.6, src: 'data:image/png;base64,aGVsbG8=', name: 'foto.png' };
+
+test('Ctrl+S preserva foto e vetores no arquivo nativo, sem bloco, na web', async () => {
+    const { tracoToDocument } = await import('../src/cad/traco-file.js');
+    let downloaded;
+    const editor = saveTargetEditor({ ...createDocument(), name: 'peca.dxf', entities: [raster] }, {
+        downloadText: (content, name) => { downloaded = { content, name }; },
+    });
+    await COMMANDS.SAVE.run(editor);
+    assert.equal(downloaded.name, 'peca.traco');
+    const { doc } = tracoToDocument(downloaded.content);
+    assert.equal(doc.mode, undefined);
+    assert.deepEqual(doc.entities.find(e => e.type === 'image'), raster);
+    assert.equal(doc.entities.filter(e => e.type === 'circle').length, 1);
+});
+
+test('Ctrl+S com foto não sobrescreve DXF/DWG com JSON; cancelamento preserva documento', async () => {
+    const previous = globalThis.window;
+    try {
+        for (const ext of ['dxf', 'dwg']) {
+            let writes = 0;
+            let options;
+            globalThis.window = { desktopBridge: {
+                showSaveDialog: async value => { options = value; return null; },
+                saveFile: async () => { writes++; },
+            } };
+            const editor = saveTargetEditor({ ...createDocument(), name: `peca.${ext}`, filePath: `/desenhos/peca.${ext}`, entities: [raster] });
+            await COMMANDS.SAVE.run(editor);
+            assert.equal(options.defaultPath, '/desenhos/peca.traco');
+            assert.equal(writes, 0);
+            assert.equal(editor.doc.filePath, `/desenhos/peca.${ext}`);
+            assert.equal(editor.history.isDirty(), true);
+        }
+    } finally { globalThis.window = previous; }
+});
+
+test('arquivo nativo preserva imagem em bloco, definição e vista ao reabrir', async () => {
+    const { saveFormatOf } = await import('../src/cad/commands.js');
+    const { documentToTraco, tracoToDocument } = await import('../src/cad/traco-file.js');
+    const doc = { ...createDocument(), blocks: { FOTO: { name: 'FOTO', base: { x: 0, y: 0 }, entities: [raster] } }, entities: [{ id: 'block', type: 'insert', name: 'FOTO', position: { x: 0, y: 0 }, rotation: 1 }], view: { center: { x: 30, y: 50 }, height: 200 } };
+    assert.equal(saveFormatOf(doc), 'traco');
+    const back = tracoToDocument(documentToTraco(doc)).doc;
+    assert.deepEqual(back.blocks, doc.blocks);
+    assert.deepEqual(back.view, doc.view);
+    assert.deepEqual(back.entities, doc.entities);
+    assert.equal(saveFormatOf(createDocument()), 'dxf');
+});
+
+test('desktop salva imagem em .traco e próximo Ctrl+S reutiliza o destino nativo', async () => {
+    const previous = globalThis.window;
+    const writes = [];
+    let dialogs = 0;
+    try {
+        globalThis.window = { desktopBridge: {
+            showSaveDialog: async () => { dialogs++; return '/desenhos/foto.traco'; },
+            saveFile: async (path, content) => { writes.push({ path, content }); },
+        } };
+        const editor = saveTargetEditor({ ...createDocument(), name: 'foto.dxf', filePath: '/desenhos/foto.dxf', entities: [raster] });
+        await COMMANDS.SAVE.run(editor);
+        assert.equal(editor.doc.filePath, '/desenhos/foto.traco');
+        await COMMANDS.SAVE.run(editor);
+        assert.equal(dialogs, 1);
+        assert.equal(writes.length, 2);
+        assert.ok(writes.every(w => w.path.endsWith('.traco') && JSON.parse(w.content).anotacoes.some(e => e.src === raster.src)));
+    } finally { globalThis.window = previous; }
+});

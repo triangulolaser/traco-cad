@@ -4620,9 +4620,22 @@ async function terminalCommand(editor) {
     return null;
 }
 
+function hasRasterImages(doc) {
+    const seen = new Set();
+    const visit = (items) => (items ?? []).some(e => {
+        if (e.type === 'image') return true;
+        const def = e.definition ?? doc.blocks?.[e.name];
+        if (!def || seen.has(def)) return false;
+        seen.add(def);
+        return visit(def.entities);
+    });
+    return visit(doc?.entities);
+}
+
 // Formato em que o SAVE grava o desenho: o de origem (QElectroTech ou DWG) ou DXF.
 export function saveFormatOf(doc) {
     // Esquema (ADR 0007): DXF e DWG não guardam conectividade, então símbolo, ligação ou junção salvam em .traco.
+    if (hasRasterImages(doc)) return 'traco';
     if (doc?.mode === 'esquema' || doc?.sourceFormat === 'traco' || /\.traco$/i.test(doc?.name || '') || (doc?.entities || []).some((e) => SCHEMATIC_TYPES.has(e.type))) return 'traco';
     for (const ext of ['elmt', 'qet', 'dwg']) {
         if (doc?.sourceFormat === ext || new RegExp(`\\.${ext}$`, 'i').test(doc?.name || '')) return ext;
@@ -4638,7 +4651,7 @@ async function getExportPayload(editor, format = saveFormatOf(editor.doc)) {
             content: documentToTraco(editor.doc),
             name: `${baseName}.traco`,
             ext: 'traco',
-            filterName: 'Esquema do Traço (*.traco)',
+            filterName: 'Documento do Traço (*.traco)',
         };
     }
     if (format === 'elmt') {
@@ -4726,7 +4739,7 @@ async function save(editor) {
     const bridge = typeof window !== 'undefined' ? window.desktopBridge : null;
 
     if (bridge && typeof bridge.saveFile === 'function') {
-        if (editor.doc.filePath) {
+        if (editor.doc.filePath?.toLowerCase().endsWith(`.${payload.ext}`)) {
             const { filePath, entities } = editor.doc;
             const saved = saveTarget(editor);
             try {
@@ -4766,7 +4779,7 @@ async function saveAs(editor, args = []) {
     const payload = await getExportPayload(editor, format);
     const stem = String(target?.name ?? '').trim().replace(/\.(dxf|dwg|elmt|qet|svg|cdr|traco)$/i, '');
     if (stem) payload.name = `${stem}.${payload.ext}`;
-    const changed = Boolean(target) && (format !== saveFormatOf(editor.doc) || payload.name !== editor.doc.name);
+    const changed = (Boolean(editor.doc.filePath) && !editor.doc.filePath.toLowerCase().endsWith(`.${payload.ext}`)) || (Boolean(target) && (format !== saveFormatOf(editor.doc) || payload.name !== editor.doc.name));
     const remember = (fileName, filePath, saved = saveTarget(editor)) => {
         saved.setName(fileName, filePath);
         if (target && ['dxf', 'dwg'].includes(payload.ext) && saved.doc().sourceFormat !== payload.ext) {
@@ -4803,7 +4816,7 @@ async function saveAs(editor, args = []) {
         return null;
     }
 
-    const name = stem ? payload.name : await editor.getString('Nome do arquivo', { defaultValue: editor.doc.name || payload.name });
+    const name = stem ? payload.name : await editor.getString('Nome do arquivo', { defaultValue: payload.name });
     if (!name) return null;
     const finalName = name.toLowerCase().endsWith(`.${payload.ext}`) ? name : `${name}.${payload.ext}`;
     remember(finalName, changed ? null : undefined);

@@ -2318,7 +2318,7 @@ export class Editor {
             result = tracoToDocument(text, { name });
         } catch (error) {
             usage('import_failure');
-            this.log(`Falha ao abrir esquema: ${error.message}`, 'error');
+            this.log(`Falha ao abrir documento: ${error.message}`, 'error');
             return;
         }
         if (filePath) result.doc.filePath = filePath;
@@ -2329,7 +2329,9 @@ export class Editor {
         this.zoomExtents();
         result.warnings.forEach((w) => this.log(w, 'warn'));
         const count = (type) => result.doc.entities.filter((e) => e.type === type).length;
-        this.log(`Aberto esquema ${name}: ${count('symbol')} símbolo(s), ${count('link')} ligação(ões).`);
+        this.log(result.doc.mode === 'esquema'
+            ? `Aberto esquema ${name}: ${count('symbol')} símbolo(s), ${count('link')} ligação(ões).`
+            : `Aberto ${name}: ${result.doc.entities.length} objeto(s).`);
     }
 
     async importQetText(text, name = 'projeto.qet') {

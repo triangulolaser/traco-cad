@@ -1970,7 +1970,7 @@ function closeBlankLaunchTab(tabs) {
     tabs.closeTabs([tab], null, { force: true });
 }
 
-const SAVE_FORMAT_LABELS = { dxf: 'DXF', dwg: 'DWG', elmt: 'ELMT (QElectroTech)', qet: 'QET (QElectroTech)' };
+const SAVE_FORMAT_LABELS = { traco: 'Traço (.traco)', dxf: 'DXF', dwg: 'DWG', elmt: 'ELMT (QElectroTech)', qet: 'QET (QElectroTech)' };
 
 // Pergunta Salvar / Não salvar / Cancelar, com nome e tipo do arquivo editáveis.
 // Devolve { action }, e em Salvar com nome ou tipo trocado também target: { name, format }.
@@ -1981,8 +1981,8 @@ function askSaveBeforeClose(root, docName, format = 'dxf') {
         if (window.confirm(t('Salvar as alterações em "{name}"?', { name }))) return Promise.resolve({ action: 'save' });
         return Promise.resolve({ action: window.confirm(t('Fechar "{name}" sem salvar?', { name })) ? 'discard' : 'cancel' });
     }
-    const stem = name.replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '');
-    const formats = ['dxf', 'dwg', ...(['elmt', 'qet'].includes(format) ? [format] : [])];
+    const stem = name.replace(/\.(dxf|dwg|elmt|qet|svg|cdr|traco)$/i, '');
+    const formats = ['dxf', 'dwg', ...(['elmt', 'qet', 'traco'].includes(format) ? [format] : [])];
     root.querySelectorAll('[data-cad-confirm-modal]').forEach((el) => el.remove());
     const cleanName = name.replace(/[&<>"']/g, (c) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -2021,7 +2021,7 @@ function askSaveBeforeClose(root, docName, format = 'dxf') {
         const finish = (action) => {
             overlay.remove();
             document.removeEventListener('keydown', onKey, true);
-            const nextName = String(nameInput?.value ?? '').trim().replace(/\.(dxf|dwg|elmt|qet|svg|cdr)$/i, '') || stem;
+            const nextName = String(nameInput?.value ?? '').trim().replace(/\.(dxf|dwg|elmt|qet|svg|cdr|traco)$/i, '') || stem;
             const nextFormat = formatSelect?.value || format;
             const target = action === 'save' && (nextName !== stem || nextFormat !== format)
                 ? { name: nextName, format: nextFormat } : null;

@@ -106,6 +106,8 @@ export function documentToTraco(doc) {
         bibliotecas: [...used].sort(([a], [b]) => a.localeCompare(b)).map(([id, versao]) => ({ id, versao_biblioteca: versao })),
         camadas: doc.layers ?? [],
         camada_atual: doc.currentLayer ?? '0',
+        blocos: doc.blocks ?? {},
+        vista: doc.view ?? null,
         estilo_cota: doc.dimStyle ?? null,
         ...(schematic ? { folhas: sheetsOf(doc).map((f) => ({ formato: f.formato ?? 'A4', id: f.id, nome: f.nome })) } : {}),
         ...(schematic && Object.keys(normalizeTitleBlock(doc.carimbo)).length ? { carimbo: normalizeTitleBlock(doc.carimbo) } : {}),
@@ -182,6 +184,8 @@ export function tracoToDocument(text, { name = 'esquema.traco' } = {}) {
         units: data.unidade ?? 'mm',
         layers: Array.isArray(data.camadas) && data.camadas.length ? data.camadas : base.layers,
         currentLayer: data.camada_atual ?? base.currentLayer,
+        blocks: data.blocos ?? {},
+        ...(data.vista ? { view: data.vista } : {}),
         dimStyle: data.estilo_cota ?? base.dimStyle,
         entities: withoutCache,
     };
