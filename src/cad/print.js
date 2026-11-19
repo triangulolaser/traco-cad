@@ -86,7 +86,6 @@ export function printFontCss(){
  return css;
 }
 export async function openPrintDialog(editor){
- if(editor.doc?.mode==='esquema'){const {openSchematicPrintDialog}=await import('./schematic-print.js');return openSchematicPrintDialog(editor);}
  await loadCadFonts();
  const dialog=document.createElement('dialog');dialog.className='cad-print-dialog';
  dialog.innerHTML=`<form method="dialog"><h3>Impressão técnica / PDF</h3><label>Papel <select name="paper"><option>A4</option><option>A3</option></select></label> <label><input name="landscape" type="checkbox" checked>Paisagem</label><label>Escala 1:<input name="denominator" type="number" min="0.01" step="any" value="1"></label><label><input name="fit" type="checkbox">Ajustar à folha (escala indicada no carimbo)</label><label><input name="monochrome" type="checkbox" checked>Preto e branco</label><label>Título <input name="title"></label><label>Autor <input name="author"></label><label>Revisão <input name="revision"></label><p>Na impressão, use tamanho real / 100%, sem cabeçalhos nem margens adicionais. Para PDF, escolha Salvar como PDF.</p><p data-print-error role="alert"></p><div data-print-preview></div><button type="button" data-preview>Atualizar prévia</button><button type="button" data-print>Imprimir / PDF</button><button value="cancel">Fechar</button></form>`;

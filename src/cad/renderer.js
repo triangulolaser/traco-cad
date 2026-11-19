@@ -4,14 +4,11 @@ import { tr } from './i18n.js';
 // Renderer Canvas 2D do CAD.
 
 import { entityColor, visibleEntities, LINETYPES, layerOf, getDocumentSpatialIndex, isEntityShown } from './document.js';
-import { isSchematicDocument, sheetFrame, entityOnActiveSheet, activeSheetId } from './schematic-mode.js';
-import { sheetDecorations } from './schematic-sheet.js';
 import { dimensionGeometry } from './dimensions.js';
 import { ellipseSamples, ellipseIsFull, imageCorners, imageVisibleCorners } from './extra-entities.js';
 import { sampleSpline } from './splines.js';
 import { hatchPath, hatchBox, hatchFamilies, forEachPatternPiece } from './hatch.js';
 import { ensureSplineGeometry } from './extra-entities.js';
-import { symbolChildren, analyzeSchematic, linkPoints, JUNCTION_RADIUS, connectorReferenceTexts } from './schematic.js';
 
 const imageCache = new Map();
 function loadImage(src, onReady) {
@@ -188,7 +185,6 @@ export class Renderer {
 
         if (state.showGrid) this.drawGrid();
         this.drawAxes();
-        if (isSchematicDocument(state.doc)) this.drawSheetFrame(sheetFrame(state.doc));
 
         const visible = viewport.visibleBox?.() ?? box;
         const spatial = state.doc ? getDocumentSpatialIndex(state.doc) : null;
@@ -210,7 +206,6 @@ export class Renderer {
             if (hidden.has(entity.id)) return;
             const layer = layerOf(state.doc, entity.layer);
             if (layer && !layer.visible) return;
-            if (!entityOnActiveSheet(state.doc, entity)) return;
             const box = entityBox(entity);
             const selected = state.selection.has(entity.id);
             const hovered = state.hover === entity.id;
@@ -288,7 +283,6 @@ export class Renderer {
             });
         }
         deferred.forEach(([entity, style]) => this.drawEntity(entity, style));
-        if (isSchematicDocument(state.doc)) this.drawSchematicSheet(state.doc);
 
         // Originais escondidos pelo mover/girar/escalar: tracejados e apagados no lugar, como o fantasma da alça.
         if (state.ghostIds?.size && state.doc) {
@@ -375,35 +369,6 @@ export class Renderer {
         };
         if (minor * viewport.scale >= 8) drawLines(minor, this.theme.grid);
         drawLines(spacing, this.theme.gridMajor);
-    }
-
-    // Moldura, carimbo e referência cruzada dos conectores: derivados do documento, não são
-    // entidades (não entram na seleção) e saem iguais na impressão.
-    drawSchematicSheet(doc) {
-        const color = this.entityDisplayColor(entityColor({ color: 7 }, doc));
-        const style = { color, width: 1, dashed: false, dash: [], alpha: 1 };
-        const sheet = activeSheetId(doc);
-        for (const e of sheetDecorations(doc, sheet)) this.drawEntity(e, style);
-        for (const e of connectorReferenceTexts(doc, (x) => entityOnActiveSheet(doc, x))) this.drawEntity(e, { ...style, color: this.entityDisplayColor(entityColor(e, doc)) });
-    }
-
-    // Limite do papel A4 do esquema: guia de tela, não sai na impressão (a borda impressa é a moldura).
-    drawSheetFrame(frame) {
-        if (!frame) return;
-        const { ctx, viewport } = this;
-        const a = viewport.worldToScreen({ x: frame.minX, y: frame.maxY });
-        const b = viewport.worldToScreen({ x: frame.maxX, y: frame.minY });
-        ctx.save();
-        ctx.strokeStyle = this.theme.gridMajor;
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([8, 5]);
-        ctx.strokeRect(Math.round(a.x) + 0.5, Math.round(a.y) + 0.5, Math.round(b.x - a.x), Math.round(b.y - a.y));
-        ctx.setLineDash([]);
-        ctx.fillStyle = this.theme.gridMajor;
-        ctx.font = '11px system-ui, sans-serif';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(`${frame.sheet.nome} · ${frame.sheet.formato}`, Math.round(a.x) + 2, Math.round(a.y) - 3);
-        ctx.restore();
     }
 
     drawAxes() {
@@ -511,16 +476,7 @@ export class Renderer {
                 this.drawEntity(child,{...style,color,dash:this.dashFor(lineType),width:weight>0?Math.max(1,weight/100*3.2):style.width});
             });
         }
-        else if (entity.type === 'symbol') {
-            this.drawSymbol(entity, style);
-        } else if (entity.type === 'link') {
-            this.drawLink(entity, style);
-        } else if (entity.type === 'junction') {
-            const c = this.viewport.worldToScreen(entity.position);
-            ctx.beginPath();
-            ctx.arc(c.x, c.y, Math.max(2.5, JUNCTION_RADIUS * this.viewport.scale), 0, Math.PI * 2);
-            ctx.fill();
-        } else if (entity.type === 'point') {
+        else if (entity.type === 'point') {
             this.drawPoint(entity, style);
         } else if (entity.type === 'text') {
             this.drawText(entity, style);
@@ -1381,50 +1337,6 @@ export class Renderer {
         ctx.textBaseline = 'middle';
         ctx.fillText(badgeText, viewport.width / 2, badgeY + badgeH / 2);
         ctx.restore();
-    }
-
-    // Esquema (ADR 0007): desenho da definição como no insert, mais um círculo vazio em cada porta
-    // obrigatória ainda sem ligação.
-    drawSymbol(entity, style) {
-        symbolChildren(entity).forEach((child) => {
-            const lineType = child.lineType && child.lineType !== 'bylayer' ? child.lineType : null;
-            this.drawEntity(child, { ...style, dash: style.dashed ? undefined : this.dashFor(lineType) });
-        });
-        if (!this.currentDoc || style.dashed) return;
-        const open = analyzeSchematic(this.currentDoc).unconnected.filter((p) => p.symbol === entity.id);
-        if (!open.length) return;
-        const { ctx } = this;
-        ctx.save();
-        ctx.setLineDash([]);
-        ctx.lineWidth = 1.2;
-        ctx.strokeStyle = '#f59e0b';
-        open.forEach((p) => {
-            const c = this.viewport.worldToScreen(p.position);
-            ctx.beginPath();
-            ctx.arc(c.x, c.y, Math.max(3, 1.2 * this.viewport.scale), 0, Math.PI * 2);
-            ctx.stroke();
-        });
-        ctx.restore();
-    }
-
-    // Ligação: tracejada quando a rede é de piloto ou dreno; solta (ponta sem porta) em vermelho.
-    drawLink(entity, style) {
-        const { ctx } = this;
-        const an = this.currentDoc ? analyzeSchematic(this.currentDoc) : null;
-        if (!style.dashed) {
-            const dash = this.dashFor(an?.linkLineType.get(entity.id) ?? 'CONTINUOUS');
-            ctx.setLineDash(dash);
-            if (an?.loose.has(entity.id)) ctx.strokeStyle = '#ef4444';
-        }
-        const pts = linkPoints(entity);
-        if (pts.length < 2) return;
-        ctx.beginPath();
-        pts.forEach((p, i) => {
-            const s = this.viewport.worldToScreen(p);
-            if (i === 0) ctx.moveTo(s.x, s.y);
-            else ctx.lineTo(s.x, s.y);
-        });
-        ctx.stroke();
     }
 
     drawTerminal(entity, style) {

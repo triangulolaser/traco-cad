@@ -9,7 +9,6 @@
 // 3. Fallback transparente 100% compatível com Canvas 2D em ambientes sem WebGL2 (ou headless).
 
 import { entityColor, layerOf, LINETYPES } from './document.js';
-import { entityOnActiveSheet } from './schematic-mode.js';
 import { entityCurves, sweepCCW, normalizeAngle } from './geometry.js';
 
 export const FLOATS_PER_INSTANCE = 8; // 32 bytes por primitiva (vec4 a_geomA + vec4 a_geomB)
@@ -475,7 +474,6 @@ export class WebGL2CadSurface {
             if (!entity) continue;
             const layer = layersByName.get(entity.layer) ?? layerOf(doc, entity.layer);
             if (layer && !layer.visible) continue;
-            if (!entityOnActiveSheet(doc, entity)) continue;
 
             const type = entity.type;
             if (type !== 'line' && type !== 'circle' && type !== 'arc' && type !== 'polyline' && type !== 'lwpolyline') {

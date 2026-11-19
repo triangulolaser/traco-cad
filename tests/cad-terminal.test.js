@@ -106,9 +106,9 @@ test('eco da resposta traduz o prompt, não o valor digitado', async () => {
     terminal.log = (text, kind) => lines.push([text, kind]);
     setLocale('en');
     try {
-        terminal.echo('Símbolo (nome ou categoria; Enter lista todos)', 'restricao');
+        terminal.echo('Ponto inicial da polilinha:', '10,20');
     } finally {
         setLocale('pt-BR');
     }
-    assert.deepEqual(lines, [['Symbol (name or category; Enter lists all) restricao', 'echo']]);
+    assert.deepEqual(lines, [['Polyline start point: 10,20', 'echo']]);
 });

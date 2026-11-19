@@ -21,8 +21,6 @@ import { showCadErrorModal, hideCadErrorModal } from './cad/error-modal.js';
 import { snapIconSvg } from './cad/snaps.js';
 import { saveFormatOf } from './cad/commands.js';
 import { LOCALES, detectLocale, getLocale, saveLocale, setLocale, t, tr, translateDom } from './cad/i18n.js';
-import { setupSchematicUi } from './cad/schematic-ui.js';
-import { schematicPropertiesHtml, bindSchematicProperties } from './cad/schematic-panel.js';
 
 const STANDARD_ACI = [[1, 'Vermelho'], [2, 'Amarelo'], [3, 'Verde'], [4, 'Ciano'], [5, 'Azul'], [6, 'Magenta'], [7, 'Branco']];
 
@@ -512,7 +510,7 @@ function renderProperties(editor, root) {
     if (selected.length === 0) {
         title.textContent = 'Sem seleção';
         const doc = editor.doc;
-        box.innerHTML = schematicPropertiesHtml(doc, []) + section('Desenho')
+        box.innerHTML = section('Desenho')
             + row('Nome', escapeHtml(doc.name || 'Sem título.dxf'))
             + row('Unidades', doc.units === 'in' ? 'polegadas' : 'milímetros')
             + row('Entidades', String(doc.entities.length))
@@ -530,7 +528,6 @@ function renderProperties(editor, root) {
             + row('Orto / Polar', `${editor.settings.ortho ? 'ligado' : 'desligado'} / ${editor.settings.polar ? 'ligado' : 'desligado'}`);
 
         bindDrawProps(editor, root, box);
-        bindSchematicProperties(editor, box);
         for (const [prop, field] of [['dimTextHeight', 'textHeight'], ['dimArrowSize', 'arrowSize'], ['dimOverallScale', 'scale']]) {
             const input = box.querySelector(`[data-global-prop="${prop}"]`);
             if (!input) continue;
@@ -722,9 +719,7 @@ function renderProperties(editor, root) {
         html += section('Resumo') + row('Comprimento total', fmt(total));
         kinds.forEach((k) => { html += row(TYPE_LABELS[k] ?? k, String(selected.filter((e) => e.type === k).length)); });
     }
-    html = schematicPropertiesHtml(editor.doc, selected) + html;
     box.innerHTML = html;
-    bindSchematicProperties(editor, box);
 
     for (const [selector, field] of [['[data-font-family]', 'fontFamily'], ['[data-font-bold]', 'bold'], ['[data-font-italic]', 'italic']]) box.querySelector(selector)?.addEventListener('change', (event) => {
         const entity = editor.doc.entities.find((x) => x.id === selected[0]?.id);
@@ -2127,7 +2122,6 @@ function refreshUi(editor, root) {
     const undoButton = root.querySelector('[data-cad-command="UNDO"]');
     const redoButton = root.querySelector('[data-cad-command="REDO"]');
 
-    editor.schematicUi?.refresh();
     if (!hasTabs) {
         editor.startScreen?.render();
         if (title) title.textContent = '';
@@ -2252,7 +2246,6 @@ async function initCad(root) {
     setupLayerSelect(editor, root);
     setupLayerManager(editor, root);
     setupPanels(editor, root);
-    editor.schematicUi = setupSchematicUi(editor, root);
     refreshUi(editor, root);
     window.tracoCad = editor;
     if (root.querySelector('[data-cad-tabs]')) {

@@ -5,9 +5,6 @@ import { usage } from '../usage-telemetry.js';
 import {openPrintDialog} from './print.js';
 import { openWblockDialog, confirmOverwrite } from './wblock-dialog.js';
 import {BLOCK_COMMANDS} from './block-commands.js';
-import {SCHEMATIC_COMMANDS} from './schematic-commands.js';
-import { SCHEMATIC_ONLY_COMMANDS } from './schematic-mode.js';
-import {SCHEMATIC_TYPES} from './schematic.js';
 import {expandInsert} from './blocks.js';
 import { EDIT_COMMANDS } from './edit-commands.js';
 import { PT_ALIASES, normalizeCommandName } from './pt-aliases.js';
@@ -4634,9 +4631,9 @@ function hasRasterImages(doc) {
 
 // Formato em que o SAVE grava o desenho: o de origem (QElectroTech ou DWG) ou DXF.
 export function saveFormatOf(doc) {
-    // Esquema (ADR 0007): DXF e DWG não guardam conectividade, então símbolo, ligação ou junção salvam em .traco.
+    // DXF e DWG não levam a imagem junto; desenho com imagem ou aberto de .traco salva em .traco.
     if (hasRasterImages(doc)) return 'traco';
-    if (doc?.mode === 'esquema' || doc?.sourceFormat === 'traco' || /\.traco$/i.test(doc?.name || '') || (doc?.entities || []).some((e) => SCHEMATIC_TYPES.has(e.type))) return 'traco';
+    if (doc?.sourceFormat === 'traco' || /\.traco$/i.test(doc?.name || '')) return 'traco';
     for (const ext of ['elmt', 'qet', 'dwg']) {
         if (doc?.sourceFormat === ext || new RegExp(`\\.${ext}$`, 'i').test(doc?.name || '')) return ext;
     }
@@ -4649,7 +4646,7 @@ async function getExportPayload(editor, format = saveFormatOf(editor.doc)) {
         const { documentToTraco } = await import('./traco-file.js');
         const { prepareNativeImages } = await import('./native-images.js');
         const exportDoc = await prepareNativeImages(sourceDoc);
-        const baseName = (sourceDoc.name || 'esquema').replace(/\.(dxf|dwg|elmt|qet|svg|cdr|traco)$/i, '');
+        const baseName = (sourceDoc.name || 'desenho').replace(/\.(dxf|dwg|elmt|qet|svg|cdr|traco)$/i, '');
         return {
             content: documentToTraco(exportDoc),
             name: `${baseName}.traco`,
@@ -5260,7 +5257,6 @@ async function help(editor) {
 export const COMMANDS = {
     ...EDIT_COMMANDS,
     ...BLOCK_COMMANDS,
-    ...SCHEMATIC_COMMANDS,
     PRINT:{aliases:['PLOT','IMPRIMIR','PDFOUT'],description:'Impressão/PDF técnico em escala com carimbo',run:openPrintDialog},
     COPYCLIP: { aliases: [], run: editor => copyClip(editor), description: 'Copiar seleção para clipboard do desenho' },
     CUTCLIP: { aliases: [], run: editor => copyClip(editor, true), description: 'Recortar seleção para clipboard do desenho' },
@@ -5381,13 +5377,11 @@ for (const [name, pt] of Object.entries(PT_ALIASES)) {
 }
 
 // Sugestões da linha de comando: nome ou apelido que começa com o prefixo digitado.
-// No CAD, os comandos do esquemático ficam fora do autocompletar (continuam pelo nome inteiro).
-export function suggestCommands(prefix, limit = 50, { mode = 'cad' } = {}) {
+export function suggestCommands(prefix, limit = 50) {
     const upper = normalizeCommandName(prefix);
     if (!upper || !/^[A-Z_]/.test(upper)) return [];
     const out = [];
     for (const [name, command] of Object.entries(COMMANDS)) {
-        if (mode !== 'esquema' && SCHEMATIC_ONLY_COMMANDS.has(name)) continue;
         const aliases = command.aliases ?? [];
         const hit = name.startsWith(upper) ? name : aliases.filter((a) => a.startsWith(upper)).sort((a, b) => a.length - b.length)[0];
         if (!hit) continue;

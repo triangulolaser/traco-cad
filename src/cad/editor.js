@@ -24,8 +24,6 @@ import { getFilletGrips, filletRadiusFromCursor, filletAtCorner, niceRadiusStep 
 import { getEntityGrips, applyGripMove, findGripAt, gripsVisible, dimensionTextCenterSnap } from './grips.js';
 import './extra-entities.js';
 import './hatch.js';
-import { syncSchematic } from './schematic.js';
-import { documentMode, normalizeSchematicDocument } from './schematic-mode.js';
 import { renameLayer, deleteLayer, updateLayer, ensureLayer } from './document.js';
 import { loadCadSettings, saveCadSettings } from './storage.js';
 import {
@@ -226,7 +224,7 @@ export class Editor {
     }
 
     commit(label, doc) {
-        doc = syncSchematic(this.applyDrawProps(doc));
+        doc = this.applyDrawProps(doc);
         this.history.commit(label, doc);
         usage('edit');
         setEntityContext({ dimStyle: doc.dimStyle });
@@ -271,7 +269,7 @@ export class Editor {
         }
         closeTextEditorModal();
         if (this.pending) this.cancel();
-        doc = syncSchematic(ensureEntityIds(doc));
+        doc = ensureEntityIds(doc);
         // Depois de fechar todas as abas, o workspace permanece vazio. Uma
         // importação precisa de uma aba real; só trocar o history mantém canvas
         // e terminal ocultos por is-empty e deixa o desenho fora da persistência.
@@ -478,11 +476,8 @@ export class Editor {
 
     applyRemoteDocument(nextDoc) {
         if (!nextDoc) return;
-        // A folha ativa é vista deste usuário: a mudança remota não troca a aba.
-        if (nextDoc.mode === 'esquema') nextDoc = normalizeSchematicDocument({ ...nextDoc, currentSheet: this.doc?.currentSheet });
         // Origem do arquivo é local (onde este usuário salva); o documento compartilhado não a carrega.
         for (const key of ['sourceFormat', 'filePath']) if (this.doc?.[key] !== undefined && nextDoc[key] === undefined) nextDoc = { ...nextDoc, [key]: this.doc[key] };
-        nextDoc = syncSchematic(nextDoc);
         this.history.replace(nextDoc);
         const existingIds = new Set((nextDoc.entities || []).map((e) => e.id));
         this.selection = new Set([...this.selection].filter((id) => existingIds.has(id)));
@@ -1267,7 +1262,7 @@ export class Editor {
         this.terminal.onSubmit = (value) => this.onTerminalSubmit(value);
         this.terminal.acceptsSpaces = () => this.pending?.mode === 'string';
         this.terminal.onCancel = () => this.cancel();
-        this.terminal.getSuggestions = (value) => (this.pending ? [] : suggestCommands(value, 50, { mode: documentMode(this.doc) }));
+        this.terminal.getSuggestions = (value) => (this.pending ? [] : suggestCommands(value, 50));
         this.terminal.onTab = () => (this.dyn && !this.terminal.value() ? this.focusDynField(this.dyn.active) : this.cycleSnapPriority());
 
         if (typeof window !== 'undefined') {
@@ -2312,7 +2307,7 @@ export class Editor {
         this.log(`Aberto elemento QElectroTech ${name}: ${doc.entities.length} entidades (${termCount} terminal/terminais).`);
     }
 
-    async importTracoText(text, name = 'esquema.traco', { filePath = null } = {}) {
+    async importTracoText(text, name = 'desenho.traco', { filePath = null } = {}) {
         let result;
         try {
             const { tracoToDocument } = await import('./traco-file.js');
@@ -2329,10 +2324,7 @@ export class Editor {
         this.resize();
         this.zoomExtents();
         result.warnings.forEach((w) => this.log(w, 'warn'));
-        const count = (type) => result.doc.entities.filter((e) => e.type === type).length;
-        this.log(result.doc.mode === 'esquema'
-            ? `Aberto esquema ${name}: ${count('symbol')} símbolo(s), ${count('link')} ligação(ões).`
-            : `Aberto ${name}: ${result.doc.entities.length} objeto(s).`);
+        this.log(`Aberto ${name}: ${result.doc.entities.length} objeto(s).`);
     }
 
     async importQetText(text, name = 'projeto.qet') {
