@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { COMMANDS, resolveCommand } from '../src/cad/commands.js';
+import { COMMANDS, resolveCommand, slotDynSpec } from '../src/cad/commands.js';
 import { createDocument } from '../src/cad/document.js';
 import { createSlotEntity, createRectangleEntity, getEntityAreaAndPerimeter, slotParams, resizeSlot } from '../src/cad/edit-tools.js';
 import { entityBox } from '../src/cad/geometry.js';
@@ -13,6 +13,7 @@ function scriptedEditor(steps) {
     const editor = {
         doc: createDocument(),
         memory: {},
+        viewport: { pixelsToWorld: n => n },
         logs,
         previews: [],
         log(msg, level = 'info') { logs.push({ msg, level }); },
@@ -20,6 +21,7 @@ function scriptedEditor(steps) {
         async getPoint(prompt, options = {}) {
             const step = queue.shift();
             assert.ok(step, `prompt sem resposta: ${prompt}`);
+            if (step.locked) Object.assign(options.dynInput.locked, step.locked);
             if (options.preview && step.point) editor.previews.push(options.preview(step.point));
             editor.lastPrompt = prompt;
             return step;
@@ -145,4 +147,26 @@ test('resizeSlot: largura mantém os centros; comprimento e centro a centro mant
     assert.throws(() => resizeSlot(e, { length: 8 }), /pelo menos a largura/);
     assert.throws(() => resizeSlot(e, { length: 10 }), /círculo/);
     assert.equal(resizeSlot({ type: 'line', start: { x: 0, y: 0 }, end: { x: 1, y: 0 } }, { width: 2 }), null);
+});
+
+test('SLOT dynamic input edits width alongside length and angle', () => {
+    const spec = slotDynSpec({ viewport: { pixelsToWorld: n => n } }, { x: 0, y: 0 }, 10);
+    assert.deepEqual(spec.fields.map(f => f.key), ['len', 'ang', 'width']);
+    spec.locked = { len: 50, ang: 90, width: 16 };
+    const cursor = { x: 20, y: 0 };
+    near(spec.resolve(cursor).y, 50, 'locked length and angle');
+    assert.equal(spec.values(cursor).width, 16);
+    assert.ok(spec.anchors(cursor).width);
+    for (const invalid of [0, -1, Infinity, NaN]) assert.equal(spec.accepts('width', invalid), false);
+    assert.equal(spec.accepts('ang', 0), true);
+});
+
+test('SLOT commits and remembers width edited at second point in both modes', async () => {
+    for (const mode of ['b', 'c']) {
+        const editor = scriptedEditor([{ point: { x: 0, y: 0 } }, { point: { x: 50, y: 0 }, locked: { width: 18 } }]);
+        await COMMANDS.SLOT.run(editor, [mode]);
+        assert.equal(editor.memory.slotWidth, 18);
+        near(slotParams(editor.doc.entities[0]).width, 18, 'committed width');
+        near(slotParams(editor.previews[0][0]).width, 18, 'preview width');
+    }
 });

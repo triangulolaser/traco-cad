@@ -265,6 +265,26 @@ export function lineDynSpec(editor, from) {
     return spec;
 }
 
+export function slotDynSpec(editor, from, width) {
+    const spec = lineDynSpec(editor, from);
+    spec.fields.push({ key: 'width', label: 'Largura' });
+    spec.width = () => Number.isFinite(spec.locked.width) && spec.locked.width > 0 ? spec.locked.width : width;
+    const calc = spec.calc;
+    spec.calc = (cursor) => {
+        const result = calc(cursor);
+        const angle = degToRad(result.values.ang);
+        const offset = spec.width() / 2 + editor.viewport.pixelsToWorld(30);
+        result.values.width = spec.width();
+        result.anchors.width = {
+            x: (from.x + result.end.x) / 2 + Math.sin(angle) * offset,
+            y: (from.y + result.end.y) / 2 - Math.cos(angle) * offset,
+        };
+        return result;
+    };
+    spec.accepts = (key, n) => Number.isFinite(n) && (key === 'ang' || n > 0);
+    return spec;
+}
+
 // Ângulo do ROTATE: arco do eixo de referência (0° = horizontal, ou o ângulo de referência)
 // até o cursor, com o valor em graus editável. Digitado, devolve { number } como o terminal.
 export function angleDynamicInput(base, cursor, locked = {}, offset = 20, refAngle = 0) {
@@ -2627,14 +2647,18 @@ async function slot(editor, args = []) {
     editor.memory.slotMode = mode;
     editor.memory.slotWidth = width;
     for (;;) {
+        const dynInput = slotDynSpec(editor, first, width);
         const res = await editor.getPoint(mode === 'b' ? 'Outra ponta (comprimento total)' : 'Centro do segundo arco (distância entre centros)', {
             reference: first,
+            dynInput,
             preview: (cursor) => {
-                const e = createSlotEntity(first, cursor, width, mode);
+                const e = createSlotEntity(first, cursor, dynInput.width(), mode);
                 return e ? [e] : [];
             },
         });
         if (!res?.point) return null;
+        width = dynInput.width();
+        editor.memory.slotWidth = width;
         const entity = createSlotEntity(first, res.point, width, mode);
         if (!entity) {
             editor.log(`No modo borda a borda o comprimento total precisa ser pelo menos a largura (${fmt(width)}).`, 'error');
