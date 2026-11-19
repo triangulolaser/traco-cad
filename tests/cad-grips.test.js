@@ -222,6 +222,12 @@ test('alças somem acima de GRIP_OBJECT_LIMIT objetos selecionados', async () =>
     assert.equal(gripsVisible(GRIP_OBJECT_LIMIT + 1), false);
 });
 
+test('alças somem enquanto um comando está ativo e voltam ao terminar', async () => {
+    const { gripsVisible } = await import('../src/cad/grips.js');
+    assert.equal(gripsVisible(1, true), false);
+    assert.equal(gripsVisible(1, false), true);
+});
+
 test('cota importada: alça da linha leva o texto junto e o texto tem alça própria', () => {
     // Cota vertical do ITEM 10 REFERENCIA (DWG do SolidWorks): texto com posição gravada.
     const dim = { id: 'd1', type: 'dimension', kind: 'vertical', p1: { x: 95.8, y: 162 }, p2: { x: 95.8, y: 251.5 }, linePoint: { x: 145.7, y: 251.5 }, textPosition: { x: 145.7, y: 205.8 } };

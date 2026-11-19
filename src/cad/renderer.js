@@ -30,6 +30,19 @@ import { WebGL2CadSurface } from './renderer-webgl.js';
 
 export { WebGL2CadSurface };
 
+// Posição de cada entidade na lista do documento; a lista muda a cada commit, então o cache segue o array.
+const drawOrderRanks = new WeakMap();
+export function drawOrderRank(doc) {
+    const list = doc?.entities ?? [];
+    let rank = drawOrderRanks.get(list);
+    if (!rank) {
+        rank = new Map();
+        for (let i = 0; i < list.length; i++) rank.set(list[i].id, i);
+        drawOrderRanks.set(list, rank);
+    }
+    return rank;
+}
+
 // Mesma regra de ctx.arc: varredura em [0, 2π), com volta completa a partir de 2π.
 function arcSweep(start, end) {
     const raw = end - start;
@@ -192,6 +205,7 @@ export class Renderer {
         // Entidades fora do lote (hover, seleção, texto…) só são desenhadas depois dos lotes; imagens raster vão
         // direto. Desenhá-las na hora fazia a imagem escaneada cobrir a linha em hover quando vinha depois dela.
         const deferred = [];
+        const images = [];
         entities.forEach((entity) => {
             if (hidden.has(entity.id)) return;
             const layer = layerOf(state.doc, entity.layer);
@@ -243,11 +257,19 @@ export class Renderer {
                 const curves = entityCurves(entity);
                 for (let c = 0; c < curves.length; c++) batch.curves.push(curves[c]);
             } else if (entity.type === 'image') {
-                this.drawEntity(entity, style);
+                images.push([entity, style]);
             } else {
                 deferred.push([entity, style]);
             }
         });
+        // O índice espacial devolve na ordem da árvore; a sobreposição segue a ordem do documento (DRAWORDER).
+        if (spatial) {
+            const rank = drawOrderRank(state.doc);
+            const byOrder = (x, y) => (rank.get(x[0].id) ?? 0) - (rank.get(y[0].id) ?? 0);
+            if (images.length > 1) images.sort(byOrder);
+            if (deferred.length > 1) deferred.sort(byOrder);
+        }
+        images.forEach(([entity, style]) => this.drawEntity(entity, style));
 
         // Executa o desenho em lote agrupado por camada/estilo (reduzindo milhares de strokes para poucos)
         if (batches.size > 0) {
@@ -288,7 +310,7 @@ export class Renderer {
             this.drawEntity(entity, { color, width: entity.rotationGuide ? 3 : entity.dimGuide ? 1 : 1.2, dashed: false, alpha: 0.9 });
         });
 
-        if (gripsVisible(state.selection.size)) state.selection.forEach((id) => {
+        if (gripsVisible(state.selection.size, Boolean(state.commandActive))) state.selection.forEach((id) => {
             let entity = state.doc.entities.find((e) => e.id === id);
             if (state.activeGrip && state.activeGrip.entityId === id) {
                 const previewEntity = (state.preview ?? []).find((e) => e.id === id);

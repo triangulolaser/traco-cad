@@ -140,7 +140,7 @@ export function setupSplitButtons(editor, root) {
                     else delete main.dataset.cadArgs;
                     if (label) main.title = label;
                     if (labelSlot && label) {
-                        const shortName = { CIRCLE: 'Círculo', ARC: 'Arco', POLYGON: 'Polígono' }[cmd] ?? label;
+                        const shortName = { CIRCLE: 'Círculo', ARC: 'Arco', POLYGON: 'Polígono', DRAWORDER: 'Ordem', TEXTTOFRONT: 'Ordem', HATCHTOBACK: 'Ordem' }[cmd] ?? label;
                         labelSlot.textContent = shortName;
                     }
                     if (iconSlot && itemIcon) {

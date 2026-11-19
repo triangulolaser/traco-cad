@@ -5141,60 +5141,86 @@ async function selectAll(editor) {
     editor.selectAll();
 }
 
-async function drawOrder(editor) {
+const DRAW_ORDER_PRESETS = { f: 'f', frente: 'f', front: 'f', t: 't', tras: 't', back: 't', a: 'a', acima: 'a', above: 'a', u: 'u', abaixo: 'u', under: 'u', below: 'u' };
+
+// Reordena a lista: o que vem depois é desenhado por cima (ordem do arquivo, como o DRAWORDER).
+export function reorderEntities(entities, ids, mode, refId = null) {
+    const selectedSet = new Set(ids);
+    const selected = entities.filter((e) => selectedSet.has(e.id));
+    const remaining = entities.filter((e) => !selectedSet.has(e.id));
+    if (mode === 't') return [...selected, ...remaining];
+    if (mode === 'a' || mode === 'u') {
+        const refIndex = remaining.findIndex((e) => e.id === refId);
+        if (refIndex === -1) return mode === 'a' ? [...remaining, ...selected] : [...selected, ...remaining];
+        const cut = mode === 'a' ? refIndex + 1 : refIndex;
+        return [...remaining.slice(0, cut), ...selected, ...remaining.slice(cut)];
+    }
+    return [...remaining, ...selected];
+}
+
+async function drawOrder(editor, args = []) {
+    const preset = DRAW_ORDER_PRESETS[String((Array.isArray(args) ? args[0] : args) || '').toLowerCase()] ?? null;
     const ids = await editor.getSelection('Selecione objetos para alterar a ordem de desenho:');
     if (!ids || ids.length === 0) return;
 
-    const options = [
-        { key: 'f', label: 'Frente' },
-        { key: 't', label: 'Trás' },
-        { key: 'a', label: 'Acima' },
-        { key: 'u', label: 'Abaixo' },
-    ];
-    const kw = await editor.getKeyword('Definir ordem de desenho [Frente/Trás/Acima/Abaixo] <Frente>:', options, 'f');
-    if (!kw) return;
-
-    const selectedSet = new Set(ids);
-    const selected = editor.doc.entities.filter((e) => selectedSet.has(e.id));
-    const remaining = editor.doc.entities.filter((e) => !selectedSet.has(e.id));
-
-    let newEntities = [];
-    if (kw.key === 'f') {
-        newEntities = [...remaining, ...selected];
-    } else if (kw.key === 't') {
-        newEntities = [...selected, ...remaining];
-    } else if (kw.key === 'a') {
-        const refPick = await editor.getEntity('Selecione objeto de referência (para colocar acima dele):');
-        if (!refPick) return;
-        const refId = refPick.entity.id;
-        const refIndex = remaining.findIndex((e) => e.id === refId);
-        if (refIndex === -1) {
-            newEntities = [...remaining, ...selected];
-        } else {
-            newEntities = [
-                ...remaining.slice(0, refIndex + 1),
-                ...selected,
-                ...remaining.slice(refIndex + 1),
-            ];
-        }
-    } else if (kw.key === 'u') {
-        const refPick = await editor.getEntity('Selecione objeto de referência (para colocar abaixo dele):');
-        if (!refPick) return;
-        const refId = refPick.entity.id;
-        const refIndex = remaining.findIndex((e) => e.id === refId);
-        if (refIndex === -1) {
-            newEntities = [...selected, ...remaining];
-        } else {
-            newEntities = [
-                ...remaining.slice(0, refIndex),
-                ...selected,
-                ...remaining.slice(refIndex),
-            ];
-        }
+    let mode = preset;
+    if (!mode) {
+        const options = [
+            { key: 'f', label: 'Frente' },
+            { key: 't', label: 'Trás' },
+            { key: 'a', label: 'Acima' },
+            { key: 'u', label: 'Abaixo' },
+        ];
+        const kw = await editor.getKeyword('Definir ordem de desenho [Frente/Trás/Acima/Abaixo] <Frente>:', options, 'f');
+        if (!kw) return;
+        mode = kw.key;
     }
 
-    editor.commit('Ordem de desenho', { ...editor.doc, entities: newEntities });
-    editor.log(`${selected.length} objeto(s) reordenado(s).`);
+    let refId = null;
+    if (mode === 'a' || mode === 'u') {
+        const refPick = await editor.getEntity(mode === 'a'
+            ? 'Selecione objeto de referência (para colocar acima dele):'
+            : 'Selecione objeto de referência (para colocar abaixo dele):');
+        if (!refPick) return;
+        refId = refPick.entity.id;
+    }
+
+    const count = editor.doc.entities.filter((e) => ids.includes(e.id)).length;
+    editor.commit('Ordem de desenho', { ...editor.doc, entities: reorderEntities(editor.doc.entities, ids, mode, refId) });
+    editor.log(`${count} objeto(s) reordenado(s).`);
+}
+
+const TEXT_TYPES = new Set(['text', 'mtext']);
+const textToFrontFilter = {
+    t: (e) => TEXT_TYPES.has(e.type),
+    d: (e) => e.type === 'dimension',
+    a: (e) => TEXT_TYPES.has(e.type) || e.type === 'dimension',
+};
+
+// TEXTTOFRONT: leva todos os textos e/ou cotas do desenho para a frente, sem seleção (como no AutoCAD).
+async function textToFront(editor, args = []) {
+    let mode = { t: 't', texto: 't', text: 't', d: 'd', cotas: 'd', dimensoes: 'd', dimensions: 'd', a: 'a', ambos: 'a', all: 'a', tudo: 'a' }[String((Array.isArray(args) ? args[0] : args) || '').toLowerCase()] ?? null;
+    if (!mode) {
+        const kw = await editor.getKeyword('Trazer para a frente [Texto/Dimensões/Ambos] <Ambos>:', [
+            { key: 't', label: 'Texto' },
+            { key: 'd', label: 'Dimensões' },
+            { key: 'a', label: 'Ambos' },
+        ], 'a');
+        if (!kw) return;
+        mode = kw.key;
+    }
+    const ids = editor.doc.entities.filter(textToFrontFilter[mode]).map((e) => e.id);
+    if (!ids.length) return editor.log(mode === 'd' ? 'Nenhuma cota no desenho.' : mode === 't' ? 'Nenhum texto no desenho.' : 'Nenhum texto ou cota no desenho.');
+    editor.commit('Ordem de desenho', { ...editor.doc, entities: reorderEntities(editor.doc.entities, ids, 'f') });
+    editor.log(`${ids.length} objeto(s) trazido(s) para a frente.`);
+}
+
+// HATCHTOBACK: manda todas as hachuras do desenho para trás.
+async function hatchToBack(editor) {
+    const ids = editor.doc.entities.filter((e) => e.type === 'hatch').map((e) => e.id);
+    if (!ids.length) return editor.log('Nenhuma hachura no desenho.');
+    editor.commit('Ordem de desenho', { ...editor.doc, entities: reorderEntities(editor.doc.entities, ids, 't') });
+    editor.log(`${ids.length} hachura(s) enviada(s) para trás.`);
 }
 
 async function selectSimilar(editor) {
@@ -5274,6 +5300,8 @@ export const COMMANDS = {
     JOIN: { aliases: ['J'], run: join, description: 'Unir linhas e arcos em polilinha' },
     BOUNDARY: { aliases: ['BPOLY', 'CONTORNO'], run: boundary, description: 'Criar polilinha de contorno fechado por ponto interno ou seleção' },
     DRAWORDER: { aliases: ['ORDEMDES', 'ORDEM'], run: drawOrder, description: 'Alterar ordem de sobreposição dos objetos (Frente, Trás, Acima, Abaixo)' },
+    TEXTTOFRONT: { aliases: ['TEXTOFRENTE'], run: textToFront, description: 'Trazer textos e/ou cotas do desenho para a frente' },
+    HATCHTOBACK: { aliases: ['HACHURATRAS'], run: hatchToBack, description: 'Enviar todas as hachuras do desenho para trás' },
     SELECTSIMILAR: { aliases: ['SELECSIMILAR', 'SIMILAR'], run: selectSimilar, description: 'Selecionar objetos com tipo e layer similares' },
     DIM: { aliases: ['COTA', 'DIMAUTO'], run: dimAuto, description: 'Cota automática: linear, alinhada, raio ou diâmetro conforme o alvo' },
     DIMENSION: { aliases: ['DIMENSAO'], run: dimension, description: 'Dimensão: clique na linha e puxe a cota de ponta a ponta; arco e círculo dão raio e diâmetro' },

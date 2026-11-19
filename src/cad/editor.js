@@ -514,6 +514,7 @@ export class Editor {
             hover: this.hover,
             hoverGrip: this.hoverGrip,
             activeGrip: this.activeGrip,
+            commandActive: Boolean(this.pending),
             gripGhost: this.activeGrip ? this.gripOriginalEntity : null,
             ghostIds: this.filletDrag ? new Set(this.activeGrip.entityIds) : !inlineTextEntityId(this) && this.pending?.hide?.length ? new Set(this.pending.hide) : null,
             hiddenIds: inlineTextEntityId(this) ? new Set([inlineTextEntityId(this)]) : this.pending?.hide ? new Set(this.pending.hide) : this.filletDrag ? new Set(this.activeGrip.entityIds) : (this.activeGrip ? new Set([this.activeGrip.entityId]) : null),
@@ -923,7 +924,7 @@ export class Editor {
     // ------------------------------------------------------------------ alças (grips)
 
     getSelectionGrips() {
-        if (!gripsVisible(this.selection.size)) return [];
+        if (!gripsVisible(this.selection.size, Boolean(this.pending))) return [];
         const grips = [];
         for (const id of this.selection) {
             const entity = this.doc.entities.find((e) => e.id === id);

@@ -41,8 +41,10 @@ function dimensionLineNormal(entity) {
     return { x: -Math.sin(angle), y: Math.cos(angle) };
 }
 
-export function gripsVisible(selectionSize) {
-    return selectionSize > 0 && selectionSize <= GRIP_OBJECT_LIMIT;
+// Com comando ativo as alças não respondem ao mouse; escondê-las deixa só o tracejado
+// da seleção, sinalizando que a peça está entregue ao comando.
+export function gripsVisible(selectionSize, commandActive = false) {
+    return !commandActive && selectionSize > 0 && selectionSize <= GRIP_OBJECT_LIMIT;
 }
 
 export function getEntityGrips(entity, dimStyle) {
