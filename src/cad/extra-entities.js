@@ -177,11 +177,16 @@ export function imageLocalPoint(entity, point) {
 
 function imageTransform(entity, fn, mirror) {
     const corners = imageCorners(entity).map(fn);
-    const position = corners[0];
+    // Reflection reverses handedness. Re-anchor at the reflected bottom-right
+    // and reverse the horizontal basis so the frame stays on the reflected footprint.
+    const position = corners[mirror ? 1 : 0];
     const width = distance(corners[0], corners[1]);
     const height = distance(corners[0], corners[3]);
-    const rotation = radToDeg(angleOf(corners[0], corners[1]));
-    return { ...entity, position, width, height, rotation, mirrored: mirror ? !entity.mirrored : entity.mirrored };
+    const rotation = radToDeg(angleOf(position, corners[mirror ? 0 : 1]));
+    const clip = mirror && entity.clip
+        ? { ...entity.clip, u0: 1 - entity.clip.u1, u1: 1 - entity.clip.u0 }
+        : entity.clip;
+    return { ...entity, position, width, height, rotation, ...(clip ? { clip } : {}), mirrored: mirror ? !entity.mirrored : entity.mirrored };
 }
 
 registerEntityProvider('image', {
