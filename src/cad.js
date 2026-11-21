@@ -19,6 +19,7 @@ import { saveWorkspace, loadWorkspace, serializeDocument, debounce, popPendingIm
 import { StartScreen, recordRecent, readRecentFile, forgetRecent, showOnStart } from './cad/start-screen.js';
 import { showCadErrorModal, hideCadErrorModal } from './cad/error-modal.js';
 import { snapIconSvg } from './cad/snaps.js';
+import { openColorPalette } from './cad/color-palette.js';
 import { saveFormatOf } from './cad/commands.js';
 import { LOCALES, detectLocale, getLocale, saveLocale, setLocale, t, tr, translateDom } from './cad/i18n.js';
 
@@ -408,14 +409,21 @@ function bindDrawProps(editor, root, box) {
             picker.click();
         }
     };
-    swatch?.addEventListener('click', openPicker);
+    const openPalette = (anchor) => openColorPalette({
+        anchor,
+        value: editor.drawProps.color,
+        onPick: (value) => { editor.setDrawProp('color', value); done(); },
+        onMore: picker ? openPicker : null,
+    });
+    // O input nativo mora dentro do quadradinho: o clique dele não reabre a paleta.
+    swatch?.addEventListener('click', (event) => { if (event.target !== picker) openPalette(swatch); });
     picker?.addEventListener('input', () => { swatch.style.background = picker.value; });
     picker?.addEventListener('change', () => { editor.setDrawProp('color', picker.value); done(); });
     box.querySelector('[data-draw-prop="color"]')?.addEventListener('change', (event) => {
         const raw = event.target.value;
         if (raw === '__pick') {
             event.target.value = String(editor.drawProps.color);
-            if (picker) openPicker();
+            openPalette(swatch ?? event.target);
             return;
         }
         editor.setDrawProp('color', raw === 'bylayer' || raw.startsWith('#') ? raw : Number(raw));
@@ -784,14 +792,19 @@ function renderProperties(editor, root) {
     const colorInput = box.querySelector('[data-prop="color"]');
     const colorPicker = box.querySelector('[data-prop="color-picker"]');
     const swatch = box.querySelector('.cad-prop-swatch');
+    const commitColor = (value) => editor.commit('Cor dos objetos', updateEntities(editor.doc, [...editor.selection], (e) => ({ ...e, color: value })));
     if (swatch && colorPicker) {
-        swatch.addEventListener('click', () => {
+        const openNative = () => {
             try {
                 if (typeof colorPicker.showPicker === 'function') colorPicker.showPicker();
                 else colorPicker.click();
             } catch (e) {
                 colorPicker.click();
             }
+        };
+        swatch.addEventListener('click', (event) => {
+            if (event.target === colorPicker) return;
+            openColorPalette({ anchor: swatch, value: colorKey, onPick: commitColor, onMore: openNative });
         });
         colorPicker.addEventListener('input', () => { swatch.style.background = colorPicker.value; });
         colorPicker.addEventListener('change', () => {
@@ -1267,7 +1280,7 @@ function renderLayerRows(editor, rows) {
         tr.innerHTML = `
             <td><input type="radio" name="cad-current-layer" ${layer.name === doc.currentLayer ? 'checked' : ''} aria-label="Layer atual"></td>
             <td><input type="text" value="${escapeHtml(layer.name)}" ${layer.name === '0' ? 'readonly' : ''} aria-label="Nome"></td>
-            <td><input type="color" value="${hex}" aria-label="Cor"><input type="text" class="cad-aci" value="${isHex ? '' : layer.color}" placeholder="ACI" aria-label="Índice ACI"></td>
+            <td><button type="button" class="cad-layer-swatch" style="background:${hex}" title="Escolher cor" aria-label="Cor"></button><input type="color" value="${hex}" tabindex="-1" aria-hidden="true" class="cad-layer-native-color"><input type="text" class="cad-aci" value="${isHex ? '' : layer.color}" placeholder="ACI" aria-label="Índice ACI"></td>
             <td><select aria-label="Tipo de linha">${Object.keys(LINETYPES).map((lt) => `<option value="${lt}" ${lt === (layer.lineType ?? 'CONTINUOUS') ? 'selected' : ''}>${lt}</option>`).join('')}</select></td>
             <td><select aria-label="Espessura">${LINEWEIGHTS.map((w) => `<option value="${w}" ${w === (layer.lineWeight ?? 0) ? 'selected' : ''}>${w === 0 ? 'Padrão' : `${(w / 100).toFixed(2)} mm`}</option>`).join('')}</select></td>
             <td><input type="checkbox" ${layer.visible ? 'checked' : ''} aria-label="Visível"></td>
@@ -1284,6 +1297,21 @@ function renderLayerRows(editor, rows) {
             if (!editor.layerRename(layer.name, nameInput.value)) nameInput.value = layer.name;
             renderLayerRows(editor, rows);
         });
+        const layerSwatch = tr.querySelector('.cad-layer-swatch');
+        layerSwatch.addEventListener('click', () => openColorPalette({
+            anchor: layerSwatch,
+            value: layer.color,
+            allowByLayer: false,
+            onPick: (color) => { editor.layerUpdate(layer.name, { color }); renderLayerRows(editor, rows); },
+            onMore: () => {
+                try {
+                    if (typeof colorInput.showPicker === 'function') colorInput.showPicker();
+                    else colorInput.click();
+                } catch (e) {
+                    colorInput.click();
+                }
+            },
+        }));
         colorInput.addEventListener('change', () => { editor.layerUpdate(layer.name, { color: colorInput.value }); renderLayerRows(editor, rows); });
         aciInput.addEventListener('change', () => {
             const n = Number(aciInput.value);

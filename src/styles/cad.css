@@ -561,6 +561,18 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-prop-swatch { display: inline-block; flex: 0 0 auto; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--cad-border-strong); cursor: pointer; position: relative; transition: transform 0.15s ease; }
 .cad-prop-swatch:hover { transform: scale(1.15); border-color: var(--cad-accent); }
 
+/* Paleta de cores em quadradinhos (todas as plataformas; nativo em "Mais cores...") */
+.cad-color-palette { position: fixed; z-index: 10050; display: grid; gap: 8px; padding: 10px; width: max-content; background: var(--cad-panel); color: var(--cad-text); border: 1px solid var(--cad-border-strong); border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
+.cad-color-row { display: flex; gap: 2px; }
+.cad-color-grid { display: grid; grid-template-columns: repeat(12, 18px); gap: 1px; padding: 1px; background: rgba(0, 0, 0, 0.25); border-radius: 4px; }
+.cad-color-aci .cad-color-tile { width: 20px; height: 20px; border-radius: 4px; }
+.cad-color-tile { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 0; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18); }
+.cad-color-tile:hover, .cad-color-tile:focus-visible { outline: 2px solid #fff; outline-offset: -1px; position: relative; z-index: 1; box-shadow: 0 0 0 3px var(--cad-accent); }
+.cad-color-tile.is-current { outline: 2px solid var(--cad-accent); outline-offset: 1px; position: relative; z-index: 1; }
+.cad-color-bylayer { background: linear-gradient(135deg, transparent 45%, #e5484d 45%, #e5484d 55%, transparent 55%), var(--cad-bg) !important; box-shadow: inset 0 0 0 1px var(--cad-border-strong); }
+.cad-color-more { justify-self: center; padding: 4px 14px; font: inherit; font-size: 12px; color: var(--cad-text); background: var(--cad-border-strong); border: 0; border-radius: 6px; cursor: pointer; }
+.cad-color-more:hover { background: var(--cad-accent-soft); }
+
 /* ---------------------------------------------------------------- terminal */
 .cad-terminal { display: grid; grid-template-rows: auto auto auto; background: var(--cad-panel-2); border-top: 1px solid var(--cad-border); font-family: var(--cad-mono); font-size: 12.5px; }
 .cad-terminal-resize { height: 6px; cursor: ns-resize; background: linear-gradient(to bottom, transparent 2px, var(--cad-border-strong) 2px, var(--cad-border-strong) 3px, transparent 3px); }
@@ -693,7 +705,9 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-layer-table th { color: var(--cad-muted); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; }
 .cad-layer-table input[type="text"], .cad-layer-table select { height: 26px; background: var(--cad-panel-3); color: var(--cad-text); border: 1px solid var(--cad-border); border-radius: 6px; font: inherit; font-size: 12px; padding: 0 6px; }
 .cad-layer-table input[type="text"] { width: 160px; }
-.cad-layer-table input[type="color"] { width: 30px; height: 24px; padding: 0; border: 1px solid var(--cad-border); border-radius: 6px; background: transparent; vertical-align: middle; }
+.cad-layer-table input[type="color"].cad-layer-native-color { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.cad-layer-swatch { width: 30px; height: 24px; padding: 0; border: 1px solid var(--cad-border-strong); border-radius: 6px; cursor: pointer; vertical-align: middle; }
+.cad-layer-swatch:hover { border-color: var(--cad-accent); }
 .cad-layer-table .cad-aci { width: 48px; margin-left: 4px; }
 .cad-layer-table tr.is-current td { background: var(--cad-accent-soft); }
 
