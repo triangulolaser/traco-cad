@@ -278,6 +278,27 @@ test('WBLOCK no desktop: caminho anterior e base 0,0 já preenchidos, OK grava d
     }
 });
 
+test('WBLOCK: desfaz a seleção depois de gravar e preserva quando cancela', async () => {
+    globalThis.window = { desktopBridge: { saveFile: async () => {}, showSaveDialog: async () => null } };
+    try {
+        const done = wblockEditor([]);
+        let cleared = 0;
+        done.clearSelection = () => { cleared += 1; };
+        done.wblockUi = { ...wblockUi([{ action: 'ok', path: 'C:\\B\\a.dxf', base: { x: 0, y: 0, z: 0 } }]), showBalloon: () => {} };
+        await COMMANDS.WBLOCK.run(done);
+        assert.equal(cleared, 1);
+
+        const cancelled = wblockEditor([]);
+        let clearedOnCancel = 0;
+        cancelled.clearSelection = () => { clearedOnCancel += 1; };
+        cancelled.wblockUi = wblockUi([{ action: 'cancel' }]);
+        await COMMANDS.WBLOCK.run(cancelled);
+        assert.equal(clearedOnCancel, 0);
+    } finally {
+        delete globalThis.window;
+    }
+});
+
 test('WBLOCK no desktop: arquivo existente pede confirmação; Não volta para a janela', async () => {
     const saved = [];
     globalThis.window = { desktopBridge: { saveFile: async (path, content) => saved.push({ path, content }), readFileBinary: async () => [1] } };

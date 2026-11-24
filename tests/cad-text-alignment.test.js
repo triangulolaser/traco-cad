@@ -203,6 +203,7 @@ test('openTextEditorModal cria interface completa e atualiza documento com novos
                 for (const m of idMatches) {
                     const sub = createMockEl('div');
                     sub.id = m[1];
+                    if (m[1] === 'cadTextEditorValue') sub.value = html.match(/<textarea[^>]*>([^<]*)<\/textarea>/)?.[1] ?? '';
                     this._elements.push(sub);
                 }
                 const actionMatches = [...html.matchAll(/data-action="([^"]+)"/g)];
@@ -234,7 +235,7 @@ test('openTextEditorModal cria interface completa e atualiza documento com novos
             after(sibling) { this.nextSibling = sibling; },
             reportValidity() { return true; },
             focus() {},
-            setSelectionRange() {},
+            setSelectionRange(start, end) { this.selection = [start, end]; },
             remove() {},
         };
         return el;
@@ -306,6 +307,7 @@ test('openTextEditorModal cria interface completa e atualiza documento com novos
         const boldCheck = overlay.querySelector('#cadTextEditorBold');
 
         assert.ok(textarea);
+        assert.deepEqual(textarea.selection, [0, 'Linha Antiga'.length], 'Editar abre com o texto todo selecionado');
         assert.ok(heightInput);
         assert.ok(halignSelect);
         assert.ok(fontSelect);

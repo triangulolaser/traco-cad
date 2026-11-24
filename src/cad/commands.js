@@ -3157,6 +3157,8 @@ async function wblock(editor) {
     const content = writeDxf(doc, { view });
     if (desktop) await saveToDisk(editor, bridge, path, content);
     else editor.downloadText(content, name);
+    // Concluído o W, a seleção some: é o sinal visual de que o bloco foi gravado.
+    editor.clearSelection?.();
     editor.log(`Bloco exportado: ${desktop ? path : name} (${entities.length} entidades, base ${fmtPoint(base)}).`);
     // Balão no canto com o arquivo para arrastar (pasta, e-mail, chat ou outro desenho).
     const balloon = editor.wblockUi?.showBalloon ?? (typeof document !== 'undefined' ? showExportBalloon : null);

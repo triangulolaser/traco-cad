@@ -313,7 +313,8 @@ export function openTextEditorModal(editor, source, options = {}) {
     if (textarea && typeof textarea.focus === 'function') {
         textarea.focus();
         if (typeof textarea.setSelectionRange === 'function') {
-            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            // Abre com o texto todo selecionado: digitar substitui, setas posicionam o cursor.
+            textarea.setSelectionRange(0, textarea.value.length);
         }
     }
 
