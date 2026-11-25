@@ -1529,7 +1529,7 @@ export default {
     "Ângulo inválido.": "Ángulo no válido.",
     "{0} Aproxime a vista ou use Selecionar objetos.": "{0} Acerque la vista o use Seleccionar objetos.",
     "Nenhum contorno fechado na vista atual.": "Ningún contorno cerrado en la vista actual.",
-    "Clique dentro das áreas a hachurar [Desfazer]": "Haga clic dentro de las áreas a sombrear [Deshacer]",
+    "Clique dentro das áreas a hachurar": "Haga clic dentro de las áreas a sombrear",
     "Nenhum contorno fechado em volta desse ponto.": "Ningún contorno cerrado alrededor de ese punto.",
     "Limite com {0} laço(s) adicionado.": "Contorno con {0} lazo(s) añadido.",
     "Selecione os objetos de contorno:": "Seleccione los objetos de contorno:",

@@ -28,3 +28,27 @@ test('pontos internos: spline e elipse abertas na vista não quebram e fecham co
     const closedRect = { id: 'r', type: 'polyline', layer: '0', closed: true, vertices: [{ x: 50, y: 0 }, { x: 60, y: 0 }, { x: 60, y: 10 }, { x: 50, y: 10 }] };
     assert.doesNotThrow(() => loopsFromEntities([closedRect, ellipse, stray, lines[0]]));
 });
+
+test('pontos internos em vista pesada: face com cruzamento em T achada em volta do clique, com ilha', async () => {
+    const { localBoundaryLoopsAt, loopAreaExact } = await import('../src/cad/hatch.js').then(async (m) => ({ ...m, ...(await import('../src/cad/topology-dcel.js')) }));
+    const L = (a, b, c, d) => ({ type: 'line', start: { x: a, y: b }, end: { x: c, y: d } });
+    const face = [L(0, 0, 100, 0), L(100, 0, 100, 50), L(100, 50, 0, 50), L(0, 50, 0, 0), L(0, 25, 100, 25), { type: 'circle', center: { x: 50, y: 10 }, radius: 3 }];
+    const noise = Array.from({ length: 2500 }, (_, i) => L(200 + i, 0, 200 + i, 5));
+    const ents = [...face, ...noise];
+    const found = localBoundaryLoopsAt({ x: 20, y: 10 }, ents, { limitBox: { minX: 0, minY: 0, maxX: 2700, maxY: 60 } });
+    assert.deepEqual(found.map((l) => Math.round(Math.abs(loopAreaExact(l)))).sort((a, b) => b - a), [2500, 28], 'metade de baixo + ilha do círculo');
+    assert.equal(localBoundaryLoopsAt({ x: 150, y: 10 }, ents).length, 0, 'fora de qualquer contorno');
+    assert.equal(localBoundaryLoopsAt({ x: 20, y: 40 }, ents).map((l) => Math.round(Math.abs(loopAreaExact(l))))[0], 2500, 'metade de cima');
+});
+
+test('pontos internos: aba curva de vista isométrica fecha apesar do arredondamento de 6 casas do DXF', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { parseDxf } = await import('../src/cad/dxf.js');
+    const { localBoundaryLoopsAt, loopsFromEntities, boundaryLoopsAt, loopAreaExact } = await import('../src/cad/hatch.js').then(async (m) => ({ ...m, ...(await import('../src/cad/topology-dcel.js')) }));
+    const ents = parseDxf(readFileSync(new URL('./fixtures/hatch-aba-curva-isometrica.dxf', import.meta.url), 'utf8')).entities;
+    const p = { x: 162, y: -1.5 };
+    const local = localBoundaryLoopsAt(p, ents);
+    assert.ok(local.length > 1, 'aba com os furos como ilhas');
+    assert.ok(Math.abs(Math.abs(loopAreaExact(local[0])) - 152.3) < 0.5, 'área da aba ' + Math.abs(loopAreaExact(local[0])));
+    assert.ok(boundaryLoopsAt(p, loopsFromEntities(ents)).length > 0, 'laços da vista inteira também fecham');
+});

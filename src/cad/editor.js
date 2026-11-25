@@ -1753,7 +1753,8 @@ export class Editor {
             this.onTerminalSubmit('');
             return;
         }
-        if (this.running === 'WBLOCK') return;
+        // Comando ainda em curso sem pedir entrada (janela aberta, gravação): repetir empilharia outro.
+        if (this.running) return;
         if (this.lastCommand) this.runCommand(this.lastCommand);
     }
 
@@ -1792,8 +1793,8 @@ export class Editor {
         }
         const pending = this.pending;
         if (!pending) {
-            // Enter extra durante a gravação não inicia outra seleção do WBLOCK.
-            if (!value && this.running === 'WBLOCK') return;
+            // Enter extra com comando em curso (janela do HATCH aberta, gravação do WBLOCK) não repete o comando.
+            if (!value && this.running) return;
             if (!value) {
                 if (this.lastCommand) this.runCommand(this.lastCommand);
                 return;

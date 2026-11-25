@@ -83,7 +83,7 @@ import { interpolateSpline, sampleSpline } from './splines.js';
 import { ellipsePoint, imageLocalPoint, ensureSplineGeometry } from './extra-entities.js';
 import { resolveDeferredTangent } from './snaps.js';
 import { autoDimensionPart } from './autodim.js';
-import { loopsFromEntities, HATCH_PATTERNS, HATCH_DEFAULTS, boundaryLoopsAt, loopKey, upgradeHatch } from './hatch.js';
+import { loopsFromEntities, HATCH_PATTERNS, HATCH_DEFAULTS, boundaryLoopsAt, localBoundaryLoopsAt, loopKey, upgradeHatch } from './hatch.js';
 import { openHatchDialog } from './hatch-dialog.js';
 import { arrayCopies, arrayDefaults, arrayEntityCount, arrayItemCount, arrayParamsError, createArrayInsert, rememberArray } from './array.js';
 import { openArrayDialog } from './array-dialog.js';
@@ -3264,21 +3264,22 @@ async function hatchPickPoints(editor, state, groups, refresh) {
         const b = entityBox(e);
         return b.maxX >= view.minX && b.minX <= view.maxX && b.maxY >= view.minY && b.minY <= view.maxY;
     });
-    let loops;
+    // Laços da vista inteira são o atalho; se não acharem a área do clique (vista pesada demais
+    // para o arranjo planar completo), o contorno é buscado só em volta do ponto.
+    let loops = [];
     try {
         loops = loopsFromEntities(candidates);
-    } catch (error) {
-        editor.log(`${error.message} Aproxime a vista ou use Selecionar objetos.`, 'error');
-        return;
+    } catch {
+        loops = [];
     }
-    if (loops.length === 0) {
+    if (candidates.length === 0) {
         editor.log('Nenhum contorno fechado na vista atual.', 'error');
         return;
     }
     for (;;) {
         let res;
         try {
-            res = await editor.getPoint('Clique dentro das áreas a hachurar [Desfazer] <Enter volta à janela>', { allowEnter: true, freePoint: true, options: [{ key: 'd', label: 'Desfazer' }] });
+            res = await editor.getPoint('Clique dentro das áreas a hachurar <Enter volta à janela>', { allowEnter: true, freePoint: true, options: [{ key: 'd', label: 'Desfazer' }] });
         } catch (error) {
             if (error instanceof CancelError) return;
             throw error;
@@ -3290,7 +3291,8 @@ async function hatchPickPoints(editor, state, groups, refresh) {
             continue;
         }
         if (!res.point) return;
-        const found = boundaryLoopsAt(res.point, loops, state.islands);
+        let found = localBoundaryLoopsAt(res.point, candidates, { islands: state.islands, limitBox: view });
+        if (found.length === 0) found = boundaryLoopsAt(res.point, loops, state.islands);
         if (found.length === 0) {
             editor.log('Nenhum contorno fechado em volta desse ponto.', 'error');
             continue;
@@ -3318,6 +3320,13 @@ async function hatch(editor) {
         }
         editor.clearSelection();
     }
+    // Outro comando iniciado durante a escolha cancela o HATCH inteiro: a janela não pode
+    // reabrir por baixo da janela do comando novo. Esc sozinho volta à janela, como no BricsCAD.
+    const run = editor.commandRun;
+    const superseded = async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return editor.commandRun !== run;
+    };
     const refresh = () => {
         const list = state.separate ? groups : groups.length ? [mergeHatchGroups(groups)] : [];
         editor.preview = list.map((g) => hatchEntityFrom(state, g));
@@ -3338,7 +3347,10 @@ async function hatch(editor) {
             if (result.action === 'cancel') return null;
             if (result.action === 'ok') break;
             if (result.action === 'clear') groups.length = 0;
-            else if (result.action === 'pick') await hatchPickPoints(editor, state, groups, refresh);
+            else if (result.action === 'pick') {
+                await hatchPickPoints(editor, state, groups, refresh);
+                if (await superseded()) return null;
+            }
             else if (result.action === 'select') {
                 let ids = [];
                 try {
@@ -3346,6 +3358,7 @@ async function hatch(editor) {
                 } catch (error) {
                     if (!(error instanceof CancelError)) throw error;
                 }
+                if (await superseded()) return null;
                 if (ids.length) {
                     try {
                         const loops = loopsFromEntities(editor.entitiesById(ids));
@@ -3363,6 +3376,7 @@ async function hatch(editor) {
                 } catch (error) {
                     if (!(error instanceof CancelError)) throw error;
                 }
+                if (await superseded()) return null;
                 const source = picked?.entity ? upgradeHatch(picked.entity) : null;
                 if (source?.type === 'hatch') {
                     Object.assign(state, { pattern: source.pattern, angle: source.angle ?? 0, scale: source.scale ?? 1, definition: source.definition, definitionAngle: source.definitionAngle, definitionScale: source.definitionScale });
@@ -3372,7 +3386,8 @@ async function hatch(editor) {
             }
         }
     } finally {
-        editor.preview = [];
+        // Substituído por outro comando: a prévia agora é dele.
+        if (editor.commandRun === run) editor.preview = [];
         editor.invalidate();
     }
     const { definition, definitionAngle, definitionScale, ...remember } = state;

@@ -1529,7 +1529,7 @@ export default {
     "Ângulo inválido.": "Invalid angle.",
     "{0} Aproxime a vista ou use Selecionar objetos.": "{0} Zoom in or use Select objects.",
     "Nenhum contorno fechado na vista atual.": "No closed boundary in the current view.",
-    "Clique dentro das áreas a hachurar [Desfazer]": "Click inside the areas to hatch [Undo]",
+    "Clique dentro das áreas a hachurar": "Click inside the areas to hatch",
     "Nenhum contorno fechado em volta desse ponto.": "No closed boundary around that point.",
     "Limite com {0} laço(s) adicionado.": "Boundary with {0} loop(s) added.",
     "Selecione os objetos de contorno:": "Select boundary objects:",

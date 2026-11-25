@@ -5,7 +5,7 @@
 // tem linhas a 45° e escala 1 dá 3,175 mm entre linhas, tudo ancorado na origem do desenho.
 // Hachuras antigas (sem `scale`) guardavam ângulo absoluto e `spacing`; `upgradeHatch` converte.
 
-import { registerEntityProvider, polylineCurves, entityCurves, curveBox, emptyBox, boxAddPoint, distance, sweepCCW, polar, rotatePoint, degToRad } from './geometry.js';
+import { registerEntityProvider, polylineCurves, entityCurves, entityBox, curveBox, emptyBox, boxAddPoint, distance, sweepCCW, polar, rotatePoint, degToRad } from './geometry.js';
 import { ellipseSamples, ellipseIsFull, ensureSplineGeometry } from './extra-entities.js';
 import { sampleSpline } from './splines.js';
 import { curveToSegmentOrArcList, extractPlanarLoops, buildJordanIslandTree, detectHatchBoundary, loopSignedArea, loopAreaExact, pointInLoopExact, rayLoopIntersections, buildPlanarArrangement } from './topology-dcel.js';
@@ -196,8 +196,12 @@ export function hatchLineRange(min,max,spacing,maxLines=6000){
     return {first,count:Math.max(0,Math.min(Math.floor(maxLines)+1,6001,last-first+1))};
 }
 
+// Pontas a até 0,1 µm contam como a mesma: DXF grava 6 casas e as pontas de arcos, calculadas
+// de centro/raio/ângulo, chegam a alguns 1e-6 das retas vizinhas (SolidWorks, BricsCAD).
+export const HATCH_TOLERANCE = 1e-4;
+
 export function loopsFromEntities(entities, options = {}) {
-    const tolerance = options?.tolerance ?? 1e-6;
+    const tolerance = options?.tolerance ?? HATCH_TOLERANCE;
     const gapTolerance = options?.gapTolerance ?? 0;
     const complexity=entities.reduce((n,e)=>n+(e.type==='polyline'?e.vertices.length:e.type==='hatch'?e.loops.reduce((a,l)=>a+l.vertices.length,0):e.type==='spline'?(e.controlPoints?.length??e.fitPoints?.length??0)*16:2),0);
     if(complexity>MAX_HATCH_EDGES)throw new Error(`Contorno muito complexo para uma hachura (${complexity} segmentos estimados). Divida a seleção.`);
@@ -463,6 +467,40 @@ export function pointInPolygonPoints(p, points) {
 export function boundaryLoopsAt(point, loops, islands = 'nested') {
     const res = buildJordanIslandTree(point, loops, islands);
     return Array.isArray(res) ? res : (res?.loops ?? []);
+}
+
+// Ponto interno em desenho grande: o arranjo planar (faces com cruzamentos em T/X) da vista
+// inteira fica caro e é pulado acima do limite. Aqui ele é montado só com as entidades perto
+// do clique, numa janela que dobra até a face achada caber nela: toda entidade que pudesse
+// cortar a face cruza a caixa dela e portanto já está no recorte, então o resultado é exato.
+export const MAX_LOCAL_BOUNDARY_CURVES = 6000;
+export function localBoundaryLoopsAt(point, entities, { islands = 'nested', limitBox = null, tolerance = HATCH_TOLERANCE } = {}) {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return [];
+    const items = entities.map((e) => ({ e, b: entityBox(e) })).filter(({ b }) => Number.isFinite(b.minX));
+    if (!items.length) return [];
+    const all = items.reduce((a, { b }) => ({ minX: Math.min(a.minX, b.minX), minY: Math.min(a.minY, b.minY), maxX: Math.max(a.maxX, b.maxX), maxY: Math.max(a.maxY, b.maxY) }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+    const span = Math.max(all.maxX - all.minX, all.maxY - all.minY, 1e-6);
+    const ref = limitBox ? Math.max(limitBox.maxX - limitBox.minX, limitBox.maxY - limitBox.minY) : span;
+    let r = Math.max(ref / 64, tolerance * 100);
+    let lastCount = -1;
+    for (let guard = 0; guard < 40; guard++, r *= 2) {
+        const win = { minX: point.x - r, minY: point.y - r, maxX: point.x + r, maxY: point.y + r };
+        const covers = win.minX <= all.minX && win.minY <= all.minY && win.maxX >= all.maxX && win.maxY >= all.maxY;
+        const subset = items.filter(({ b }) => b.maxX >= win.minX && b.minX <= win.maxX && b.maxY >= win.minY && b.minY <= win.maxY).map(({ e }) => e);
+        if (subset.length && subset.length !== lastCount) {
+            lastCount = subset.length;
+            const curves = subset.reduce((n, e) => n + entityCurves(e).length, 0);
+            if (curves > MAX_LOCAL_BOUNDARY_CURVES) return [];
+            const found = boundaryLoopsAt(point, extractPlanarLoops(subset, { tolerance, includeOuterEnvelopes: true }), islands);
+            if (found.length) {
+                const fb = emptyBox();
+                found.forEach((loop) => polylineCurves(loop.vertices, true).forEach((c) => { const cb = curveBox(c); boxAddPoint(fb, { x: cb.minX, y: cb.minY }); boxAddPoint(fb, { x: cb.maxX, y: cb.maxY }); }));
+                if (covers || (fb.minX >= win.minX && fb.minY >= win.minY && fb.maxX <= win.maxX && fb.maxY <= win.maxY)) return found;
+            }
+        }
+        if (covers) return [];
+    }
+    return [];
 }
 
 export { detectHatchBoundary, loopSignedArea, loopAreaExact, pointInLoopExact, rayLoopIntersections, buildPlanarArrangement, extractPlanarLoops, buildJordanIslandTree };
