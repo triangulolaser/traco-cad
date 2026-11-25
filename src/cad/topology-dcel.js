@@ -33,7 +33,7 @@ function canonicalAngle(a) {
 
 // Converte uma curva elementar (segment, arc, ellipse, bezier) em sequência de curvas { kind: 'segment'|'arc' }
 // para representação em laços de polilinha DXF ({ x, y, bulge }).
-function curveToSegmentOrArcList(curve) {
+export function curveToSegmentOrArcList(curve) {
     if (!curve) return [];
     if (curve.kind === 'segment') {
         if (distance(curve.a, curve.b) < 1e-12) return [];

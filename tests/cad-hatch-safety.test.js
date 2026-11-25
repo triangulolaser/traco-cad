@@ -11,3 +11,20 @@ test('renderer terminates at huge coordinates instead of blocking forever',()=>{
  const e={type:'hatch',pattern:'ANSI31',angle:0,spacing:2,loops:[{vertices:[{x:0,y:1e17},{x:100,y:1e17},{x:100,y:1e17+1000},{x:0,y:1e17+1000}]}]};
  try{Renderer.prototype.drawHatch.call({ctx,viewport:{width:1000,height:1000,scale:1,worldToScreen:p=>({x:p.x,y:1e17+1000-p.y})}},e,{});assert.ok(calls>0);}finally{globalThis.Path2D=old;}
 });
+
+test('pontos internos: spline e elipse abertas na vista não quebram e fecham contorno com linhas', async () => {
+    const { loopsFromEntities, loopAreaExact } = await import('../src/cad/hatch.js').then(async (m) => ({ ...m, ...(await import('../src/cad/topology-dcel.js')) }));
+    const lines = [
+        { id: 'a', type: 'line', layer: '0', start: { x: 0, y: 10 }, end: { x: 0, y: 0 } },
+        { id: 'b', type: 'line', layer: '0', start: { x: 0, y: 0 }, end: { x: 10, y: 0 } },
+        { id: 'c', type: 'line', layer: '0', start: { x: 10, y: 0 }, end: { x: 10, y: 10 } },
+    ];
+    const spline = { id: 's', type: 'spline', layer: '0', degree: 3, fitPoints: [{ x: 10, y: 10 }, { x: 5, y: 13 }, { x: 0, y: 10 }] };
+    const loops = loopsFromEntities([...lines, spline]);
+    assert.ok(loops.some((l) => Math.abs(loopAreaExact(l)) > 100), 'contorno com topo em spline');
+    const ellipse = { id: 'e', type: 'ellipse', layer: '0', center: { x: 30, y: 5 }, major: { x: 4, y: 0 }, ratio: 0.5, start: 0, end: 1.5 };
+    const stray = { id: 'x', type: 'spline', layer: '0', degree: 3, fitPoints: [{ x: 40, y: 0 }, { x: 42, y: 3 }, { x: 45, y: 1 }] };
+    assert.doesNotThrow(() => loopsFromEntities([...lines, spline, ellipse, stray]));
+    const closedRect = { id: 'r', type: 'polyline', layer: '0', closed: true, vertices: [{ x: 50, y: 0 }, { x: 60, y: 0 }, { x: 60, y: 10 }, { x: 50, y: 10 }] };
+    assert.doesNotThrow(() => loopsFromEntities([closedRect, ellipse, stray, lines[0]]));
+});

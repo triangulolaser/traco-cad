@@ -8,7 +8,7 @@
 import { registerEntityProvider, polylineCurves, entityCurves, curveBox, emptyBox, boxAddPoint, distance, sweepCCW, polar, rotatePoint, degToRad } from './geometry.js';
 import { ellipseSamples, ellipseIsFull, ensureSplineGeometry } from './extra-entities.js';
 import { sampleSpline } from './splines.js';
-import { extractPlanarLoops, buildJordanIslandTree, detectHatchBoundary, loopSignedArea, loopAreaExact, pointInLoopExact, rayLoopIntersections, buildPlanarArrangement } from './topology-dcel.js';
+import { curveToSegmentOrArcList, extractPlanarLoops, buildJordanIslandTree, detectHatchBoundary, loopSignedArea, loopAreaExact, pointInLoopExact, rayLoopIntersections, buildPlanarArrangement } from './topology-dcel.js';
 
 const IN = 25.4;
 const pat = (rows) => rows.map(([angle, x, y, dx, dy, ...dashes]) => ({ angle, x: x * IN, y: y * IN, dx: dx * IN, dy: dy * IN, dashes: dashes.map((d) => d * IN) }));
@@ -143,7 +143,8 @@ export const MAX_HATCH_EDGES=20000;
 // delega a extração topológica para o arranjo planar DCEL (`extractPlanarLoops`).
 export function closedHatchChains(entities,tolerance=1e-6,options={}){
     const gapTolerance=typeof options==='number'?options:(options?.gapTolerance??0);
-    const curves=entities.flatMap(e=>entityCurves(e));
+    // Splines (bezier) e elipses abertas viram segmentos; só reta e arco entram no grafo de pontas.
+    const curves=entities.flatMap(e=>entityCurves(e)).flatMap(c=>c.kind==='segment'||c.kind==='arc'?[c]:curveToSegmentOrArcList(c));
     if(curves.length>MAX_HATCH_EDGES)throw new Error(`Hachura limitada a ${MAX_HATCH_EDGES} segmentos por operação; divida a seleção.`);
     const cells=new Map(),nodes=[];
     const nodeFor=p=>{
