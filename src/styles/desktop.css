@@ -45,6 +45,8 @@ html, body {
 .desktop-more-locale select { margin-left: auto; margin-right: 0; max-width: 132px; }
 .desktop-more-menu :focus-visible, .desktop-more-toggle:focus-visible { outline: 2px solid var(--cad-accent); outline-offset: 1px; }
 
+/* Aviso de atualização: mesmo visual do TriWorks desktop (cartão claro, texto do
+   sistema, botão principal azul). Cores fixas para não depender do tema do CAD. */
 .desktop-update-banner {
     position: fixed;
     top: 12px;
@@ -54,14 +56,17 @@ html, body {
     display: flex;
     align-items: center;
     gap: 8px;
+    width: max-content;
     max-width: min(640px, calc(100vw - 32px));
     padding: 8px 12px;
-    border: 1px solid var(--cad-border, #3a3a3c);
+    border: 1px solid #d0d7de;
     border-radius: 6px;
-    background: var(--cad-panel-bg, #2c2c2e);
-    color: var(--cad-text, #f2f2f7);
+    background: #fff;
+    color: #1f2328;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     font-size: 13px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    line-height: 1.35;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
     user-select: text;
     -webkit-user-select: text;
 }
@@ -75,8 +80,26 @@ html, body {
     opacity: 0.75;
 }
 
-.desktop-update-primary {
-    font-weight: 600;
+.desktop-update-btn {
+    padding: 4px 10px;
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.desktop-update-btn.is-primary {
+    background: #1f6feb;
+    border-color: #1f6feb;
+    color: #fff;
+}
+
+.desktop-update-btn:focus-visible {
+    outline: 2px solid #1f6feb;
+    outline-offset: 1px;
 }
 
 .desktop-update-overlay {

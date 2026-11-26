@@ -27,7 +27,7 @@ function showBanner(html, actions = []) {
     for (const { label, primary, onClick } of actions) {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = primary ? 'cad-btn desktop-update-primary' : 'cad-btn';
+        button.className = primary ? 'desktop-update-btn is-primary' : 'desktop-update-btn';
         button.textContent = label;
         button.addEventListener('click', onClick);
         banner.appendChild(button);
