@@ -3,6 +3,7 @@
 // assinatura do pacote com a chave pública do tauri.conf.json e só então instala.
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { updateNotesText } from './update-notes.js';
 
 const STARTUP_DELAY_MS = 5000;
 const DISMISS_KEY = 'traco.desktop.update.dismissed';
@@ -147,7 +148,8 @@ export async function checkForDesktopUpdate({ manual = false } = {}) {
     }
     if (!manual && localStorage.getItem(DISMISS_KEY) === update.version) return;
 
-    const notes = update.body ? `<small>${escapeHtml(update.body)}</small>` : '';
+    const body = updateNotesText(update.body, { appName: 'Traço', version: update.version });
+    const notes = body ? `<small>${escapeHtml(body)}</small>` : '';
     showBanner(`Traço ${escapeHtml(update.version)} disponível (você usa ${escapeHtml(update.currentVersion)}). ${notes}`, [
         { label: 'Atualizar agora', primary: true, onClick: () => install(update) },
         {
