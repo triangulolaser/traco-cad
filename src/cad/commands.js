@@ -75,6 +75,7 @@ import {
     extendEntityExact,
 } from './blend-g2.js';
 import { arcMidForRadius } from './grips.js';
+import { offsetHint, offsetSide, OFFSET_SIDE_LABEL, OFFSET_SIDE_GLYPH } from './offset-hint.js';
 import { addEntities, removeEntities, replaceEntities, updateEntities, editableEntities, setCurrentLayer, updateLayer, layerOf, createDocument, documentStats, hexToAci, aciToHex, BYLAYER } from './document.js';
 import { parseDxf, writeDxf } from './dxf.js';
 import { readDxfFile } from './dxf-binary.js';
@@ -1641,13 +1642,44 @@ function offsetDynSpec(editor, source, baseDist) {
     const spec = {
         fields: [{ key: 'v', label: 'Distância' }],
         locked: {},
-        calc: (cursor) => offsetDynamicInput(source, cursor, baseDist(cursor), spec.locked, editor.viewport?.pixelsToWorld(22) ?? 8),
+        // Prévia, destaque, campo e lado pedem o mesmo cálculo no mesmo quadro: guarda o último.
+        calc: (cursor) => {
+            const gap = editor.viewport?.pixelsToWorld(22) ?? 8;
+            const c = spec._cache;
+            if (c && c.x === cursor.x && c.y === cursor.y && c.v === spec.locked.v && c.gap === gap) return c.out;
+            const out = offsetDynamicInput(source, cursor, baseDist(cursor), spec.locked, gap);
+            spec._cache = { x: cursor.x, y: cursor.y, v: spec.locked.v, gap, out };
+            return out;
+        },
         values: (cursor) => spec.calc(cursor).values,
         anchors: (cursor) => spec.calc(cursor).anchors,
         resolve: (cursor) => cursor,
         guides: (cursor) => spec.calc(cursor).guides,
+        // Lado por extenso ao lado do campo da distância (FORA/DENTRO, ESQUERDA/DIREITA).
+        tag: (cursor) => {
+            const { result } = spec.calc(cursor);
+            const side = result ? offsetSide(source, result._allIslands?.length > 1 ? result._allIslands : [result], cursor) : null;
+            return side ? { glyph: OFFSET_SIDE_GLYPH[side], text: OFFSET_SIDE_LABEL[side] } : null;
+        },
+        tagClass: 'is-offset-side',
     };
     return spec;
+}
+
+// Prévia do Deslocamento em cor de destaque (tracejada) + faixa e setas do lado; ver offset-hint.js.
+function offsetPreviewParts(editor, spec, sourceEntity, layerTarget, cursor) {
+    const { result: r } = spec.calc(cursor);
+    if (!r) return { list: [], islands: [] };
+    const targetLayer = layerTarget === 'current' ? editor.doc.currentLayer : sourceEntity.layer;
+    const islands = r._allIslands?.length > 1 ? r._allIslands : [r];
+    return { islands, list: islands.map((item) => ({ ...item, id: undefined, layer: targetLayer, offsetPreview: true })) };
+}
+
+function offsetHintFor(editor, spec, sourceEntity, cursor) {
+    const { result: r } = spec.calc(cursor);
+    if (!r) return null;
+    const islands = r._allIslands?.length > 1 ? r._allIslands : [r];
+    return offsetHint(sourceEntity, islands, cursor, editor.viewport);
 }
 
 async function offset(editor) {
@@ -1781,13 +1813,8 @@ async function offset(editor) {
             const throughRes = await editor.getPoint('Especifique o ponto através do qual passar:', {
                 allowEnter: true,
                 dynInput: throughDyn,
-                preview: (cursor) => {
-                    const { result: r } = throughDyn.calc(cursor);
-                    if (!r) return [];
-                    const targetLayer = layerTarget === 'current' ? editor.doc.currentLayer : sourceEntity.layer;
-                    const list = r._allIslands?.length > 1 ? r._allIslands : [r];
-                    return list.map((item) => ({ ...item, id: undefined, layer: targetLayer }));
-                },
+                preview: (cursor) => offsetPreviewParts(editor, throughDyn, sourceEntity, layerTarget, cursor).list,
+                offsetHint: (cursor) => offsetHintFor(editor, throughDyn, sourceEntity, cursor),
             });
             if (throughRes?.enter || !throughRes?.point) continue;
 
@@ -1831,13 +1858,8 @@ async function offset(editor) {
                 allowNumber: true,
                 options: sideOptions,
                 dynInput: sideDyn,
-                preview: (cursor) => {
-                    const { result: r } = sideDyn.calc(cursor);
-                    if (!r) return [];
-                    const targetLayer = layerTarget === 'current' ? editor.doc.currentLayer : sourceEntity.layer;
-                    const list = r._allIslands?.length > 1 ? r._allIslands : [r];
-                    return list.map((item) => ({ ...item, id: undefined, layer: targetLayer }));
-                },
+                preview: (cursor) => offsetPreviewParts(editor, sideDyn, sourceEntity, layerTarget, cursor).list,
+                offsetHint: (cursor) => offsetHintFor(editor, sideDyn, sourceEntity, cursor),
             });
 
             if (!side || side.enter) break;

@@ -1587,6 +1587,10 @@ body:has([data-cad-app]) .app-content > .container-fluid {
 .cad-dyn-field.is-active { background: #1f6fd1; border-color: #8ab8f0; color: #fff; }
 .cad-dyn-field.is-locked { background: #e7a3a3; border-color: #c46a6a; color: #1b1b1b; }
 .cad-dyn-field.is-locked.is-active { background: #f2b8b8; border-color: #fff; }
+/* Lado do Deslocamento (FORA/DENTRO) colado à direita do campo da distância. */
+.cad-dyn-tag { position: absolute; transform: translate(0, -50%); padding: 1px 6px; pointer-events: none; white-space: nowrap;
+    font: 600 12px/1.4 var(--cad-font-mono, ui-monospace, monospace); color: #fff; background: #1f6fd1;
+    border: 1px solid #8ab8f0; border-radius: 2px; }
 
 /* App instalado (PWA): controles que só aparecem fora do navegador. */
 .cad-pwa-only { display: none; }

@@ -63,6 +63,8 @@ export const THEMES = {
         selection: '#4da3ff',
         preview: 'rgba(255,255,255,0.75)',
         dimGuide: 'rgba(196,96,96,0.65)',
+        offsetAccent: '#4da3ff',
+        offsetBand: 'rgba(77,163,255,0.30)',
         rubber: 'rgba(255,255,255,0.6)',
         snap: '#ffd24d',
         snapDim: '#c77dff',
@@ -93,6 +95,8 @@ export const THEMES = {
         selection: '#0a84ff',
         preview: 'rgba(0,0,0,0.7)',
         dimGuide: 'rgba(170,60,60,0.6)',
+        offsetAccent: '#1e6fd9',
+        offsetBand: 'rgba(30,111,217,0.26)',
         rubber: 'rgba(0,0,0,0.55)',
         snap: '#d99a00',
         snapDim: '#8e2bd6',
@@ -304,10 +308,18 @@ export class Renderer {
             this.drawEntity(state.gripGhost, { color, width: 1, dashed: true, alpha: 0.45 });
         }
 
+        if (state.offsetHint?.band) this.drawOffsetBand(state.offsetHint.band);
+
         (state.preview ?? []).forEach((entity) => {
+            if (entity.offsetPreview) {
+                this.drawEntity(entity, { color: this.theme.offsetAccent, width: 2, dashed: true, alpha: 1 });
+                return;
+            }
             const color = entity.rotationGuide ? this.theme.snap : entity.dimGuide ? this.theme.dimGuide : entity.color && entity.color !== 'bylayer' ? this.entityDisplayColor(entityColor(entity, state.doc)) : this.theme.preview;
             this.drawEntity(entity, { color, width: entity.rotationGuide ? 3 : entity.dimGuide ? 1 : 1.2, dashed: false, alpha: 0.9 });
         });
+
+        if (state.offsetHint?.arrows?.length) this.drawOffsetArrows(state.offsetHint.arrows);
 
         if (gripsVisible(state.selection.size, Boolean(state.commandActive))) state.selection.forEach((id) => {
             let entity = state.doc.entities.find((e) => e.id === id);
@@ -502,6 +514,56 @@ export class Renderer {
             entityCurves(entity).forEach((curve) => this.pathCurve(curve, clip));
             ctx.stroke();
         }
+        ctx.restore();
+    }
+
+    // Faixa entre a origem e a prévia do Deslocamento (ver offset-hint.js).
+    drawOffsetBand(band) {
+        const { ctx, viewport } = this;
+        if (!band?.rings?.length) return;
+        ctx.save();
+        ctx.fillStyle = this.theme.offsetBand;
+        ctx.beginPath();
+        band.rings.forEach((ring) => {
+            ring.forEach((p, i) => {
+                const s = viewport.worldToScreen(p);
+                if (i === 0) ctx.moveTo(s.x, s.y);
+                else ctx.lineTo(s.x, s.y);
+            });
+            ctx.closePath();
+        });
+        ctx.fill(band.evenOdd ? 'evenodd' : 'nonzero');
+        ctx.restore();
+    }
+
+    // Setas de tamanho fixo na tela: cruzam a origem e apontam para o lado da cópia.
+    drawOffsetArrows(arrows) {
+        const { ctx, viewport } = this;
+        ctx.save();
+        ctx.strokeStyle = this.theme.offsetAccent;
+        ctx.fillStyle = this.theme.offsetAccent;
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.setLineDash([]);
+        arrows.forEach(({ at, dir }) => {
+            const s = viewport.worldToScreen(at);
+            // Mundo com Y para cima, tela com Y para baixo.
+            const dx = dir.x;
+            const dy = -dir.y;
+            const tail = { x: s.x - dx * 10, y: s.y - dy * 10 };
+            const tip = { x: s.x + dx * 26, y: s.y + dy * 26 };
+            const base = { x: s.x + dx * 16, y: s.y + dy * 16 };
+            ctx.beginPath();
+            ctx.moveTo(tail.x, tail.y);
+            ctx.lineTo(base.x, base.y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(tip.x, tip.y);
+            ctx.lineTo(base.x - dy * 6, base.y + dx * 6);
+            ctx.lineTo(base.x + dy * 6, base.y - dx * 6);
+            ctx.closePath();
+            ctx.fill();
+        });
         ctx.restore();
     }
 

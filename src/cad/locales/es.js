@@ -1745,4 +1745,8 @@ export default {
     "Leva todos os textos e cotas do desenho para a frente (TEXTTOFRONT)": "Lleva todos los textos y cotas del dibujo al frente (TEXTTOFRONT)",
     "Leva todas as hachuras do desenho para trás (HATCHTOBACK)": "Lleva todos los sombreados del dibujo atrás (HATCHTOBACK)",
     "Ambos": "Ambos",
+    "FORA": "FUERA",
+    "DENTRO": "DENTRO",
+    "ESQUERDA": "IZQUIERDA",
+    "DIREITA": "DERECHA",
 };

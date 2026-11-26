@@ -1745,4 +1745,8 @@ export default {
     "Leva todos os textos e cotas do desenho para a frente (TEXTTOFRONT)": "Bring all text and dimensions in the drawing to front (TEXTTOFRONT)",
     "Leva todas as hachuras do desenho para trás (HATCHTOBACK)": "Send all hatches in the drawing to back (HATCHTOBACK)",
     "Ambos": "Both",
+    "FORA": "OUT",
+    "DENTRO": "IN",
+    "ESQUERDA": "LEFT",
+    "DIREITA": "RIGHT",
 };

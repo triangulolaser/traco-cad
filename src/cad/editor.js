@@ -490,12 +490,17 @@ export class Editor {
         if (this.drawing) preview = preview.map((e) => (e.dimGuide ? e : withDrawProps(e, this.drawProps)));
         // Cota provisória (vermelha) da entrada dinâmica junto ao que está sendo desenhado.
         if (this.dyn?.spec.guides && this.cursorWorld) preview = [...preview, ...safePreview(this.dyn.spec.guides, this.effectiveCursor())];
+        let offsetHint = null;
+        if (this.pending?.offsetHint && this.cursorWorld) {
+            try { offsetHint = this.pending.offsetHint(this.effectiveCursor()); } catch { offsetHint = null; }
+        }
         const rubber = this.activeGrip ? this.rubber : (this.pending?.reference && this.cursorWorld && ['point', 'pointOrEntity'].includes(this.pending.mode) ? { from: this.pending.reference, to: this.effectiveCursor() } : null);
         this.renderer.draw({
             doc: this.doc,
             dimStyle: this.doc.dimStyle,
             selection: this.selection,
             preview,
+            offsetHint,
             rubber,
             snap: this.snap,
             centerHint: this.centerHint && ['point', 'pointOrEntity'].includes(this.pending?.mode) && this.snap?.point !== this.centerHint.point ? this.centerHint.point : null,
@@ -555,8 +560,16 @@ export class Editor {
         box.addEventListener('pointerleave', (event) => {
             if (event.relatedTarget !== this.canvas && !box.contains(event.relatedTarget)) this.clearCursor();
         });
+        // Etiqueta opcional ao lado do primeiro campo (ex.: lado do Deslocamento).
+        let tag = null;
+        if (spec.tag) {
+            tag = document.createElement('span');
+            tag.className = `cad-dyn-tag ${spec.tagClass ?? ''}`.trim();
+            tag.hidden = true;
+            box.appendChild(tag);
+        }
         this.stage.appendChild(box);
-        this.dyn = { spec, box, inputs, active: 0, typed: new Set() };
+        this.dyn = { spec, box, inputs, tag, active: 0, typed: new Set() };
     }
 
     clearCursor() {
@@ -678,6 +691,20 @@ export class Editor {
             input.style.left = `${Math.round(screen.x)}px`;
             input.style.top = `${Math.round(screen.y)}px`;
         });
+        if (dyn.tag) {
+            let info = null;
+            try { info = dyn.spec.tag(cursor); } catch { info = null; }
+            const first = dyn.inputs[0];
+            const show = Boolean(info && first && !first.hidden);
+            dyn.tag.hidden = !show;
+            if (show) {
+                const text = `${info.glyph ? `${info.glyph} ` : ''}${tr(info.text)}`;
+                if (dyn.tag.textContent !== text) dyn.tag.textContent = text;
+                const half = (first.offsetWidth || 64) / 2;
+                dyn.tag.style.left = `${Math.round(parseFloat(first.style.left) + half + 3)}px`;
+                dyn.tag.style.top = first.style.top;
+            }
+        }
     }
 
     resize() {
